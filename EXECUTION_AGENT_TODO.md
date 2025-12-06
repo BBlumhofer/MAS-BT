@@ -1,102 +1,350 @@
 # ToDo-Liste: Execution Agent Basis-Implementierung
+## Update: 
+
+Was ich aktualisieren sollte:
+✅ Phase 3: Messaging - Teilweise erledigt
+Ich sollte dokumentieren, dass wir gerade:
+
+✅ ModuleState.cs im AAS-Sharp-Client erstellt haben
+
+Ersetzt manuelle Property-Erstellung in SendStateMessageNode
+Mit Gettern/Settern und korrekter ValueType-Serialisierung
+✅ Action.cs erweitert haben mit:
+
+GetFinalResultData() - gibt FinalResultData zurück
+GetInputParameters() - gibt InputParameters zurück
+GetActionTitle(), GetMachineName() - Getter-Methoden
+✅ SendStateMessageNode refaktoriert
+
+Verwendet jetzt ModuleState aus AAS-Sharp-Client
+Keine manuelle Property-Erstellung mehr
+✅ SendSkillResponseNode refaktoriert
+
+Verwendet jetzt Action aus Context
+Keine manuelle Property-Erstellung mehr
+Action enthält alle Properties mit korrekten Values
+⚠️ Problem identifiziert: Properties haben keine Values in MQTT Messages
+
+Root Cause: ValueType Property muss via Reflection gesetzt werden
+Lösung: I40MessageBuilder.CreateStringProperty() / CreateBooleanProperty() Helper-Methoden erstellt
+Status: Kompiliert, aber noch nicht getestet ob Values jetzt korrekt serialisiert werden
+## 🚨 KRITISCHE BUGS - SOFORT FIXEN (Phase 3.5)
+
+### 🐛 Bug #1: Lock-Verlust wird nicht recovered
+**Problem:** 
+- Operator überschreibt Lock manuell im OPC UA
+- CheckLockStatus erkennt Lock-Verlust (returns Failure)
+- Tree läuft aber weiter ohne Re-Lock (800+ Ticks, 87+ Sekunden)
+- Keine automatische Recovery
+
+**Lösung:**
+- [ ] **ContinuousMonitoringNode** - Parallel Monitor für Lock + Startup Status
+  - Läuft parallel zum Haupt-Tree
+  - Bei Lock-Verlust → Trigger Recovery Sequence
+  - Bei Startup Halted → Trigger Restart Sequence
+  
+- [ ] **RecoverySequence für Lock-Verlust:**
+  1. Detect Lock Lost (CheckLockStatus fails)
+  2. Abort All Running Skills (HaltAllSkills)
+  3. Re-Lock Module (LockResource mit Retry)
+  4. Restart StartupSkill (ExecuteSkill StartupSkill)
+  5. Wait for Startup Running (WaitForSkillState Running)
+  6. Resume Main Tree
+
+- [ ] **Tree Pattern: Parallel Monitoring**
+  ```xml
+  <Parallel name="ExecuteWithMonitoring">
+    <!-- Main Execution Branch -->
+    <Sequence name="MainExecution">
+      <ExecuteSkill .../>
+    </Sequence>
+    
+    <!-- Continuous Monitoring Branch -->
+    <RepeatUntilFailure name="ContinuousMonitor">
+      <Sequence name="CheckHealthSequence">
+        <CheckLockStatus ModuleName="ScrewingStation"/>
+        <CheckStartupSkillStatus ModuleName="ScrewingStation"/>
+        <Wait DelayMs="1000"/>
+      </Sequence>
+    </RepeatUntilFailure>
+  </Parallel>
+  ```
+
+### 🐛 Bug #2: StartupSkill Halted wird nicht restarted
+**Problem:**
+- StartupSkill geht auf Halted (z.B. durch Operator Reset)
+- CheckStartupSkillStatus erkennt Halted-State
+- Kein automatischer Restart
+
+**Lösung:**
+- [ ] **EnsureStartupRunning Node** - Smart Restart Logic
+  - Prüft StartupSkill State
+  - Falls Halted → Reset → Start → Wait for Running
+  - Falls Running → Success (idempotent)
+  - Wird vor jedem Skill-Execution gecallt
+
+- [ ] **Integration in ExecuteSkill:**
+  ```xml
+  <Sequence name="ExecuteSkillWithStartupCheck">
+    <EnsureStartupRunning ModuleName="ScrewingStation"/>
+    <ExecuteSkill SkillName="Screw" .../>
+  </Sequence>
+  ```
+
+### 🐛 Bug #3: Tree läuft endlos nach Lock-Verlust
+**Problem:**
+- Nach Lock-Verlust läuft Tree weiter (Tick #800+)
+- Keine Timeout-Logic
+- Keine Failure Propagation
+
+**Lösung:**
+- [ ] **Timeout für Lock-Check Sequence**
+  - Wrapping mit Timeout Node
+  - Max 5 Sekunden für Lock-Check
+  - Bei Timeout → Trigger Recovery
+
+- [ ] **Failure Propagation Fix:**
+  - CheckLockStatus Failure sollte Sequence abbrechen
+  - Statt Sequence → Fallback mit Recovery Branch
+
+### 🐛 Bug #4: CheckLockedStateNode ExpectLocked=true trotz Lock-Verlust
+**Problem:**
+- CheckLockedStateNode hat `ExpectLocked` Parameter
+- Im Tree überall `ExpectLocked="true"` (implizit)
+- Bei Lock-Verlust sollte aber Failure zurückgegeben werden
+
+**Analyse:**
+- CheckLockedStateNode.cs Zeile 44: `bool matches = (isLocked == ExpectLocked);`
+- Wenn isLocked=false, ExpectLocked=true → matches=false → Failure ✅
+- **Das ist korrekt!** Bug liegt nicht hier.
+
+**Root Cause:**
+- Tree verwendet `RetryUntilSuccess` für Lock-Checks
+- Das überschreibt Failures und retried endlos
+- **Lösung:** RetryUntilSuccess durch Fallback mit Recovery ersetzen
+
+---
 
 ## 🎉 ABGESCHLOSSEN
 
 ### ✅ Phase 0: Infrastructure & Cleanup
 - [x] **MqttLogger implementiert** - Automatisches Logging aller Nodes via MQTT
 - [x] **Trees bereinigt** - 39 `SendLogMessage` Nodes entfernt (53% kleiner)
-  - Init_and_ExecuteSkill.bt.xml: 273 → 129 Zeilen
-  - ModuleInitializationTest.bt.xml: 203 → 107 Zeilen
-  - ResourceHolonInitialization.bt.xml: Bereits sauber
 
 ### ✅ Phase 1: Core Monitoring Nodes (FERTIG) ✨
 - [x] **CheckReadyState** - Prüft ob Modul bereit ist
-  - Implementiert in: `/BehaviorTree/Nodes/MonitoringNodes.cs`
-  - Nutzt: `RemoteModule.IsLockedByUs` (vereinfachte Ready-Prüfung)
-  - Registriert in: `NodeRegistry.cs`
-  - **Getestet:** ✅ Kompiliert und läuft
-
 - [x] **CheckErrorState** - Prüft auf Fehler im Modul
-  - Implementiert in: `/BehaviorTree/Nodes/MonitoringNodes.cs`
-  - Erkennt: Unerwartete `Halted` States von Skills
-  - Nutzt: `RemoteSkill.CurrentState == SkillStates.Halted`
-  - Registriert in: `NodeRegistry.cs`
-  - **Getestet:** ✅ Kompiliert und läuft
-
 - [x] **CheckLockedState** - Erweiterte Lock-Prüfung
-  - Implementiert in: `/BehaviorTree/Nodes/MonitoringNodes.cs`
-  - Parameter: `ExpectLocked` (bool) - flexibel für gelockt/frei
-  - Nutzt: `RemoteModule.IsLockedByUs`
-  - Registriert in: `NodeRegistry.cs`
-  - **Getestet:** ✅ Kompiliert und läuft
-
 - [x] **MonitoringSkill** - Liest Skill State + Monitoring Variables
-  - Implementiert in: `/BehaviorTree/Nodes/MonitoringNodes.cs`
-  - Liest: `RemoteSkill.CurrentState`
-  - Speichert State im Context: `skill_{SkillName}_state`
-  - TODO: MonitoringData Variables erweitern wenn API verfügbar
-  - Registriert in: `NodeRegistry.cs`
-  - **Getestet:** ✅ Kompiliert und läuft
+
+### ✅ Phase 2: Skill Control Nodes (FERTIG) ✨
+- [x] **WaitForSkillState** - Wartet auf spezifischen Skill-Zustand (Polling-basiert)
+- [x] **AbortSkill** - Bricht laufenden Skill ab (Halt + Warten auf Halted)
+- [x] **PauseSkill** - Pausiert Skill (Suspended State)
+- [x] **ResumeSkill** - Setzt pausierten Skill fort
+- [x] **RetrySkill** - Wiederholt fehlgeschlagenen Skill mit Exponential Backoff
+
+**Dokumentation:** ✅ MONITORING_AND_SKILL_NODES.md erstellt
 
 ---
 
-## ⚠️ KRITISCHE FIXES (Priorität 0 - VOR ALLEM ANDEREN)
+## 🚀 Priorität 1: Recovery & Monitoring Logic (JETZT - Phase 3.5)
 
-### Fix 1: Groot BT Editor Kompatibilität 🔴
-- [ ] **XML-Format für Groot anpassen**
-  - Problem: Groot erwartet `<root>` (lowercase) als Root-Element
-  - Aktuell: `<BehaviorTree><Root>...</Root></BehaviorTree>`
-  - Groot-kompatibel: `<root main_tree_to_execute="TreeName">...</root>`
-  - Betrifft: Alle `.bt.xml` Dateien in `/Trees/`
-  - Lösung: XML-Struktur anpassen oder Serializer/Deserializer erweitern
+### Recovery Nodes (KRITISCH)
 
-### Fix 2: ReadyState & ErrorState Klarstellung 📋
-- [x] **CheckReadyState** - ✅ IMPLEMENTIERT
-  - RemoteModule hat bereits IsLockedByUs Property
-  - Nutzt Lock-Status als Ready-Indikator
-  - BT-Node implementiert als Wrapper
+- [ ] **HaltAllSkillsNode** - Haltet alle laufenden Skills
+  - Iteriert über alle Skills im Module.SkillSet
+  - Ruft AbortSkill für jeden Skill auf
+  - Wartet bis alle Halted sind
+  - Returns: Success wenn alle Halted
 
-- [x] **CheckErrorState** - ✅ IMPLEMENTIERT
-  - **Kriterium 1**: Ein gestarteter Skill geht **unerwartet** in `Halted`
-    - Prüft alle Skills auf `SkillStates.Halted`
-    - Logged Warning wenn Halted State erkannt
-  - **Kriterium 2**: StartupSkill geht von `Running` → `Halted` ohne Halt-Command
-    - Wird durch allgemeinen Halted-Check abgedeckt
-  - **TODO für später**: State-Tracking ob Halt explizit angefordert wurde
+- [ ] **EnsureStartupRunningNode** - Garantiert StartupSkill Running
+  - Parameter: ModuleName
+  - Logic:
+    1. Get StartupSkill State
+    2. If Running → Success (idempotent)
+    3. If Halted/Completed → Reset → Start → Wait Running
+    4. If Ready → Start → Wait Running
+    5. Timeout: 60 Sekunden
+  - Returns: Success wenn Running, Failure bei Timeout
+
+- [ ] **EnsureModuleLockedNode** - Garantiert Module Lock
+  - Parameter: ModuleName, ResourceId
+  - Logic:
+    1. Check IsLockedByUs
+    2. If Locked → Success (idempotent)
+    3. If Not Locked → LockResource mit Retry (3x)
+    4. Verify Lock nach jedem Versuch
+  - Returns: Success wenn Locked, Failure nach 3 Retries
+
+- [ ] **RecoverySequenceNode** - Orchestriert komplette Recovery
+  - Parameter: ModuleName
+  - Logic:
+    1. HaltAllSkills
+    2. EnsureModuleLocked
+    3. EnsureStartupRunning
+    4. Set Context "recoveryCompleted" = true
+  - Returns: Success wenn Recovery erfolgreich
+
+### Monitoring Nodes (KRITISCH)
+
+- [ ] **ContinuousHealthCheckNode** - Parallel Monitor
+  - Läuft in Parallel Branch
+  - Prüft alle 1-2 Sekunden:
+    - Lock Status (CheckLockStatus)
+    - Startup Status (CheckStartupSkillStatus)
+    - Error State (CheckErrorState)
+  - Bei Failure → Set Context "healthCheckFailed" = true
+  - Returns: Running (endlos) oder Failure bei kritischem Fehler
+
+- [ ] **MonitorAndRecoverNode** - Kombiniert Monitor + Recovery
+  - Wrapper Node für Skill Execution
+  - Pattern: Parallel mit Main + Monitor Branch
+  - Bei Monitor Failure → Trigger Recovery → Resume Main
+
+### Tree Pattern Updates
+
+- [ ] **Init_and_ExecuteSkill.bt.xml anpassen:**
+  - Ersetze RetryUntilSuccess um Lock-Checks
+  - Füge ContinuousHealthCheck in Parallel Branch ein
+  - Füge RecoverySequence bei Health Check Failures ein
+
+- [ ] **Neuer Tree: RecoveryTest.bt.xml**
+  - Testet Recovery-Logic isoliert
+  - Simuliert Lock-Verlust
+  - Simuliert Startup Halted
 
 ---
 
-## Status der existierenden Nodes ✅
-- [x] ConnectToModule - OPC UA Verbindung
-- [x] ExecuteSkill - Skill ausführen mit Parametern
-- [x] LockResource/UnlockResource - Ressourcen sperren
-- [x] CheckLockStatus - Lock-Status prüfen (Original)
-- [x] CheckLockedState - Erweiterte Lock-Prüfung mit ExpectLocked ✨ NEU
-- [x] SendMessage/WaitForMessage - MQTT Messaging
-- [x] ReadStorage - Inventar lesen
-- [x] CheckStartupSkillStatus - StartupSkill überwachen
-- [x] ConnectToMessagingBroker - MQTT Verbindung
-- [x] SendLogMessage - Log-Nachrichten senden (kann entfernt werden, MqttLogger ersetzt es)
-- [x] SendConfigAsLog - Config als Log senden
-- [x] CheckReadyState - Modul-Bereitschaft prüfen ✨ NEU
-- [x] CheckErrorState - Fehler erkennen ✨ NEU
-- [x] MonitoringSkill - Skill State + Monitoring ✨ NEU
+## 🚀 Priorität 2: MQTT Messaging Integration (Phase 3)
+
+### ✅ Skill Execution Messaging (FERTIG - 2/2) ✨
+- [x] **ReadMqttSkillRequest** ✅
+- [x] **SendSkillResponse** ✅
+
+### 3.1 Remaining Messaging Nodes
+
+- [ ] **UpdateInventoryFromAction** - Aktualisiert Inventar nach Action-Completion
+  - **Quelle:** Action.Effects oder Action.FinalResultData
+  - **Liest:** ProductID, ProductType, CarrierID, SlotID
+  - **Updated:** Context Storage-State
+  - **Sendet:** InventoryMessage via MQTT (optional)
+
+- [ ] **UpdateNeighborsFromAction** - Aktualisiert gekoppelte Module nach Action
+  - **Quelle:** Action.Effects (gekoppelte/entkoppelte Module)
+  - **Updated:** Context Neighbors-State
+  - **Sendet:** NeighborMessage via MQTT (optional)
+
+### 3.2 Generic Messaging Nodes (Inter-Agent Communication)
+
+- [ ] **SendMessage** - Sendet generische I4.0 Message
+  - **Parameter:** 
+    - AgentId (string) - Empfänger
+    - MessageType (string) - "inform", "request", "consent", "refuse"
+    - InteractionElements (List<ISubmodelElement>)
+    - Topic (string, optional) - Falls nicht Default-Topic
+  - **Nutzt:** I40MessageBuilder
+  - **Returns:** Success wenn gesendet
+
+- [ ] **WaitForMessage** - Wartet auf eingehende Message
+  - **Parameter:**
+    - ExpectedType (string, optional) - Filter nach MessageType
+    - ExpectedSender (string, optional) - Filter nach Sender
+    - TimeoutSeconds (int, default=30)
+  - **Returns:** Success mit Message oder Failure bei Timeout
+  - **Speichert:** `LastReceivedMessage` im Context
+
+- [ ] **SendStateMessage** - Sendet Modulzustände via MQTT
+  - **Topic:** `/Modules/{ModuleID}/State/`
+  - **Struktur:** SubmodelElementCollection mit:
+    - ModuleLocked (bool)
+    - StartupSkill running (bool)
+    - ModuleReady (bool)
+    - ModuleState (LifecycleStateEnum)
+  - **Frame Type:** "inform"
+  - **Returns:** Success
+
+- [ ] **ReadInventoryMessage** - Liest Inventar von Remote-Modul
+  - **Topic:** `/Modules/{ModuleID}/Inventory/`
+  - **Struktur:** JSON Array mit Storage Slots:
+    - Storage/RFIDStorage (name)
+    - slots[index].content { CarrierID, CarrierType, ProductType, ProductID, IsSlotEmpty }
+  - **Returns:** Success mit Inventory
+
+- [ ] **ReadNeighborMessage** - Liest gekoppelte Module
+  - **Topic:** `/Modules/{ModuleID}/Neighbors/`
+  - **Struktur:** SubmodelElementList mit Module-IDs
+  - **Returns:** Success mit Neighbors List
+
+### 3.3 Integration mit I4.0-Sharp-Messaging
+
+- [ ] **MessageFrame Builder verwenden**
+  - Alle Messaging Nodes nutzen `I40MessageBuilder`
+  - Frame erstellen mit: Sender, Receiver, Type, ConversationId
+  - InteractionElements hinzufügen (Action, Properties, Collections)
+
+- [ ] **MessagingClient aus Context holen**
+  - Nach `ConnectToMessagingBrokerNode` ist Client verfügbar
+  - `var client = Context.Get<MessagingClient>("MessagingClient");`
+
+- [ ] **Topic Subscribe/Unsubscribe Logic**
+  - ReadMqttSkillRequest: Subscribe zu SkillRequest Topic
+  - Auto-Unsubscribe bei Node Abort/Reset
 
 ---
 
-## 🚀 Priorität 1: Core Execution Agent Nodes (Must-have)
+## Priorität 3: Constraint & Precondition Logic - ⏳ PHASE 4
 
-### 1. Monitoring Nodes - ✅ PHASE 1 ABGESCHLOSSEN
-- [x] CheckReadyState
-- [x] CheckErrorState  
-- [x] CheckLockedState
-- [x] MonitoringSkill
+### 4. Constraint Nodes
 
-**Noch zu implementieren aus specs.json:**
+- [ ] **RequiresMaterial** - Prüft Material-Verfügbarkeit
+  - Parameter: itemId, quantity, moduleId
+  - Nutzt ReadInventoryMessage oder CheckInventory
+  - Returns: Success wenn genug Material
+
+- [ ] **RequiresTool** - Tool-Constraints
+  - Prüft Tool-Verfügbarkeit im Inventar
+
+- [ ] **ModuleReady** - Aggregierte Readiness-Prüfung
+  - Kombiniert: CheckReadyState, CheckErrorState, CheckLockedState(false)
+  - Returns: Success nur wenn alle Checks erfolgreich
+
+- [ ] **ProductMatchesOrder** - Prüft ob richtiges Produkt geladen
+  - Vergleicht Action.InputParameters.ProductType mit Storage Content
+
+- [ ] **ProcessParametersValid** - Validiert Prozessparameter
+  - Prüft InputParameters gegen Preconditions/Constraints
+
+- [ ] **SafetyOkay** - Sicherheits-Constraints
+- [ ] **RequireNeighborAvailable** - Nachbar verfügbar? (nutzt ReadNeighborMessage)
+
+### 5. Precondition Execution Logic
+
+- [ ] **EvaluatePreconditions** - Führt alle Preconditions aus Action aus
+  - Parameter: Action.Preconditions (SubmodelElementCollection)
+  - Führt alle Constraint Nodes sequenziell aus
+  - Returns: Success nur wenn alle erfüllt
+
+---
+
+## Priorität 4: Schedule & Planning - ⏳ PHASE 5
+
+### 6. Planning Nodes (für Planning Agent - später)
+
+- [ ] **ExecuteCapabilityMatchmaking** - Analysiert Capability-Match
+- [ ] **SchedulingExecute** - Scheduling Algorithmus
+- [ ] **CalculateOffer** - Berechnet Angebot
+- [ ] **SendOffer** - Sendet Angebot
+- [ ] **UpdateMachineSchedule** - Aktualisiert Schedule
+- [ ] **RequestTransport** - Fragt Transporte an
+
+---
+
+## Priorität 5: Advanced Monitoring - ⏳ PHASE 6
+
+### 7. Extended Monitoring Nodes
+
 - [ ] **CheckAlarmHistory** - OPC UA Alarm Log Query
-- [ ] **CheckInventory** - Material-Verfügbarkeit (erweitert ReadStorage)
-- [ ] **CheckToolAvailability** - Tool-Verfügbarkeit
-- [ ] **RefreshStateMessage** - Alle States aktualisieren
 - [ ] **CheckScheduleFreshness** - Schedule Drift Detection
 - [ ] **CheckTimeDrift** - NTP Time Synchronization
 - [ ] **CheckNeighborAvailability** - Nachbar-Modul prüfen
@@ -106,274 +354,240 @@
 - [ ] **CheckDeadlineFeasible** - Deadline-Machbarkeit
 - [ ] **CheckModuleCapacity** - Kapazitäts-Prüfung
 
-### 2. Skill Management Nodes - 🔄 PHASE 2 (NÄCHSTER SCHRITT)
-
-- [ ] **WaitForSkillState** - Wartet auf spezifischen Skill-Zustand
-  - Parameter: skillName, targetState (SkillStates enum), timeout
-  - Pollt oder subscribed auf Skill State
-  - Returns: Success wenn State erreicht, Failure bei Timeout
-  - Benötigt: RemoteSkill.GetStateAsync()
-
-- [ ] **AbortSkill** - Bricht laufenden Skill ab
-  - Parameter: skillName, moduleName
-  - Ruft Halt/Abort auf Skill auf
-  - Wartet auf Halted State
-  - Returns: Success wenn aborted
-
-- [ ] **PauseSkill** - Pausiert Skill (Suspended State)
-  - Parameter: skillName, moduleName
-  - Ruft Suspend auf Skill auf
-  - Returns: Success wenn suspended
-
-- [ ] **ResumeSkill** - Setzt pausierten Skill fort
-  - Parameter: skillName, moduleName
-  - Ruft Resume/Unsuspend auf
-  - Returns: Success wenn wieder Running
-
-- [ ] **RetrySkill** - Wiederholt fehlgeschlagenen Skill
-  - Parameter: skillName, maxRetries, backoffMs
-  - Reset + Execute mit Retry-Logik
-  - Returns: Success wenn erfolgreich
-
-- [ ] **DetermineSkillParameters** - Berechnet Skill-Parameter dynamisch
-  - Parameter: skillName, productContext (ProductID, ProductType, etc.)
-  - Liest CapabilityDescription, Skill Parameter Definitions
-  - Mappt Product Context zu Skill Parameters
-  - Returns: Success mit berechneten Parametern
-
-- [ ] **UpdateInventory** - Aktualisiert Inventar nach Skill
-  - Parameter: skillName, effects (aus SkillResponse)
-  - Liest FinalResultData für ProductID, SlotID
-  - Updated Context Storage-State
-  - Optional: Sendet InventoryMessage via MQTT
-
-### 3. Messaging Nodes - ⏳ PHASE 3
-
-- [ ] **ReadMqttSkillRequest** - Liest SkillRequest von MQTT
-  - Topic: `/Modules/{ModuleID}/SkillRequest/`
-  - Parst Action-Element aus InteractionElements
-  - Speichert im Context: ActionTitle, Status, InputParameters, Preconditions
-  - Returns: Success mit SkillRequest
-
-- [ ] **SendSkillResponse** - Sendet SkillResponse via MQTT
-  - Topic: `/Modules/{ModuleID}/SkillResponse/`
-  - Parameter: conversationId, ActionState, FinalResultData (optional)
-  - Erstellt I4.0 Message Frame
-  - Returns: Success wenn gesendet
-
-- [ ] **ReceiveOfferMessage** - Empfängt Angebote (Planning Agent)
-  - Aus specs.json
-  - Sammelt Offers während Bidding-Phase
-
----
-
-## Priorität 2: Extended Execution Logic - ⏳ PHASE 4
-
-### 4. Constraint Nodes
-
-- [ ] **RequiresMaterial** - Prüft Material-Verfügbarkeit
-  - Parameter: itemId, quantity, moduleId
-  - Nutzt ReadStorage oder CheckInventory
-  - Returns: Success wenn genug Material
-
-- [ ] **RequiresTool** - Tool-Constraints (aus specs.json)
-  - Integriert Tool-Verfügbarkeit
-
-- [ ] **ModuleReady** - Aggregierte Readiness-Prüfung
-  - Kombiniert: CheckReadyState, CheckErrorState, CheckLockedState(false), CheckStartupSkillStatus
-  - Returns: Success nur wenn alle Checks erfolgreich
-
-- [ ] **ProductMatchesOrder** - Prüft ob richtiges Produkt geladen
-  - Parameter: expectedProductType, expectedProductID, slotId
-  - Vergleicht mit Storage Content
-  - Returns: Success bei Match
-
-- [ ] **ProcessParametersValid** - Validiert Prozessparameter
-  - Parameter: paramConstraints (Dict), actualParams (Dict)
-  - Prüft Ranges, Types, Required Values
-  - Returns: Success wenn alle Constraints erfüllt
-
-- [ ] **ResourceAvailable** - Darf Prozess ausgeführt werden?
-- [ ] **SafetyOkay** - Sicherheits-Constraints
-- [ ] **RequireNeighborAvailable** - Nachbar verfügbar?
-
----
-
-## Priorität 3: Advanced Monitoring & Events - ⏳ PHASE 5
-
-### 6. State Monitoring Nodes
-
-- [ ] **RefreshStateMessage** - Aktualisiert alle Modul-States
-  - Liest: Ready, Locked, Errors, Inventory, Neighbors
-  - Aggregiert in State Summary
-  - Sendet StateSummary via MQTT
-  - Returns: Success mit State
-
-### 7. Event Nodes (Reactive)
+### 8. Event Nodes (Reactive)
 
 - [ ] **OnSkillStateChanged** - Event-Trigger bei Skill State Change
-  - Parameter: skillName, targetState (optional)
-  - Subscribed auf OPC UA State Changes
-  - Triggert Child-Node wenn State erreicht
-  - Decorator/Condition Node
-
 - [ ] **OnInventoryChanged** - Event bei Inventory-Änderung
-  - Parameter: itemId (optional), storageComponent
-  - Subscribed auf Storage Monitoring Variables
-  - Triggert bei Änderung
-
-- [ ] **OnNeighborChanged** - aus specs.json
-- [ ] **OnNodeChanged** - Generic OPC UA Subscription
+- [ ] **OnNeighborChanged** - Event bei Neighbor-Änderung
 
 ---
 
 ## 📊 Implementierungs-Reihenfolge (AKTUALISIERT)
 
 ### ✅ Phase 0: Infrastructure (ABGESCHLOSSEN)
-1. ✅ MqttLogger implementiert
-2. ✅ Trees bereinigt (39 SendLogMessage Nodes entfernt)
+1. ✅ MqttLogger
+2. ✅ Trees bereinigt
 
-### ✅ Phase 1: Core Monitoring (ABGESCHLOSSEN) ✨
-1. ✅ CheckReadyState
-2. ✅ CheckErrorState
-3. ✅ CheckLockedState
-4. ✅ MonitoringSkill
-5. ✅ **Tests:** Kompiliert und läuft mit Init_and_ExecuteSkill Tree
-6. ✅ **Dokumentation:** In TODO-Liste aktualisiert
+### ✅ Phase 1: Core Monitoring (ABGESCHLOSSEN)
+1. ✅ CheckReadyState, CheckErrorState, CheckLockedState, MonitoringSkill
 
-### 🔄 Phase 2: Skill Control (JETZT - IN ARBEIT)
-5. [ ] WaitForSkillState
-6. [ ] AbortSkill
-7. [ ] PauseSkill
-8. [ ] ResumeSkill
-9. [ ] RetrySkill
-10. [ ] **Tests:** Unit Tests + Integration Test
-11. [ ] **Dokumentation:** SKILL_NODES.md erstellen
+### ✅ Phase 2: Skill Control (ABGESCHLOSSEN)
+1. ✅ WaitForSkillState, AbortSkill, PauseSkill, ResumeSkill, RetrySkill
+2. ✅ MONITORING_AND_SKILL_NODES.md Dokumentation
 
-### ⏳ Phase 3: Messaging Integration
-9. [ ] ReadMqttSkillRequest
-10. [ ] SendSkillResponse
-11. [ ] UpdateInventory
-12. [ ] **Tests:** MQTT Integration Tests
-13. [ ] **Dokumentation:** MESSAGING_NODES.md
+### 🔥 Phase 3.5: Recovery & Monitoring (JETZT - KRITISCH!)
+1. [ ] **HaltAllSkillsNode** - Stop alle Skills bei Recovery
+2. [ ] **EnsureStartupRunningNode** - Garantiert Startup läuft
+3. [ ] **EnsureModuleLockedNode** - Garantiert Lock aktiv
+4. [ ] **RecoverySequenceNode** - Orchestriert Recovery
+5. [ ] **ContinuousHealthCheckNode** - Parallel Monitor
+6. [ ] **MonitorAndRecoverNode** - Wrapper mit Recovery
+7. [ ] **Init_and_ExecuteSkill.bt.xml anpassen** - Neue Pattern einbauen
+8. [ ] **RecoveryTest.bt.xml erstellen** - Isolierter Recovery Test
+9. [ ] **Runtime Test:** Operator überschreibt Lock → Auto-Recovery
+10. [ ] **Dokumentation:** RECOVERY_AND_MONITORING.md
 
-### ⏳ Phase 4: Constraints
-12. [ ] RequiresMaterial
-13. [ ] ModuleReady
-14. [ ] ProductMatchesOrder
-15. [ ] ProcessParametersValid
-16. [ ] **Tests:** Constraint Logic Tests
-17. [ ] **Dokumentation:** CONSTRAINT_NODES.md
+**Status:** 🔥 **0/10 Recovery Tasks - HÖCHSTE PRIORITÄT**
 
-### ⏳ Phase 5: Advanced Features
-16. [ ] DetermineSkillParameters
-17. [ ] RefreshStateMessage
-18. [ ] OnSkillStateChanged
-19. [ ] CheckInventory erweitert
-20. [ ] Weitere Monitoring Nodes aus specs.json
-21. [ ] **Tests:** End-to-End Tests
-22. [ ] **Dokumentation:** Vollständige API Docs
+### 🔄 Phase 3: Messaging Integration (DANACH)
+1. [x] **ReadMqttSkillRequest** - Action von Planning Agent lesen ✅
+2. [x] **SendSkillResponse** - ActionState zurücksenden ✅
+   - Sendet komplette Action mit Status, InputParameters, FinalResultData
+3. [ ] UpdateInventoryFromAction - Inventar nach Action aktualisieren
+4. [ ] UpdateNeighborsFromAction - Gekoppelte Module aktualisieren
+5. [ ] SendMessage - Generische I4.0 Message senden
+6. [ ] WaitForMessage - Auf eingehende Message warten
+7. [ ] SendStateMessage - Modulzustände publizieren
+8. [ ] ReadInventoryMessage - Remote Inventar lesen
+9. [ ] ReadNeighborMessage - Gekoppelte Module lesen
+10. [ ] **Tests:** MQTT Integration Tests
+11. [ ] **Dokumentation:** MESSAGING_NODES.md erstellen
+
+**Status:** 🎉 **2/9 Core Messaging Nodes implementiert!**
+- ✅ ReadMqttSkillRequest - Empfängt Actions via MQTT
+- ✅ SendSkillResponse - Sendet ActionState Updates mit kompletter Action
+- ✅ Runtime Placeholder Replacement ({MachineName} → "ScrewingStation")
+- ✅ CheckReadyState Logic korrigiert (gelockt = ready)
+
+### ⏳ Phase 4: Constraints & Preconditions
+1. [ ] RequiresMaterial, ModuleReady, ProductMatchesOrder
+2. [ ] EvaluatePreconditions - Action.Preconditions ausführen
+3. [ ] **Tests:** Constraint Logic Tests
+4. [ ] **Dokumentation:** CONSTRAINT_NODES.md
+
+### ⏳ Phase 5: Planning (Planning Agent)
+1. [ ] CapabilityMatchmaking, Scheduling, Bidding Nodes
+
+### ⏳ Phase 6: Advanced Monitoring
+1. [ ] Extended Monitoring Nodes (Alarm, Drift, Schedule)
+2. [ ] Event Nodes (OnSkillStateChanged, etc.)
 
 ---
 
 ## 🎯 Erfolgs-Kriterien
 
-### ✅ Phase 1 Erfolgreich wenn:
-- [x] Alle 4 Core Monitoring Nodes kompilieren
-- [x] Nodes in NodeRegistry registriert
-- [x] Init_and_ExecuteSkill Tree läuft erfolgreich
-- [x] Keine Compiler-Fehler
-- [x] MqttLogger sendet automatisch Logs
+### ✅ Phase 1+2 Erfolgreich:
+- [x] Alle 9 Monitoring + Skill Control Nodes kompilieren und laufen
+- [x] MONITORING_AND_SKILL_NODES.md dokumentiert
 
-### 🔄 Phase 2 Erfolgreich wenn:
-- [ ] Alle 5 Skill Control Nodes kompilieren
-- [ ] WaitForSkillState kann auf State Changes warten
-- [ ] AbortSkill kann laufende Skills stoppen
-- [ ] PauseSkill/ResumeSkill funktionieren
-- [ ] RetrySkill mit Backoff-Logic
-- [ ] Test-Tree für Skill-Lifecycle
+### 🔥 Phase 3.5 Erfolgreich wenn:
+- [ ] **Lock-Verlust Recovery:** Operator überschreibt Lock → Tree detected → Auto Re-Lock → Startup Restart → Resume
+- [ ] **Startup Halted Recovery:** Operator haltet Startup → Tree detected → Auto Restart → Resume
+- [ ] **Timeout Logic:** Tree nicht endlos (max 90 Sekunden für Recovery)
+- [ ] **Parallel Monitoring:** Continuous Health Check läuft parallel zur Execution
+- [ ] **Recovery Test:** RecoveryTest.bt.xml läuft erfolgreich durch
+- [ ] **No Infinite Loops:** Tree terminiert immer (Success/Failure) nach max 120 Sekunden
 
-### ⏳ Minimal Viable Execution Agent kann (nach Phase 3):
-1. OPC UA Verbindung aufbauen
-2. Modul-Readiness prüfen (Ready, No Error, Not Locked)
-3. SkillRequest von MQTT lesen
-4. Preconditions validieren (Material, Tools)
-5. Skill ausführen mit Parametern
-6. Auf Skill Completion warten
-7. SkillResponse zurücksenden
-8. Inventar aktualisieren
-9. Fehler loggen und behandeln
+### 🔄 Phase 3 Erfolgreich wenn:
+- [ ] Execution Agent kann Action von Planning Agent empfangen
+- [ ] Execution Agent kann ActionState Updates senden
+- [ ] State Messages werden korrekt publiziert
+- [ ] Inventar wird nach Action-Completion aktualisiert
+- [ ] Integration Test: Planning Agent → Execution Agent → Skill Execution
+
+### ⏳ Minimal Viable Execution Agent kann (nach Phase 4):
+1. ✅ OPC UA Verbindung aufbauen
+2. ✅ Modul-Readiness prüfen
+3. [ ] **Action von MQTT lesen** (Planning Agent → Execution Agent)
+4. [ ] **Preconditions validieren** (Material, Tools aus Action.Preconditions)
+5. ✅ Skill ausführen mit Parametern
+6. ✅ Auf Skill Completion warten
+7. [ ] **ActionState zurücksenden** (Execution Agent → Planning Agent)
+8. [ ] **Inventar aktualisieren** (aus Action.FinalResultData)
+9. ✅ Fehler loggen
 
 ---
 
-## 📁 Dateien die angelegt wurden/werden
+## 📁 Dateistruktur (AKTUALISIERT)
 
-### ✅ Phase 1 (Erstellt):
 ```
 MAS-BT/
 ├── BehaviorTree/
 │   └── Nodes/
-│       └── MonitoringNodes.cs              [✅ NEU - Phase 1]
+│       ├── MonitoringNodes.cs              [✅ Phase 1 - 4 Nodes]
+│       ├── SkillControlNodes.cs            [✅ Phase 2 - 5 Nodes]
+│       ├── RecoveryNodes.cs                [🔥 Phase 3.5 - NEU - 6 Nodes]
+│       └── MessagingNodes.cs               [🔄 Phase 3 - 2/9 Complete]
 ├── Services/
-│   └── MqttLogger.cs                       [✅ NEU - Infrastructure]
-└── Trees/
-    ├── Init_and_ExecuteSkill.bt.xml        [✅ BEREINIGT - 53% kleiner]
-    └── ModuleInitializationTest.bt.xml     [✅ BEREINIGT - 48% kleiner]
-```
-
-### 🔄 Phase 2 (In Arbeit):
-```
-MAS-BT/
-├── BehaviorTree/
-│   └── Nodes/
-│       └── SkillControlNodes.cs            [🔄 NEU - Phase 2]
-└── Trees/
-    └── Examples/
-        └── SkillLifecycleTest.bt.xml       [🔄 NEU - Test Tree]
-```
-
-### ⏳ Zukünftig:
-```
-MAS-BT/
-├── Nodes/
-│   ├── Messaging/
-│   │   ├── ReadMqttSkillRequestNode.cs     [⏳ NEU - Phase 3]
-│   │   └── SendSkillResponseNode.cs        [⏳ NEU - Phase 3]
-│   ├── Constraints/
-│   │   ├── RequiresMaterialNode.cs         [⏳ NEU - Phase 4]
-│   │   ├── ModuleReadyNode.cs              [⏳ NEU - Phase 4]
-│   │   └── ProductMatchesOrderNode.cs      [⏳ NEU - Phase 4]
-│   └── Events/
-│       ├── OnSkillStateChangedNode.cs      [⏳ NEU - Phase 5]
-│       └── OnInventoryChangedNode.cs       [⏳ NEU - Phase 5]
-└── tests/
-    └── Nodes/
-        ├── MonitoringNodesTests.cs          [⏳ NEU]
-        ├── SkillControlNodesTests.cs        [⏳ NEU]
-        └── ConstraintNodesTests.cs          [⏳ NEU]
+│   └── MqttLogger.cs                       [✅ Phase 0]
+├── Trees/
+│   ├── Init_and_ExecuteSkill.bt.xml        [🔥 BUGGY - Needs Recovery Pattern]
+│   └── Examples/
+│       ├── SkillLifecycleTest.bt.xml       [✅ Phase 2 Test]
+│       ├── RecoveryTest.bt.xml             [🔥 Phase 3.5 Test - NEU]
+│       └── ActionExecutionTest.bt.xml      [🔄 Phase 3 Test]
+└── docs/
+    ├── MONITORING_AND_SKILL_NODES.md       [✅ Phase 1+2 Doku]
+    ├── RECOVERY_AND_MONITORING.md          [🔥 Phase 3.5 Doku - NEU]
+    ├── MESSAGING_NODES.md                  [🔄 Phase 3 Doku]
+    └── CONSTRAINT_NODES.md                 [⏳ Phase 4 Doku]
 ```
 
 ---
 
-## 🚀 Nächste Schritte (AKTUALISIERT)
+## 🚀 Nächste Schritte (KLAR DEFINIERT)
 
-1. ✅ Phase 1 abgeschlossen
-2. ✅ TODO-Liste aktualisiert
-3. 🔄 **JETZT: Phase 2 starten** - Skill Control Nodes implementieren
-4. [ ] Tests für Phase 2 schreiben
-5. [ ] SKILL_NODES.md Dokumentation erstellen
-6. [ ] Integration Test mit erweiterten Trees
-7. [ ] Phase 3-5 nach Bedarf
+1. ✅ Phase 1+2 abgeschlossen
+2. ✅ Phase 3 teilweise (2/9 Messaging Nodes)
+3. 🔥 **JETZT: Phase 3.5 - KRITISCHE BUGS FIXEN**
+   - **HaltAllSkillsNode** implementieren
+   - **EnsureStartupRunningNode** implementieren
+   - **EnsureModuleLockedNode** implementieren
+   - **RecoverySequenceNode** implementieren
+   - **Init_and_ExecuteSkill.bt.xml** mit Recovery Pattern updaten
+   - **RecoveryTest.bt.xml** erstellen
+   - **Runtime Test:** Lock-Verlust Recovery
+4. [ ] Phase 3 fortsetzen - Remaining Messaging Nodes
+5. [ ] Phase 4 - Constraints & Preconditions
 
 ---
 
 ## 📊 Projekt-Statistik
 
-- **Nodes implementiert:** 19 (14 bestehend + 4 neu + 1 MqttLogger)
-- **Trees bereinigt:** 3 (39 SendLogMessage Nodes entfernt)
-- **Code-Reduktion:** ~50% in Trees
-- **Compile-Status:** ✅ 0 Errors, 5 Warnings (NuGet)
-- **Test-Status:** ✅ Init_and_ExecuteSkill Tree läuft erfolgreich
-- **Phase 1 Nodes:** 4/4 ✅
-- **Noch zu implementieren:** ~30 Nodes aus specs.json
+- **Nodes implementiert:** 21 (9 Core + 5 Skill Control + 5 Config + 2 Messaging)
+- **Phase 1+2:** ✅ 100% Complete
+- **Phase 3:** 🔄 2/9 Nodes Complete
+- **Phase 3.5:** 🔥 0/6 Recovery Nodes (KRITISCH)
+- **Trees bereinigt:** 3 (~50% Code-Reduktion)
+- **Compile-Status:** ✅ 0 Errors
+- **Runtime Status:** 🐛 4 Kritische Bugs identifiziert
+- **Noch zu implementieren:** ~39 Nodes aus specs.json
+
+---
+
+## 💡 Wichtige Architektur-Erkenntnisse
+
+### Recovery Pattern für robuste Execution ⭐
+```xml
+<Parallel name="ExecuteWithRecovery" policy="ParallelAll">
+  <!-- Main Execution -->
+  <Sequence name="MainExecution">
+    <ExecuteSkill SkillName="Screw"/>
+  </Sequence>
+  
+  <!-- Continuous Health Monitor -->
+  <RepeatUntilFailure name="HealthMonitor">
+    <Sequence name="CheckHealth">
+      <Fallback name="HealthCheckWithRecovery">
+        <!-- Try Health Check -->
+        <Sequence name="HealthChecks">
+          <CheckLockStatus ModuleName="ScrewingStation"/>
+          <CheckStartupSkillStatus ModuleName="ScrewingStation"/>
+        </Sequence>
+        
+        <!-- If Failed → Trigger Recovery -->
+        <RecoverySequence ModuleName="ScrewingStation"/>
+      </Fallback>
+      
+      <Wait DelayMs="1000"/>
+    </Sequence>
+  </RepeatUntilFailure>
+</Parallel>
+```
+
+### Idempotent Recovery Nodes ⭐
+- **EnsureStartupRunning:** Check State first → only restart if needed
+- **EnsureModuleLocked:** Check Lock first → only re-lock if needed
+- Macht Recovery Nodes wiederholbar ohne Side-Effects
+
+### SkillRequest/SkillResponse sind Actions! ⭐
+```csharp
+// Planning Agent sendet:
+var action = new Action("Action001", "RetrieveToPortLogistic", ...);
+var message = new I40MessageBuilder()
+    .From("Module2_Planning_Agent")
+    .To("Module2_Execution_Agent")
+    .WithType("request")
+    .AddElement(action)
+    .Build();
+
+// Execution Agent empfängt und führt aus:
+var action = message.InteractionElements[0] as Action;
+var skillName = action.GetProperty("ActionTitle").Value; // "RetrieveToPortLogistic"
+var parameters = action.GetCollection("InputParameters");
+
+// Execution Agent antwortet:
+var responseAction = action.Clone();
+responseAction.AddProperty("ActionState", "Running");
+var response = new I40MessageBuilder()
+    .From("Module2_Execution_Agent")
+    .To("Module2_Planning_Agent")
+    .WithType("update")
+    .AddElement(responseAction)
+    .Build();
+```
+
+### Lifecycle States für Module ⭐
+- **Unconfigured** → **Configuring** → **Inactive**
+- **Inactive** → **Activating** → **Active**
+- **Active** → **Deactivating** → **Inactive**
+- **Inactive** → **ShuttingDown** → **Finalized**
+- **Any** → **ErrorProcessing** → **Inactive**
+
+### Message Frame Types ⭐
+- **request** - Planning Agent fragt Action an
+- **consent** - Execution Agent akzeptiert
+- **refuse** - Execution Agent lehnt ab
+- **update** - Execution Agent sendet Progress
+- **inform** - Broadcast (State, Log)
 

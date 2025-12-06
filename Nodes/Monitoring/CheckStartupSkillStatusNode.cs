@@ -62,7 +62,7 @@ public class CheckStartupSkillStatusNode : BTNode
             // Prüfe Skill-Status
             var state = await startupSkill.GetStateAsync();
             
-            if (state.HasValue && state.Value == (int)SkillStates.Running)
+            if (state.HasValue && state.Value == (int)UAClient.Common.SkillStates.Running)
             {
                 Logger.LogDebug("CheckStartupSkillStatus: StartupSkill is running");
                 Set("startupSkillRunning", true);

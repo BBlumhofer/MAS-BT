@@ -1,7 +1,10 @@
+using System.Collections.Concurrent;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
+using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
-using System.Collections.Concurrent;
+using BaSyx.Models.AdminShell;
+using MAS_BT.Core;
 
 namespace MAS_BT.Services;
 
@@ -102,6 +105,11 @@ public class MqttLogger : ILogger
     
     private I40Message CreateI40LogMessage(LogLevel logLevel, string message)
     {
+        var logLevelProp = CreateProperty("LogLevel", GetLogLevelName(logLevel));
+        var messageProp = CreateProperty("Message", message);
+        var timestampProp = CreateProperty("Timestamp", DateTime.UtcNow.ToString("o"));
+        var agentRoleProp = CreateProperty("AgentRole", _agentRole);
+
         return new I40Message
         {
             Frame = new MessageFrame
@@ -120,34 +128,21 @@ public class MqttLogger : ILogger
                 ConversationId = Guid.NewGuid().ToString(),
                 MessageId = Guid.NewGuid().ToString()
             },
-            InteractionElements = new List<SubmodelElement>
+            InteractionElements = new List<ISubmodelElement>
             {
-                new Property
-                {
-                    IdShort = "LogLevel",
-                    Value = GetLogLevelName(logLevel),
-                    ValueType = "xs:string"
-                },
-                new Property
-                {
-                    IdShort = "Message",
-                    Value = message,
-                    ValueType = "xs:string"
-                },
-                new Property
-                {
-                    IdShort = "Timestamp",
-                    Value = DateTime.UtcNow.ToString("o"),
-                    ValueType = "xs:dateTime"
-                },
-                new Property
-                {
-                    IdShort = "AgentRole",
-                    Value = _agentRole,
-                    ValueType = "xs:string"
-                }
-            }
+                logLevelProp,
+                messageProp,
+                timestampProp,
+                agentRoleProp
+            }.Cast<SubmodelElement>().ToList()
         };
+    }
+    
+    private static ISubmodelElement CreateProperty(string idShort, string value)
+    {
+        var prop = new Property<string>(idShort);
+        prop.Value = new PropertyValue<string>(value);
+        return prop;
     }
     
     private static string GetLogLevelString(LogLevel logLevel)

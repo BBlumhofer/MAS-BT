@@ -3,6 +3,7 @@ using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
+using BaSyx.Models.AdminShell;
 using System.Text.Json;
 
 namespace MAS_BT.Nodes.Messaging;
@@ -37,67 +38,50 @@ public class SendConfigAsLogNode : BTNode
 
             if (!string.IsNullOrEmpty(endpoint))
             {
-                configElements.Add(new Property
-                {
-                    IdShort = "OPCUA_Endpoint",
-                    Value = endpoint,
-                    ValueType = "xs:string"
-                });
+                var prop = new Property<string>("OPCUA_Endpoint");
+                prop.Value = new PropertyValue<string>(endpoint);
+                configElements.Add(prop);
             }
 
             if (!string.IsNullOrEmpty(username))
             {
-                configElements.Add(new Property
-                {
-                    IdShort = "OPCUA_Username",
-                    Value = username,
-                    ValueType = "xs:string"
-                });
+                var prop = new Property<string>("OPCUA_Username");
+                prop.Value = new PropertyValue<string>(username);
+                configElements.Add(prop);
             }
 
             if (!string.IsNullOrEmpty(moduleId))
             {
-                configElements.Add(new Property
-                {
-                    IdShort = "ModuleId",
-                    Value = moduleId,
-                    ValueType = "xs:string"
-                });
+                var prop = new Property<string>("ModuleId");
+                prop.Value = new PropertyValue<string>(moduleId);
+                configElements.Add(prop);
             }
 
             // Füge Agent-Informationen hinzu
-            configElements.Add(new Property
-            {
-                IdShort = "AgentId",
-                Value = Context.AgentId,
-                ValueType = "xs:string"
-            });
+            var agentIdProp = new Property<string>("AgentId");
+            agentIdProp.Value = new PropertyValue<string>(Context.AgentId);
+            configElements.Add(agentIdProp);
 
-            configElements.Add(new Property
-            {
-                IdShort = "AgentRole",
-                Value = Context.AgentRole,
-                ValueType = "xs:string"
-            });
+            var agentRoleProp = new Property<string>("AgentRole");
+            agentRoleProp.Value = new PropertyValue<string>(Context.AgentRole);
+            configElements.Add(agentRoleProp);
 
             // Erstelle Config-Collection
-            var configCollection = new SubmodelElementCollection
+            var configCollection = new SubmodelElementCollection("AgentConfiguration");
+            foreach (var element in configElements)
             {
-                IdShort = "AgentConfiguration",
-                Value = configElements
-            };
+                configCollection.Add(element);
+            }
 
             // Erstelle I4.0 Message
+            var msgTypeProp = new Property<string>("MessageType");
+            msgTypeProp.Value = new PropertyValue<string>("ConfigurationReport");
+            
             var message = new I40MessageBuilder()
                 .From(Context.AgentId)
                 .To("broadcast")
                 .WithType("inform")
-                .AddElement(new Property
-                {
-                    IdShort = "MessageType",
-                    Value = "ConfigurationReport",
-                    ValueType = "xs:string"
-                })
+                .AddElement(msgTypeProp)
                 .AddElement(configCollection)
                 .Build();
 

@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("MAS-BT")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+f01f3bf7c379a56d7f8ad37cbdbabc5043b70330")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+4cd8bf27bbdcde536ad4f02b04d57cd2b3717520")]
 [assembly: System.Reflection.AssemblyProductAttribute("MAS-BT")]
 [assembly: System.Reflection.AssemblyTitleAttribute("MAS-BT")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]

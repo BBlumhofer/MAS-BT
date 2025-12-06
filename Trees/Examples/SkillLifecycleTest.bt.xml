@@ -1,0 +1,93 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BehaviorTree>
+  <Root>
+    <Sequence name="SkillLifecycleDemo">
+      
+      <!-- Setup: Connect and Lock -->
+      <Sequence name="Setup">
+        <ConnectToModule name="Connect" ModuleName="ScrewingStation" />
+        <LockResource name="Lock" ModuleName="ScrewingStation" />
+        <CheckLockedState name="VerifyLocked" ModuleName="ScrewingStation" ExpectLocked="true" />
+      </Sequence>
+
+      <!-- Test 1: Check Ready State -->
+      <Sequence name="TestReadyState">
+        <CheckReadyState name="IsReady" ModuleName="ScrewingStation" />
+      </Sequence>
+
+      <!-- Test 2: Start Skill and Wait for Running -->
+      <Sequence name="StartSkillTest">
+        <ExecuteSkill 
+          name="StartScrew" 
+          SkillName="Screw" 
+          ModuleName="ScrewingStation"
+          Parameters="ProductId=TestProduct"
+          WaitForCompletion="false" />
+        
+        <WaitForSkillState 
+          name="WaitRunning" 
+          ModuleName="ScrewingStation"
+          SkillName="Screw"
+          TargetState="Running"
+          TimeoutSeconds="10" />
+      </Sequence>
+
+      <!-- Test 3: Pause Skill -->
+      <Sequence name="PauseTest">
+        <Wait name="WaitBeforePause" DurationMs="2000" />
+        
+        <PauseSkill 
+          name="PauseScrew" 
+          ModuleName="ScrewingStation"
+          SkillName="Screw"
+          TimeoutSeconds="10" />
+        
+        <MonitoringSkill 
+          name="CheckPausedState" 
+          ModuleName="ScrewingStation"
+          SkillName="Screw" />
+      </Sequence>
+
+      <!-- Test 4: Resume Skill -->
+      <Sequence name="ResumeTest">
+        <Wait name="WaitBeforeResume" DurationMs="1000" />
+        
+        <ResumeSkill 
+          name="ResumeScrew" 
+          ModuleName="ScrewingStation"
+          SkillName="Screw"
+          TimeoutSeconds="10" />
+        
+        <WaitForSkillState 
+          name="WaitResumed" 
+          ModuleName="ScrewingStation"
+          SkillName="Screw"
+          TargetState="Running"
+          TimeoutSeconds="10" />
+      </Sequence>
+
+      <!-- Test 5: Abort Skill -->
+      <Sequence name="AbortTest">
+        <Wait name="WaitBeforeAbort" DurationMs="1000" />
+        
+        <AbortSkill 
+          name="AbortScrew" 
+          ModuleName="ScrewingStation"
+          SkillName="Screw"
+          WaitForHalted="true"
+          TimeoutSeconds="10" />
+        
+        <CheckErrorState 
+          name="CheckNoErrors" 
+          ModuleName="ScrewingStation" />
+      </Sequence>
+
+      <!-- Cleanup -->
+      <Sequence name="Cleanup">
+        <UnlockResource name="Unlock" ModuleName="ScrewingStation" />
+        <CheckLockedState name="VerifyUnlocked" ModuleName="ScrewingStation" ExpectLocked="false" />
+      </Sequence>
+
+    </Sequence>
+  </Root>
+</BehaviorTree>

@@ -5,8 +5,9 @@ using MAS_BT.Nodes.Configuration;
 using MAS_BT.Nodes.Locking;
 using MAS_BT.Nodes.Messaging;
 using MAS_BT.Nodes.Monitoring;
-using MAS_BT.Nodes.Skills;
+using MAS_BT.Nodes.SkillControl;
 using MAS_BT.Nodes.Core;
+using MAS_BT.Nodes.Constraints;
 using MAS_BT.Nodes; // Neue Monitoring Nodes
 
 namespace MAS_BT.Serialization;
@@ -117,6 +118,8 @@ public class NodeRegistry
         // Core Utility Nodes
         Register<WaitNode>();
         Register<SetBlackboardValueNode>();
+        Register<ForceFailureNode>();
+        Register<AlwaysSuccessNode>();
         
         // Condition Nodes
         Register<ConditionNode>();
@@ -145,6 +148,12 @@ public class NodeRegistry
         Register<SendConfigAsLogNode>();
         Register<WaitForMessageNode>();
         
+        // Messaging Integration Nodes (Phase 3 - NEW)
+        Register<ReadMqttSkillRequestNode>();
+        Register<SendSkillResponseNode>();
+        Register<UpdateInventoryFromActionNode>();
+        Register<SendStateMessageNode>();
+        
         // Monitoring Nodes (bestehende)
         Register<ReadStorageNode>();
         Register<CheckStartupSkillStatusNode>();
@@ -154,6 +163,18 @@ public class NodeRegistry
         Register<CheckErrorStateNode>();
         Register<CheckLockedStateNode>();
         Register<MonitoringSkillNode>();
+        
+        // Constraint Nodes (Module State Management)
+        Register<CheckModuleStateNode>();
+        Register<SetModuleStateNode>();
+        
+        // Skill Control Nodes (Phase 2)
+        Register<WaitForSkillStateNode>();
+        Register<AbortSkillNode>();
+        Register<PauseSkillNode>();
+        Register<ResumeSkillNode>();
+        Register<RetrySkillNode>();
+        Register<ResetSkillNode>();
         
         // Skill Nodes
         Register<ExecuteSkillNode>();

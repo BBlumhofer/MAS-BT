@@ -24,72 +24,31 @@
           TimeoutMs="30000" />
       </RetryUntilSuccess>
       
-      <!-- ==================== SCHRITT 4: MODUL LOCKEN MIT RETRY + ÜBERWACHUNG ==================== -->
-      <RetryUntilSuccess name="LockRetry" numAttempts="-1" delayMs="2000">
-        <Sequence name="LockAndVerifySequence">
-          <Fallback name="LockOrWait">
-            <Sequence name="TryLockSequence">
-              <LockResource 
-                name="LockModule"
-                ModuleName="ScrewingStation"
-                ResourceId="{config.Agent.ModuleId}"
-                TimeoutSeconds="30" />
-              
-              <Wait name="WaitAfterLock" DelayMs="500" />
-              
-              <CheckLockStatus 
-                name="VerifyLock"
-                ModuleName="ScrewingStation" />
-            </Sequence>
-            
-            <Sequence name="LockFailedSequence">
-              <!-- Always fail to trigger retry -->
-              <BlackboardCondition 
-                name="AlwaysFail"
-                Key="__never_exists__" 
-                ExpectedValue="true" />
-            </Sequence>
-          </Fallback>
-        </Sequence>
-      </RetryUntilSuccess>
-      
-      <!-- ==================== SCHRITT 5: STARTUP SKILL STARTEN ==================== -->
-      <Sequence name="StartupSequence">
-        <CheckLockStatus 
-          name="CheckLockBeforeStartup"
-          ModuleName="ScrewingStation" />
-        
-        <ExecuteSkill 
-          name="ExecuteStartup"
+      <!-- ==================== SCHRITT 4: INITIAL LOCK + STARTUP ==================== -->
+      <Sequence name="InitialLockAndStartup">
+        <EnsureModuleLocked 
+          name="InitialLock"
           ModuleName="ScrewingStation"
-          SkillName="StartupSkill"
-          WaitForCompletion="false"
-          TimeoutSeconds="60"
-          ResetBeforeIfHalted="true" />
+          ResourceId="{config.Agent.ModuleId}"
+          MaxRetries="3"
+          RetryDelayMs="2000" />
+        
+        <EnsureStartupRunning 
+          name="InitialStartup"
+          ModuleName="ScrewingStation"
+          TimeoutSeconds="60" />
       </Sequence>
       
-      <!-- ==================== SCHRITT 6: STORAGE AUSLESEN ==================== -->
+      <!-- ==================== SCHRITT 5: STORAGE AUSLESEN ==================== -->
       <ReadStorage 
         name="ReadModuleStorage"
         ModuleName="ScrewingStation" />
       
-      <!-- ==================== SCHRITT 7: SCREW SKILL AUSFÜHREN (MIT SUBTREE) ==================== -->
-      <Sequence name="ExecuteScrewSkillSequence">
+      <!-- ==================== SCHRITT 6: SCREW SKILL MIT PARALLEL MONITORING ==================== -->
+      <Parallel name="ExecuteScrewWithMonitoring" policy="ParallelAll">
         
-        <!-- SUBTREE: ExecuteSkill mit Pre-Checks -->
-        <Sequence name="ExecuteSkillWithChecks">
-          
-          <!-- Pre-Check 1: Lock-Status prüfen -->
-          <CheckLockStatus 
-            name="CheckLockBeforeScrew"
-            ModuleName="ScrewingStation" />
-          
-          <!-- Pre-Check 2: StartupSkill-Status prüfen -->
-          <CheckStartupSkillStatus 
-            name="CheckStartupBeforeScrew"
-            ModuleName="ScrewingStation" />
-          
-          <!-- Pre-Checks erfolgreich -> Skill starten -->
+        <!-- Main Execution Branch -->
+        <Sequence name="MainExecutionBranch">
           <ExecuteSkill 
             name="ExecuteScrew"
             ModuleName="ScrewingStation"
@@ -99,7 +58,43 @@
             ResetBeforeIfHalted="true" />
         </Sequence>
         
-      </Sequence>
+        <!-- Continuous Health Monitor Branch -->
+        <RepeatUntilFailure name="ContinuousHealthMonitor">
+          <Sequence name="HealthCheckCycle">
+            
+            <!-- Health Checks mit Recovery Fallback -->
+            <Fallback name="HealthCheckWithRecovery">
+              
+              <!-- Try Health Checks -->
+              <Sequence name="HealthChecks">
+                <CheckLockStatus 
+                  name="CheckLock"
+                  ModuleName="ScrewingStation" />
+                
+                <CheckStartupSkillStatus 
+                  name="CheckStartup"
+                  ModuleName="ScrewingStation" />
+                
+                <CheckErrorState 
+                  name="CheckErrors"
+                  ModuleName="ScrewingStation" />
+              </Sequence>
+              
+              <!-- If Health Check Failed → Trigger Recovery -->
+              <RecoverySequence 
+                name="AutoRecovery"
+                ModuleName="ScrewingStation"
+                ResourceId="{config.Agent.ModuleId}" />
+              
+            </Fallback>
+            
+            <!-- Wait before next check -->
+            <Wait name="WaitBetweenChecks" DelayMs="2000" />
+            
+          </Sequence>
+        </RepeatUntilFailure>
+        
+      </Parallel>
       
     </Sequence>
   </BehaviorTree>
@@ -117,9 +112,14 @@
       <input_port name="Endpoint"/>
       <input_port name="TimeoutMs"/>
     </Action>
-    <Action ID="LockResource">
+    <Action ID="EnsureModuleLocked">
       <input_port name="ModuleName"/>
       <input_port name="ResourceId"/>
+      <input_port name="MaxRetries"/>
+      <input_port name="RetryDelayMs"/>
+    </Action>
+    <Action ID="EnsureStartupRunning">
+      <input_port name="ModuleName"/>
       <input_port name="TimeoutSeconds"/>
     </Action>
     <Action ID="Wait">
@@ -128,6 +128,16 @@
     <Condition ID="CheckLockStatus">
       <input_port name="ModuleName"/>
     </Condition>
+    <Condition ID="CheckStartupSkillStatus">
+      <input_port name="ModuleName"/>
+    </Condition>
+    <Condition ID="CheckErrorState">
+      <input_port name="ModuleName"/>
+    </Condition>
+    <Action ID="RecoverySequence">
+      <input_port name="ModuleName"/>
+      <input_port name="ResourceId"/>
+    </Action>
     <Action ID="ExecuteSkill">
       <input_port name="ModuleName"/>
       <input_port name="SkillName"/>
@@ -139,12 +149,5 @@
     <Action ID="ReadStorage">
       <input_port name="ModuleName"/>
     </Action>
-    <Condition ID="CheckStartupSkillStatus">
-      <input_port name="ModuleName"/>
-    </Condition>
-    <Condition ID="BlackboardCondition">
-      <input_port name="Key"/>
-      <input_port name="ExpectedValue"/>
-    </Condition>
   </TreeNodesModel>
 </root>

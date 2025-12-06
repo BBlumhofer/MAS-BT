@@ -981,6 +981,7 @@
           "BaSyx.Registry.Client.Http": "2.0.24",
           "BaSyx.Submodel.Client.Http": "1.0.0",
           "BaSyx.Utils": "2.0.24",
+          "I40Sharp.Messaging": "1.0.0",
           "Microsoft.Extensions.Http": "8.0.0",
           "Microsoft.Extensions.Logging.Console": "8.0.0",
           "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": "1.23.0"
@@ -996,6 +997,7 @@
         "type": "project",
         "framework": ".NETCoreApp,Version=v10.0",
         "dependencies": {
+          "BaSyx.Models": "2.0.24",
           "MQTTnet": "4.3.7.1207"
         },
         "compile": {

@@ -1,0 +1,99 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<BehaviorTree>
+  <Root>
+    <Sequence name="ErrorRecoveryDemo">
+      
+      <!-- Setup -->
+      <Sequence name="Setup">
+        <ConnectToModule name="Connect" ModuleName="ScrewingStation" />
+        <LockResource name="Lock" ModuleName="ScrewingStation" />
+      </Sequence>
+
+      <!-- Test 1: Normal Execution -->
+      <Sequence name="NormalExecution">
+        <CheckReadyState name="CheckReady" ModuleName="ScrewingStation" />
+        <CheckErrorState name="CheckNoErrors" ModuleName="ScrewingStation" />
+        
+        <ExecuteSkill 
+          name="ExecuteScrew" 
+          SkillName="Screw" 
+          ModuleName="ScrewingStation"
+          Parameters="ProductId=Product123"
+          WaitForCompletion="true" />
+      </Sequence>
+
+      <!-- Test 2: Retry on Failure (Fallback pattern) -->
+      <Fallback name="ExecuteWithRetry">
+        
+        <!-- Try normal execution first -->
+        <ExecuteSkill 
+          name="TryExecute" 
+          SkillName="Screw" 
+          ModuleName="ScrewingStation"
+          Parameters="ProductId=Product456"
+          WaitForCompletion="true" />
+        
+        <!-- If fails, use RetrySkill -->
+        <Sequence name="RetrySequence">
+          <RetrySkill 
+            name="RetryScrew" 
+            ModuleName="ScrewingStation"
+            SkillName="Screw"
+            Parameters="ProductId=Product456"
+            MaxRetries="3"
+            BackoffMs="1000"
+            ExponentialBackoff="true" />
+        </Sequence>
+      </Fallback>
+
+      <!-- Test 3: Monitor Skill State -->
+      <Sequence name="MonitoringTest">
+        <MonitoringSkill 
+          name="ReadSkillState" 
+          ModuleName="ScrewingStation"
+          SkillName="Screw" />
+        
+        <CheckErrorState 
+          name="CheckErrors" 
+          ModuleName="ScrewingStation" />
+      </Sequence>
+
+      <!-- Test 4: Advanced Retry with Monitoring -->
+      <Sequence name="AdvancedRetry">
+        <RetryNode name="RetryWithMonitoring" MaxRetries="5">
+          <Sequence name="ExecuteAndVerify">
+            
+            <!-- Pre-execution checks -->
+            <CheckReadyState name="PreCheck" ModuleName="ScrewingStation" />
+            
+            <!-- Execute -->
+            <ExecuteSkill 
+              name="Execute" 
+              SkillName="Screw" 
+              ModuleName="ScrewingStation"
+              Parameters="ProductId=Product789"
+              WaitForCompletion="false" />
+            
+            <!-- Wait for completion -->
+            <WaitForSkillState 
+              name="WaitComplete" 
+              ModuleName="ScrewingStation"
+              SkillName="Screw"
+              TargetState="Completed"
+              TimeoutSeconds="60" />
+            
+            <!-- Post-execution check -->
+            <CheckErrorState name="PostCheck" ModuleName="ScrewingStation" />
+            
+          </Sequence>
+        </RetryNode>
+      </Sequence>
+
+      <!-- Cleanup -->
+      <Sequence name="Cleanup">
+        <UnlockResource name="Unlock" ModuleName="ScrewingStation" />
+      </Sequence>
+
+    </Sequence>
+  </Root>
+</BehaviorTree>

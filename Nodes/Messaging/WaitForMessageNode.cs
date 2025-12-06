@@ -1,46 +1,95 @@
-using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
+using MAS_BT.Core;
+using I40Sharp.Messaging;
+using I40Sharp.Messaging.Models;
+using System.Collections.Concurrent;
 
 namespace MAS_BT.Nodes.Messaging;
 
 /// <summary>
-/// WaitForMessage - Wartet auf eine Nachricht eines bestimmten Typs
+/// WaitForMessage - Wartet auf eingehende I4.0 Message (generic)
 /// </summary>
 public class WaitForMessageNode : BTNode
 {
-    public string MessageType { get; set; } = string.Empty;
-    public string AgentId { get; set; } = string.Empty;
-    public int TimeoutMs { get; set; } = 30000;
+    public string? ExpectedType { get; set; } = null;
+    public string? ExpectedSender { get; set; } = null;
+    public int TimeoutSeconds { get; set; } = 30;
+    
+    private readonly ConcurrentQueue<I40Message> _messageQueue = new();
+    private bool _subscribed = false;
+    private DateTime _startTime;
     
     public WaitForMessageNode() : base("WaitForMessage")
     {
     }
     
+    public WaitForMessageNode(string name) : base(name)
+    {
+    }
+    
     public override async Task<NodeStatus> Execute()
     {
-        Logger.LogDebug("WaitForMessage: Waiting for {MessageType} from {AgentId}", MessageType, AgentId);
-        
-        try
+        if (!_subscribed)
         {
-            // TODO: Integration mit I4.0-Sharp-Messaging
-            // var messagingClient = Context.Get<MessagingClient>("MessagingClient");
-            // await messagingClient.WaitForMessageAsync(MessageType, TimeoutMs);
+            var client = Context.Get<MessagingClient>("MessagingClient");
+            if (client == null)
+            {
+                Logger.LogError("WaitForMessage: MessagingClient not found");
+                return NodeStatus.Failure;
+            }
             
-            // Mockup: Simuliere Wartezeit
-            await Task.Delay(100);
+            client.OnMessage(msg =>
+            {
+                bool matches = true;
+                
+                if (!string.IsNullOrEmpty(ExpectedType) && msg.Frame.Type != ExpectedType)
+                    matches = false;
+                
+                if (!string.IsNullOrEmpty(ExpectedSender) && 
+                    msg.Frame.Sender.Identification.Id != ExpectedSender)
+                    matches = false;
+                
+                if (matches)
+                {
+                    _messageQueue.Enqueue(msg);
+                }
+            });
             
-            Logger.LogInformation("WaitForMessage: Received {MessageType}", MessageType);
-            
-            Context.Set("messageReceived", true);
-            Context.Set("lastReceivedMessage", new { Type = MessageType, From = AgentId });
-            
-            return NodeStatus.Success;
+            _subscribed = true;
+            _startTime = DateTime.UtcNow;
+            Logger.LogInformation("WaitForMessage: Waiting for message (Type: {Type}, Sender: {Sender})", 
+                ExpectedType ?? "any", ExpectedSender ?? "any");
         }
-        catch (Exception ex)
+        
+        // Check timeout
+        if ((DateTime.UtcNow - _startTime).TotalSeconds > TimeoutSeconds)
         {
-            Logger.LogError(ex, "WaitForMessage: Error waiting for message");
-            Context.Set("messageReceived", false);
+            Logger.LogWarning("WaitForMessage: Timeout after {Timeout} seconds", TimeoutSeconds);
             return NodeStatus.Failure;
         }
+        
+        if (_messageQueue.TryDequeue(out var message))
+        {
+            Context.Set("LastReceivedMessage", message);
+            Logger.LogInformation("WaitForMessage: Received message from '{Sender}'", 
+                message.Frame.Sender.Identification.Id);
+            return NodeStatus.Success;
+        }
+        
+        return NodeStatus.Running;
+    }
+    
+    public override Task OnAbort()
+    {
+        _messageQueue.Clear();
+        _subscribed = false;
+        return Task.CompletedTask;
+    }
+    
+    public override Task OnReset()
+    {
+        _messageQueue.Clear();
+        _subscribed = false;
+        return Task.CompletedTask;
     }
 }

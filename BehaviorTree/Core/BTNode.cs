@@ -65,6 +65,46 @@ public abstract class BTNode
     /// </summary>
     protected bool Has(string key) => Context.Has(key);
     
+    /// <summary>
+    /// Ersetzt Placeholders im Format {VariableName} durch Werte aus dem Context/Blackboard
+    /// Beispiel: "{MachineName}" → "ScrewingStation" (wenn Context.Get("MachineName") = "ScrewingStation")
+    /// </summary>
+    protected string ResolvePlaceholders(string input)
+    {
+        if (string.IsNullOrEmpty(input) || !input.Contains("{"))
+            return input;
+        
+        var result = input;
+        var startIndex = 0;
+        
+        while (startIndex < result.Length)
+        {
+            var openBrace = result.IndexOf('{', startIndex);
+            if (openBrace == -1)
+                break;
+            
+            var closeBrace = result.IndexOf('}', openBrace);
+            if (closeBrace == -1)
+                break;
+            
+            var placeholder = result.Substring(openBrace + 1, closeBrace - openBrace - 1);
+            var replacement = Context.Get<string>(placeholder);
+            
+            if (replacement != null)
+            {
+                result = result.Substring(0, openBrace) + replacement + result.Substring(closeBrace + 1);
+                startIndex = openBrace + replacement.Length;
+            }
+            else
+            {
+                // Placeholder nicht gefunden - behalte Original
+                startIndex = closeBrace + 1;
+            }
+        }
+        
+        return result;
+    }
+    
     #endregion
     
     protected BTNode(string name)

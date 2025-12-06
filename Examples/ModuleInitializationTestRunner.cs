@@ -90,8 +90,10 @@ public class ModuleInitializationTestRunner
         
         try
         {
-            // var btFilePath = "Trees/ModuleInitializationTest.bt.xml";
-            var btFilePath = "Trees/Init_and_ExecuteSkill.bt.xml";
+            // Standardpfad oder Command-Line-Argument
+            var btFilePath = args.Length > 0 && File.Exists(args[0])
+                ? args[0]
+                : "Trees/Init_and_ExecuteSkill.bt.xml";
             
             if (!File.Exists(btFilePath))
             {
@@ -101,7 +103,7 @@ public class ModuleInitializationTestRunner
                 return;
             }
             
-            Console.WriteLine($"�� Lade Behavior Tree: {btFilePath}");
+            Console.WriteLine($"🌳 Lade Behavior Tree: {btFilePath}");
             Console.WriteLine();
             
             var registry = new NodeRegistry(loggerFactory.CreateLogger<NodeRegistry>());
@@ -120,28 +122,101 @@ public class ModuleInitializationTestRunner
             Console.WriteLine("────────────────────────────────────────────────────────────────");
             Console.WriteLine();
             
-            var result = await rootNode.Execute();
+            // Event Loop für kontinuierliche Ausführung (wie BehaviorTree.CPP Tick)
+            var keepRunning = true;
+            var tickCount = 0;
+            var startTime = DateTime.UtcNow;
+            const int tickPeriodMs = 100; // 10 Hz Tick-Rate (wie BehaviorTree.CPP Standard)
             
-            Console.WriteLine();
-            Console.WriteLine("────────────────────────────────────────────────────────────────");
+            // Ctrl+C Handler - NUR EINMAL registrieren
+            var ctrlCPressed = false;
+            ConsoleCancelEventHandler? cancelHandler = null;
+            cancelHandler = (sender, e) =>
+            {
+                if (!ctrlCPressed)
+                {
+                    e.Cancel = true;
+                    keepRunning = false;
+                    ctrlCPressed = true;
+                    Console.WriteLine();
+                    Console.WriteLine("⚠️  Ctrl+C detected - Stopping execution loop...");
+                }
+            };
+            Console.CancelKeyPress += cancelHandler;
+            
+            NodeStatus result = NodeStatus.Running;
+            
+            Console.WriteLine($"🔄 Starting Behavior Tree Loop (Tick Period: {tickPeriodMs}ms)");
+            Console.WriteLine("   Press Ctrl+C to stop");
             Console.WriteLine();
             
-            if (result == NodeStatus.Success)
+            try
             {
-                Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine("✅ BEHAVIOR TREE ERFOLGREICH ABGESCHLOSSEN");
+                while (keepRunning && !ctrlCPressed)
+                {
+                    tickCount++;
+                    var tickStartTime = DateTime.UtcNow;
+                    
+                    // Tick: Führe Tree EINMAL aus (wie BehaviorTree.CPP)
+                    result = await rootNode.Execute();
+                    
+                    var tickDuration = (DateTime.UtcNow - tickStartTime).TotalMilliseconds;
+                    
+                    if (result == NodeStatus.Success)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("────────────────────────────────────────────────────────────────");
+                        Console.ForegroundColor = ConsoleColor.Green;
+                        Console.WriteLine("✅ BEHAVIOR TREE ERFOLGREICH ABGESCHLOSSEN");
+                        Console.ResetColor();
+                        Console.WriteLine($"   Total Ticks: {tickCount}");
+                        Console.WriteLine($"   Total Time: {(DateTime.UtcNow - startTime).TotalSeconds:F1}s");
+                        break;
+                    }
+                    else if (result == NodeStatus.Failure)
+                    {
+                        Console.WriteLine();
+                        Console.WriteLine("────────────────────────────────────────────────────────────────");
+                        Console.ForegroundColor = ConsoleColor.Red;
+                        Console.WriteLine("❌ BEHAVIOR TREE FEHLGESCHLAGEN");
+                        Console.ResetColor();
+                        Console.WriteLine($"   Total Ticks: {tickCount}");
+                        break;
+                    }
+                    else if (result == NodeStatus.Running)
+                    {
+                        // Status-Update alle 50 Ticks (~5 Sekunden bei 100ms Tick)
+                        if (tickCount % 50 == 0)
+                        {
+                            var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
+                            Console.WriteLine($"⏳ Tree Running... (Tick #{tickCount}, {elapsed:F1}s elapsed, last tick: {tickDuration:F1}ms)");
+                        }
+                        
+                        // Warnung bei langsamen Ticks (nur alle 100 Ticks)
+                        if (tickDuration > tickPeriodMs * 2 && tickCount % 100 == 0)
+                        {
+                            Console.ForegroundColor = ConsoleColor.Yellow;
+                            Console.WriteLine($"⚠️  Slow Tick detected: {tickDuration:F1}ms (target: {tickPeriodMs}ms)");
+                            Console.ResetColor();
+                        }
+                        
+                        // Sleep bis nächster Tick (wie BehaviorTree.CPP)
+                        var sleepTime = Math.Max(0, tickPeriodMs - (int)tickDuration);
+                        if (sleepTime > 0)
+                        {
+                            await Task.Delay(sleepTime);
+                        }
+                    }
+                }
             }
-            else if (result == NodeStatus.Failure)
+            finally
             {
-                Console.ForegroundColor = ConsoleColor.Red;
-                Console.WriteLine("❌ BEHAVIOR TREE FEHLGESCHLAGEN");
+                // Unregister Ctrl+C Handler
+                if (cancelHandler != null)
+                {
+                    Console.CancelKeyPress -= cancelHandler;
+                }
             }
-            else
-            {
-                Console.ForegroundColor = ConsoleColor.Yellow;
-                Console.WriteLine("⚠️  BEHAVIOR TREE STATUS: " + result);
-            }
-            Console.ResetColor();
             
             Console.WriteLine();
             Console.WriteLine("────────────────────────────────────────────────────────────────");

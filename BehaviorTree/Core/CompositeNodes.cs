@@ -4,42 +4,84 @@ namespace MAS_BT.Core;
 
 /// <summary>
 /// Sequence Node - Führt Kinder sequenziell aus (stoppt bei erstem Failure)
+/// Mit Memory: Merkt sich welches Kind gerade läuft (wie BehaviorTree.CPP)
 /// </summary>
 public class SequenceNode : CompositeNode
 {
+    private int _currentChildIndex = 0;
+    
     public SequenceNode() : base("Sequence") {}
     public SequenceNode(string name) : base(name) {}
     
     public override async Task<NodeStatus> Execute()
     {
-        foreach (var child in Children)
+        // Starte bei dem Kind, wo wir beim letzten Tick aufgehört haben
+        for (int i = _currentChildIndex; i < Children.Count; i++)
         {
+            var child = Children[i];
             var result = await child.Execute();
-            if (result != NodeStatus.Success)
-                return result;
+            
+            if (result == NodeStatus.Running)
+            {
+                // Kind läuft noch - merke Index für nächsten Tick
+                _currentChildIndex = i;
+                return NodeStatus.Running;
+            }
+            
+            if (result == NodeStatus.Failure)
+            {
+                // Kind fehlgeschlagen - Reset für nächsten Durchlauf
+                _currentChildIndex = 0;
+                return NodeStatus.Failure;
+            }
+            
+            // Kind erfolgreich - weiter zum nächsten
         }
+        
+        // Alle Kinder erfolgreich - Reset für nächsten Durchlauf
+        _currentChildIndex = 0;
         return NodeStatus.Success;
     }
 }
 
 /// <summary>
 /// Selector/Fallback Node - Führt Kinder aus bis eines Success zurückgibt
+/// Mit Memory: Merkt sich welches Kind gerade läuft (wie BehaviorTree.CPP)
 /// </summary>
 public class SelectorNode : CompositeNode
 {
+    private int _currentChildIndex = 0;
+    
     public SelectorNode() : base("Selector") {}
     public SelectorNode(string name) : base(name) {}
     
     public override async Task<NodeStatus> Execute()
     {
-        foreach (var child in Children)
+        // Starte bei dem Kind, wo wir beim letzten Tick aufgehört haben
+        for (int i = _currentChildIndex; i < Children.Count; i++)
         {
+            var child = Children[i];
             var result = await child.Execute();
-            if (result == NodeStatus.Success)
-                return NodeStatus.Success;
+            
             if (result == NodeStatus.Running)
+            {
+                // Kind läuft noch - merke Index für nächsten Tick
+                _currentChildIndex = i;
                 return NodeStatus.Running;
+            }
+            
+            if (result == NodeStatus.Success)
+            {
+                // Kind erfolgreich - Reset für nächsten Durchlauf
+                _currentChildIndex = 0;
+                return NodeStatus.Success;
+            }
+            
+            // Kind fehlgeschlagen - weiter zum nächsten
         }
+        
+        // Alle Kinder fehlgeschlagen - Reset für nächsten Durchlauf
+        _currentChildIndex = 0;
         return NodeStatus.Failure;
     }
 }

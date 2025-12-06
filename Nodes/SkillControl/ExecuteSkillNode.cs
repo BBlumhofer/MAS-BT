@@ -3,7 +3,7 @@ using Microsoft.Extensions.Logging;
 using UAClient.Client;
 using UAClient.Common;
 
-namespace MAS_BT.Nodes.Skills;
+namespace MAS_BT.Nodes.SkillControl;
 
 /// <summary>
 /// ExecuteSkill - Führt einen Skill auf einem Remote-Modul aus
@@ -26,7 +26,12 @@ public class ExecuteSkillNode : BTNode
 
     public override async Task<NodeStatus> Execute()
     {
-        Logger.LogInformation("ExecuteSkill: Executing {SkillName} on module {ModuleName}", SkillName, ModuleName);
+        // Resolve Placeholders zur Laufzeit
+        var resolvedModuleName = ResolvePlaceholders(ModuleName);
+        var resolvedSkillName = ResolvePlaceholders(SkillName);
+        var resolvedParameters = ResolvePlaceholders(Parameters);
+        
+        Logger.LogInformation("ExecuteSkill: Executing {SkillName} on module {ModuleName}", resolvedSkillName, resolvedModuleName);
 
         try
         {
@@ -39,13 +44,13 @@ public class ExecuteSkillNode : BTNode
                 return NodeStatus.Failure;
             }
 
-            // Finde Modul (wenn nicht angegeben, nimm erstes verfügbares)
+            // Finde Modul
             RemoteModule? module = null;
-            if (!string.IsNullOrEmpty(ModuleName))
+            if (!string.IsNullOrEmpty(resolvedModuleName))
             {
-                if (!server.Modules.TryGetValue(ModuleName, out module))
+                if (!server.Modules.TryGetValue(resolvedModuleName, out module))
                 {
-                    Logger.LogError("ExecuteSkill: Module {ModuleName} not found", ModuleName);
+                    Logger.LogError("ExecuteSkill: Module {ModuleName} not found", resolvedModuleName);
                     Logger.LogDebug("Available modules: {Modules}", string.Join(", ", server.Modules.Keys));
                     Set("started", false);
                     return NodeStatus.Failure;
@@ -53,7 +58,7 @@ public class ExecuteSkillNode : BTNode
             }
             else
             {
-                // Nimm erstes Modul MIT Skills (nicht nur irgendein Modul)
+                // Nimm erstes Modul MIT Skills
                 module = server.Modules.Values.FirstOrDefault(m => m.SkillSet.Count > 0);
                 if (module == null)
                 {
@@ -73,38 +78,51 @@ public class ExecuteSkillNode : BTNode
                 // Versuche trotzdem fortzufahren - OPC UA Server könnte Lock anders behandeln
             }
 
-            // Finde Skill (SkillSet ist das Dictionary in RemoteModule!)
-            if (!module.SkillSet.TryGetValue(SkillName, out var skill))
+            // Finde Skill
+            if (!module.SkillSet.TryGetValue(resolvedSkillName, out var skill))
             {
-                Logger.LogError("ExecuteSkill: Skill {SkillName} not found on module {ModuleName}", SkillName, module.Name);
+                Logger.LogError("ExecuteSkill: Skill {SkillName} not found on module {ModuleName}", resolvedSkillName, module.Name);
                 Logger.LogDebug("Available skills: {Skills}", string.Join(", ", module.SkillSet.Keys));
                 Set("started", false);
                 return NodeStatus.Failure;
             }
 
             Logger.LogInformation("ExecuteSkill: Skill {SkillName} found. Current state: {State}", 
-                SkillName, skill.CurrentState);
+                resolvedSkillName, skill.CurrentState);
 
-            // NEW: Parse Parameters (z.B. "ProductId=HelloWorld,Param2=Value2")
+            // Parse Parameters oder hole aus Context (InputParameters)
             Dictionary<string, object>? parameters = null;
-            if (!string.IsNullOrEmpty(Parameters))
+            
+            // Priorität 1: Context InputParameters (von ReadMqttSkillRequest gesetzt)
+            var contextParams = Context.Get<Dictionary<string, string>>("InputParameters");
+            if (contextParams != null && contextParams.Count > 0)
             {
                 parameters = new Dictionary<string, object>();
-                var paramPairs = Parameters.Split(',', StringSplitOptions.RemoveEmptyEntries);
+                foreach (var kvp in contextParams)
+                {
+                    parameters[kvp.Key] = kvp.Value;
+                    Logger.LogDebug("ExecuteSkill: Parameter from Context: {Key} = {Value}", kvp.Key, kvp.Value);
+                }
+            }
+            // Priorität 2: Explizite Parameter aus XML (z.B. "ProductId=HelloWorld")
+            else if (!string.IsNullOrEmpty(resolvedParameters))
+            {
+                parameters = new Dictionary<string, object>();
+                var paramPairs = resolvedParameters.Split(',', StringSplitOptions.RemoveEmptyEntries);
                 foreach (var pair in paramPairs)
                 {
                     var parts = pair.Split('=', 2);
                     if (parts.Length == 2)
                     {
                         parameters[parts[0].Trim()] = parts[1].Trim();
-                        Logger.LogDebug("ExecuteSkill: Parameter {Key} = {Value}", parts[0].Trim(), parts[1].Trim());
+                        Logger.LogDebug("ExecuteSkill: Parameter from XML: {Key} = {Value}", parts[0].Trim(), parts[1].Trim());
                     }
                 }
             }
 
             // Führe Skill aus via RemoteSkill.ExecuteAsync()
-            Logger.LogInformation("ExecuteSkill: Executing skill {SkillName} with parameters: {Parameters}", 
-                SkillName, Parameters);
+            Logger.LogInformation("ExecuteSkill: Executing skill {SkillName} with {Count} parameters", 
+                resolvedSkillName, parameters?.Count ?? 0);
             
             var timeout = TimeSpan.FromSeconds(TimeoutSeconds);
             
@@ -132,36 +150,36 @@ public class ExecuteSkillNode : BTNode
                         var value = kvp.Value;
                         
                         Logger.LogInformation("ExecuteSkill: Skill {SkillName} - FinalResultData {Key} = {Value}", 
-                            SkillName, key, value?.ToString() ?? "null");
+                            resolvedSkillName, key, value?.ToString() ?? "null");
                         
-                        Set($"{SkillName}_{key}", value);
-                        Context.Set($"Skill_{SkillName}_{key}", value);
+                        Set($"{resolvedSkillName}_{key}", value);
+                        Context.Set($"Skill_{resolvedSkillName}_{key}", value);
                     }
                     
-                    Context.Set($"Skill_{SkillName}_FinalResultData", resultData);
+                    Context.Set($"Skill_{resolvedSkillName}_FinalResultData", resultData);
                 }
                 catch (Exception ex)
                 {
-                    Logger.LogWarning(ex, "ExecuteSkill: Could not process FinalResultData for skill {SkillName}", SkillName);
+                    Logger.LogWarning(ex, "ExecuteSkill: Could not process FinalResultData for skill {SkillName}", resolvedSkillName);
                 }
             }
 
             // Speichere Ergebnis
             Set("started", true);
-            Set("lastExecutedSkill", SkillName);
+            Set("lastExecutedSkill", resolvedSkillName);
             
             var finalState = await skill.GetStateAsync();
             var stateName = finalState.HasValue ? ((SkillStates)finalState.Value).ToString() : "Unknown";
-            Set($"skill_{SkillName}_state", stateName);
+            Set($"skill_{resolvedSkillName}_state", stateName);
             
             Logger.LogInformation("ExecuteSkill: Skill {SkillName} execution completed. Final state: {State}", 
-                SkillName, stateName);
+                resolvedSkillName, stateName);
             
             return NodeStatus.Success;
         }
         catch (TimeoutException tex)
         {
-            Logger.LogError(tex, "ExecuteSkill: Timeout executing skill {SkillName}", SkillName);
+            Logger.LogError(tex, "ExecuteSkill: Timeout executing skill {SkillName}", resolvedSkillName);
             Set("started", false);
             return NodeStatus.Failure;
         }
@@ -170,20 +188,20 @@ public class ExecuteSkillNode : BTNode
             // Bei Continuous Skills ohne WaitForCompletion: Prüfe ob Skill bereits läuft
             if (!WaitForCompletion && ioe.Message.Contains("already running"))
             {
-                Logger.LogInformation("ExecuteSkill: Skill {SkillName} is already running (continuous skill), treating as success", SkillName);
+                Logger.LogInformation("ExecuteSkill: Skill {SkillName} is already running (continuous skill), treating as success", resolvedSkillName);
                 Set("started", true);
-                Set("lastExecutedSkill", SkillName);
-                Set($"skill_{SkillName}_state", "Running");
+                Set("lastExecutedSkill", resolvedSkillName);
+                Set($"skill_{resolvedSkillName}_state", "Running");
                 return NodeStatus.Success;
             }
             
-            Logger.LogError(ioe, "ExecuteSkill: Invalid state for skill {SkillName}", SkillName);
+            Logger.LogError(ioe, "ExecuteSkill: Invalid state for skill {SkillName}", resolvedSkillName);
             Set("started", false);
             return NodeStatus.Failure;
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "ExecuteSkill: Error executing skill {SkillName}", SkillName);
+            Logger.LogError(ex, "ExecuteSkill: Error executing skill {SkillName}", resolvedSkillName);
             Set("started", false);
             return NodeStatus.Failure;
         }

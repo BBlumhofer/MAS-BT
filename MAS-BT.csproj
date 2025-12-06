@@ -8,6 +8,8 @@
     <Nullable>enable</Nullable>
     <LangVersion>latest</LangVersion>
     <IsTestProject>true</IsTestProject>
+    <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
+    <GenerateProgramFile>false</GenerateProgramFile>
   </PropertyGroup>
 
   <ItemGroup>

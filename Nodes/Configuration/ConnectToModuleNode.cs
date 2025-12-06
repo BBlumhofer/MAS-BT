@@ -86,6 +86,21 @@ public class ConnectToModuleNode : BTNode
             Context.Set("RemoteServer", server);
             Context.Set("moduleEndpoint", Endpoint);
             
+            // 5. Aktiviere Auto-Recovery für alle Module (NEW!)
+            Logger.LogInformation("ConnectToModule: Enabling auto-recovery for all modules...");
+            foreach (var module in server.Modules.Values)
+            {
+                try
+                {
+                    await module.EnableAutoRecoveryAsync();
+                    Logger.LogInformation("  ✓ Auto-recovery enabled for module '{ModuleName}'", module.Name);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "  ✗ Failed to enable auto-recovery for module '{ModuleName}'", module.Name);
+                }
+            }
+            
             Set("connected", true);
             
             Logger.LogInformation("ConnectToModule: Connected successfully to {Endpoint}", Endpoint);
