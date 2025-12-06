@@ -1,80 +1,32 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<BehaviorTree>
-  <Root name="ModuleInitAndExecuteSkill">
+<root BTCPP_format="4" main_tree_to_execute="ModuleInitAndExecuteSkill">
+  <BehaviorTree ID="ModuleInitAndExecuteSkill">
     <Sequence name="InitAndExecuteSequence">
       
       <!-- ==================== SCHRITT 1: MQTT BROKER VERBINDUNG ==================== -->
       <RetryUntilSuccess name="MqttConnectRetry" numAttempts="-1" delayMs="5000">
-        <Sequence name="MqttConnectSequence">
-          <SendLogMessage 
-            name="LogMqttAttempt"
-            LogLevel="INFO"
-            Message="Attempting MQTT connection..."
-            Topic="{AgentId}/logs" />
-          
-          <ConnectToMessagingBroker 
-            name="ConnectMqtt"
-            BrokerHost="localhost"
-            BrokerPort="1883"
-            DefaultTopic="factory/agents/messages"
-            TimeoutMs="10000" />
-          
-          <SendLogMessage 
-            name="LogMqttConnected"
-            LogLevel="INFO"
-            Message="MQTT Broker connected successfully"
-            Topic="{AgentId}/logs" />
-        </Sequence>
+        <ConnectToMessagingBroker 
+          name="ConnectMqtt"
+          BrokerHost="localhost"
+          BrokerPort="1883"
+          DefaultTopic="factory/agents/messages"
+          TimeoutMs="10000" />
       </RetryUntilSuccess>
       
       <!-- ==================== SCHRITT 2: CONFIG ALS MQTT LOG SENDEN ==================== -->
-      <Sequence name="SendConfigSequence">
-        <SendLogMessage 
-          name="LogConfigStart"
-          LogLevel="INFO"
-          Message="Sending agent configuration..."
-          Topic="{AgentId}/logs" />
-        
-        <SendConfigAsLog name="SendConfig" />
-        
-        <SendLogMessage 
-          name="LogConfigSent"
-          LogLevel="INFO"
-          Message="Agent configuration sent successfully"
-          Topic="{AgentId}/logs" />
-      </Sequence>
+      <SendConfigAsLog name="SendConfig" />
       
       <!-- ==================== SCHRITT 3: OPC UA VERBINDUNG MIT RETRY ==================== -->
       <RetryUntilSuccess name="OpcUaConnectRetry" numAttempts="-1" delayMs="3000">
-        <Sequence name="OpcUaConnectSequence">
-          <SendLogMessage 
-            name="LogOpcUaAttempt"
-            LogLevel="INFO"
-            Message="Attempting OPC UA connection..."
-            Topic="{AgentId}/logs" />
-          
-          <ConnectToModule 
-            name="ConnectOPC"
-            Endpoint="{config.OPCUA.Endpoint}"
-            TimeoutMs="30000" />
-          
-          <SendLogMessage 
-            name="LogOpcUaConnected"
-            LogLevel="INFO"
-            Message="OPC UA connected successfully"
-            Topic="{AgentId}/logs" />
-        </Sequence>
+        <ConnectToModule 
+          name="ConnectOPC"
+          Endpoint="{config.OPCUA.Endpoint}"
+          TimeoutMs="30000" />
       </RetryUntilSuccess>
       
       <!-- ==================== SCHRITT 4: MODUL LOCKEN MIT RETRY + ÜBERWACHUNG ==================== -->
       <RetryUntilSuccess name="LockRetry" numAttempts="-1" delayMs="2000">
         <Sequence name="LockAndVerifySequence">
-          <SendLogMessage 
-            name="LogLockAttempt"
-            LogLevel="INFO"
-            Message="Attempting to lock module..."
-            Topic="{AgentId}/logs" />
-          
           <Fallback name="LockOrWait">
             <Sequence name="TryLockSequence">
               <LockResource 
@@ -88,26 +40,14 @@
               <CheckLockStatus 
                 name="VerifyLock"
                 ModuleName="ScrewingStation" />
-              
-              <SendLogMessage 
-                name="LogLocked"
-                LogLevel="INFO"
-                Message="Module locked and verified successfully"
-                Topic="{AgentId}/logs" />
             </Sequence>
             
             <Sequence name="LockFailedSequence">
-              <SendLogMessage 
-                name="LogWaitingForUnlock"
-                LogLevel="WARNING"
-                Message="Waiting for Module to be unlocked"
-                Topic="{AgentId}/logs" />
-              
-              <Condition name="AlwaysFail">
-                <BlackboardCondition 
-                  Key="__never_exists__" 
-                  ExpectedValue="true" />
-              </Condition>
+              <!-- Always fail to trigger retry -->
+              <BlackboardCondition 
+                name="AlwaysFail"
+                Key="__never_exists__" 
+                ExpectedValue="true" />
             </Sequence>
           </Fallback>
         </Sequence>
@@ -115,138 +55,96 @@
       
       <!-- ==================== SCHRITT 5: STARTUP SKILL STARTEN ==================== -->
       <Sequence name="StartupSequence">
-        <Sequence name="PreStartupLockCheck">
-          <SendLogMessage 
-            name="LogPreStartupCheck"
-            LogLevel="INFO"
-            Message="Verifying lock before starting skill..."
-            Topic="{AgentId}/logs" />
-          
-          <CheckLockStatus 
-            name="CheckLockBeforeStartup"
-            ModuleName="ScrewingStation" />
-        </Sequence>
+        <CheckLockStatus 
+          name="CheckLockBeforeStartup"
+          ModuleName="ScrewingStation" />
         
-        <Sequence name="ExecuteStartupSkill">
-          <SendLogMessage 
-            name="LogStartupBegin"
-            LogLevel="INFO"
-            Message="Starting module with StartupSkill..."
-            Topic="{AgentId}/logs" />
-          
-          <ExecuteSkill 
-            name="ExecuteStartup"
-            ModuleName="ScrewingStation"
-            SkillName="StartupSkill"
-            WaitForCompletion="false"
-            TimeoutSeconds="60"
-            ResetBeforeIfHalted="true" />
-          
-          <SendLogMessage 
-            name="LogStartupComplete"
-            LogLevel="INFO"
-            Message="StartupSkill started successfully (Running)"
-            Topic="{AgentId}/logs" />
-        </Sequence>
+        <ExecuteSkill 
+          name="ExecuteStartup"
+          ModuleName="ScrewingStation"
+          SkillName="StartupSkill"
+          WaitForCompletion="false"
+          TimeoutSeconds="60"
+          ResetBeforeIfHalted="true" />
       </Sequence>
       
       <!-- ==================== SCHRITT 6: STORAGE AUSLESEN ==================== -->
-      <Sequence name="ReadStorageSequence">
-        <SendLogMessage 
-          name="LogStorageReadStart"
-          LogLevel="INFO"
-          Message="Reading storage component..."
-          Topic="{AgentId}/logs" />
-        
-        <ReadStorage 
-          name="ReadModuleStorage"
-          ModuleName="ScrewingStation" />
-        
-        <SendLogMessage 
-          name="LogStorageReadComplete"
-          LogLevel="INFO"
-          Message="Storage component read successfully"
-          Topic="{AgentId}/logs" />
-      </Sequence>
+      <ReadStorage 
+        name="ReadModuleStorage"
+        ModuleName="ScrewingStation" />
       
       <!-- ==================== SCHRITT 7: SCREW SKILL AUSFÜHREN (MIT SUBTREE) ==================== -->
       <Sequence name="ExecuteScrewSkillSequence">
-        
-        <SendLogMessage 
-          name="LogScrewSkillPreparation"
-          LogLevel="INFO"
-          Message="Preparing to execute Screw skill..."
-          Topic="{AgentId}/logs" />
         
         <!-- SUBTREE: ExecuteSkill mit Pre-Checks -->
         <Sequence name="ExecuteSkillWithChecks">
           
           <!-- Pre-Check 1: Lock-Status prüfen -->
-          <Sequence name="PreCheckLock">
-            <SendLogMessage 
-              name="LogCheckingLock"
-              LogLevel="DEBUG"
-              Message="Checking lock status before skill execution..."
-              Topic="{AgentId}/logs" />
-            
-            <CheckLockStatus 
-              name="CheckLockBeforeScrew"
-              ModuleName="ScrewingStation" />
-          </Sequence>
+          <CheckLockStatus 
+            name="CheckLockBeforeScrew"
+            ModuleName="ScrewingStation" />
           
           <!-- Pre-Check 2: StartupSkill-Status prüfen -->
-          <Sequence name="PreCheckStartup">
-            <SendLogMessage 
-              name="LogCheckingStartup"
-              LogLevel="DEBUG"
-              Message="Checking StartupSkill status before skill execution..."
-              Topic="{AgentId}/logs" />
-            
-            <CheckStartupSkillStatus 
-              name="CheckStartupBeforeScrew"
-              ModuleName="ScrewingStation" />
-          </Sequence>
+          <CheckStartupSkillStatus 
+            name="CheckStartupBeforeScrew"
+            ModuleName="ScrewingStation" />
           
           <!-- Pre-Checks erfolgreich -> Skill starten -->
-          <Sequence name="ExecuteScrewSkill">
-            <SendLogMessage 
-              name="LogScrewSkillStart"
-              LogLevel="INFO"
-              Message="Starting Screw skill with ProductId=HelloWorld"
-              Topic="{AgentId}/logs" />
-            
-            <ExecuteSkill 
-              name="ExecuteScrew"
-              ModuleName="ScrewingStation"
-              SkillName="Screw"
-              Parameters="ProductId=HelloWorld"
-              TimeoutSeconds="120"
-              ResetBeforeIfHalted="true" />
-            
-            <SendLogMessage 
-              name="LogScrewSkillComplete"
-              LogLevel="INFO"
-              Message="Screw skill completed successfully"
-              Topic="{AgentId}/logs" />
-            
-            <!-- TODO: FinalResultData auslesen und loggen -->
-            <SendLogMessage 
-              name="LogScrewSkillResultData"
-              LogLevel="INFO"
-              Message="Screw skill FinalResultData: {Context.ScrewSkillResult}"
-              Topic="{AgentId}/logs" />
-          </Sequence>
+          <ExecuteSkill 
+            name="ExecuteScrew"
+            ModuleName="ScrewingStation"
+            SkillName="Screw"
+            Parameters="ProductId=HelloWorld"
+            TimeoutSeconds="120"
+            ResetBeforeIfHalted="true" />
         </Sequence>
         
       </Sequence>
       
-      <!-- ==================== FINALE STATUS-NACHRICHT ==================== -->
-      <SendLogMessage 
-        name="LogAllComplete"
-        LogLevel="INFO"
-        Message="Module initialization and Screw skill execution completed successfully"
-        Topic="{AgentId}/logs" />
-      
     </Sequence>
-  </Root>
-</BehaviorTree>
+  </BehaviorTree>
+  
+  <!-- TreeNodesModel for Groot2 Editor -->
+  <TreeNodesModel>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost"/>
+      <input_port name="BrokerPort"/>
+      <input_port name="DefaultTopic"/>
+      <input_port name="TimeoutMs"/>
+    </Action>
+    <Action ID="SendConfigAsLog"/>
+    <Action ID="ConnectToModule">
+      <input_port name="Endpoint"/>
+      <input_port name="TimeoutMs"/>
+    </Action>
+    <Action ID="LockResource">
+      <input_port name="ModuleName"/>
+      <input_port name="ResourceId"/>
+      <input_port name="TimeoutSeconds"/>
+    </Action>
+    <Action ID="Wait">
+      <input_port name="DelayMs"/>
+    </Action>
+    <Condition ID="CheckLockStatus">
+      <input_port name="ModuleName"/>
+    </Condition>
+    <Action ID="ExecuteSkill">
+      <input_port name="ModuleName"/>
+      <input_port name="SkillName"/>
+      <input_port name="WaitForCompletion"/>
+      <input_port name="TimeoutSeconds"/>
+      <input_port name="ResetBeforeIfHalted"/>
+      <input_port name="Parameters"/>
+    </Action>
+    <Action ID="ReadStorage">
+      <input_port name="ModuleName"/>
+    </Action>
+    <Condition ID="CheckStartupSkillStatus">
+      <input_port name="ModuleName"/>
+    </Condition>
+    <Condition ID="BlackboardCondition">
+      <input_port name="Key"/>
+      <input_port name="ExpectedValue"/>
+    </Condition>
+  </TreeNodesModel>
+</root>

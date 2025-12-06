@@ -1,6 +1,8 @@
 {
   "Agent": {
     "ModuleId": "Module_Assembly_01",
+    "AgentId": "TestAgent",
+    "Role": "ResourceHolon",
     "AgentType": "ResourceHolon",
     "LogLevel": "Information"
   },
@@ -28,6 +30,7 @@
     }
   },
   "MQTT": {
+    "Broker": "localhost",
     "BrokerAddress": "localhost",
     "Port": 1883,
     "Username": "mqttuser",

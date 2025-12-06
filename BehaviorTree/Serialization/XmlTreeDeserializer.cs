@@ -19,7 +19,7 @@ public class XmlTreeDeserializer
     }
     
     /// <summary>
-    /// Lädt einen Behavior Tree aus XML-Datei
+    /// Lädt einen Behavior Tree aus XML-Datei (Groot2 BehaviorTree.CPP V4 Format)
     /// </summary>
     public BTNode Deserialize(string xmlPath, BTContext context)
     {
@@ -33,106 +33,68 @@ public class XmlTreeDeserializer
         var doc = XDocument.Load(xmlPath);
         var root = doc.Root;
         
-        if (root == null || root.Name != "BehaviorTree")
+        if (root == null)
         {
-            throw new InvalidOperationException("XML muss mit <BehaviorTree> Root Element beginnen");
+            throw new InvalidOperationException("XML muss ein Root Element haben");
         }
         
-        var treeName = root.Attribute("name")?.Value ?? "UnnamedTree";
-        _logger.LogInformation("Lade Tree: {TreeName}", treeName);
+        // Groot2 BehaviorTree.CPP V4 Format validation
+        if (!root.Name.LocalName.Equals("root", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException(
+                $"Ungültiges Root Element: '{root.Name.LocalName}'. " +
+                "Erwartet: <root BTCPP_format=\"4\" main_tree_to_execute=\"TreeName\"> (Groot2 BehaviorTree.CPP V4)");
+        }
         
-        // Finde Root Node (erstes Kind-Element)
-        var rootNodeElement = root.Elements().FirstOrDefault();
+        // Check BehaviorTree.CPP version
+        var btcppFormat = root.Attribute("BTCPP_format")?.Value;
+        if (btcppFormat != null && btcppFormat != "4")
+        {
+            _logger.LogWarning("BTCPP_format={Format} detected. Recommended: V4", btcppFormat);
+        }
+        
+        // Get main tree name
+        var mainTreeName = root.Attribute("main_tree_to_execute")?.Value;
+        if (string.IsNullOrEmpty(mainTreeName))
+        {
+            _logger.LogWarning("main_tree_to_execute attribute is missing. Using the first available BehaviorTree.");
+        }
+        
+        _logger.LogInformation("Lade Tree (Groot2 V4): {TreeName}", mainTreeName);
+        
+        // Find BehaviorTree with matching ID
+        var behaviorTreeElement = root.Elements("BehaviorTree")
+            .FirstOrDefault(bt => bt.Attribute("ID")?.Value == mainTreeName);
+        
+        if (behaviorTreeElement == null)
+        {
+            // Fallback: wenn main_tree_to_execute fehlt, nimm ersten BehaviorTree
+            behaviorTreeElement = root.Elements("BehaviorTree").FirstOrDefault();
+            
+            if (behaviorTreeElement == null)
+            {
+                throw new InvalidOperationException(
+                    $"No BehaviorTree found. " +
+                    "Available elements: " + string.Join(", ", 
+                        root.Elements().Select(e => e.Name.LocalName)));
+            }
+            
+            mainTreeName = behaviorTreeElement.Attribute("ID")?.Value ?? "UnnamedTree";
+            _logger.LogInformation("Using first available tree: {TreeName}", mainTreeName);
+        }
+        
+        // Get root node (first child element of BehaviorTree)
+        var rootNodeElement = behaviorTreeElement.Elements().FirstOrDefault();
         if (rootNodeElement == null)
         {
-            throw new InvalidOperationException("BehaviorTree muss mindestens einen Root Node enthalten");
+            throw new InvalidOperationException(
+                $"BehaviorTree '{mainTreeName}' must contain at least one root node");
         }
         
         var rootNode = DeserializeNode(rootNodeElement, context);
         
-        _logger.LogInformation("✓ Behavior Tree '{TreeName}' erfolgreich geladen", treeName);
+        _logger.LogInformation("✓ Behavior Tree '{TreeName}' erfolgreich geladen (Groot2 V4)", mainTreeName);
         return rootNode;
-    }
-    
-    /// <summary>
-    /// Deserialisiert einen einzelnen Node aus XML Element
-    /// </summary>
-    private BTNode DeserializeNode(XElement element, BTContext context)
-    {
-        var nodeName = element.Name.LocalName;
-        
-        _logger.LogDebug("Deserialisiere Node: {NodeName}", nodeName);
-        
-        // Spezialbehandlung: Wenn Element "Root" heißt, überspringe es und nimm erstes Kind
-        if (nodeName == "Root")
-        {
-            _logger.LogDebug("Root Element gefunden, überspringe und nehme erstes Kind");
-            var firstChild = element.Elements().FirstOrDefault();
-            if (firstChild == null)
-            {
-                throw new InvalidOperationException("Root Element muss mindestens ein Kind-Element haben");
-            }
-            return DeserializeNode(firstChild, context);
-        }
-        
-        // Erstelle Node-Instanz
-        var node = _registry.CreateNode(nodeName);
-        node.Initialize(context, _logger);
-        
-        // Setze Name aus Attribut (falls vorhanden)
-        var nameAttr = element.Attribute("name")?.Value;
-        if (!string.IsNullOrEmpty(nameAttr))
-        {
-            node.Name = nameAttr;
-        }
-        
-        // Setze Properties aus XML Attributen
-        SetPropertiesFromAttributes(node, element);
-        
-        // Handle Composite Nodes (mit Children)
-        if (node is SequenceNode sequence)
-        {
-            sequence.Children = DeserializeChildren(element, context);
-        }
-        else if (node is SelectorNode selector)
-        {
-            selector.Children = DeserializeChildren(element, context);
-        }
-        else if (node is ParallelNode parallel)
-        {
-            parallel.Children = DeserializeChildren(element, context);
-        }
-        // Handle Decorator Nodes (mit einem Child)
-        else if (node is RetryNode retry)
-        {
-            retry.Child = DeserializeSingleChild(element, context);
-        }
-        else if (node is RetryUntilSuccessNode retryUntilSuccess)
-        {
-            retryUntilSuccess.Child = DeserializeSingleChild(element, context);
-        }
-        else if (node is TimeoutNode timeout)
-        {
-            timeout.Child = DeserializeSingleChild(element, context);
-        }
-        else if (node is RepeatNode repeat)
-        {
-            repeat.Child = DeserializeSingleChild(element, context);
-        }
-        else if (node is InverterNode inverter)
-        {
-            inverter.Child = DeserializeSingleChild(element, context);
-        }
-        else if (node is SucceederNode succeeder)
-        {
-            succeeder.Child = DeserializeSingleChild(element, context);
-        }
-        else if (node is ConditionNode condition)
-        {
-            condition.Child = DeserializeSingleChild(element, context);
-        }
-        
-        return node;
     }
     
     /// <summary>
@@ -176,8 +138,7 @@ public class XmlTreeDeserializer
             
             if (prop != null && prop.CanWrite)
             {
-                try
-                {
+                try {
                     var value = InterpolateConfigValues(attr.Value, node.Context);
                     var convertedValue = ConvertValue(value, prop.PropertyType);
                     prop.SetValue(node, convertedValue);
@@ -269,5 +230,39 @@ public class XmlTreeDeserializer
         
         // Mehrere Teile: Jeden Teil mit Großbuchstaben beginnen
         return string.Join("", parts.Select(p => char.ToUpper(p[0]) + p.Substring(1)));
+    }
+    
+    /// <summary>
+    /// Deserialisiert einen einzelnen Node aus XML Element
+    /// </summary>
+    private BTNode DeserializeNode(XElement element, BTContext context)
+    {
+        var nodeTypeName = element.Name.LocalName;
+        var nodeName = element.Attribute("name")?.Value ?? nodeTypeName;
+        
+        _logger.LogDebug("Deserialisiere Node: {NodeType}", nodeTypeName);
+        
+        // Erstelle Node über Registry
+        var node = _registry.CreateNode(nodeTypeName);
+        
+        // Setze Name, Context und Logger
+        node.Name = nodeName;
+        node.Context = context;
+        node.SetLogger(_logger);
+        
+        // Setze Properties aus XML Attributen
+        SetPropertiesFromAttributes(node, element);
+        
+        // Behandle Kinder je nach Node-Typ
+        if (node is Core.CompositeNode compositeNode)
+        {
+            compositeNode.Children = DeserializeChildren(element, context);
+        }
+        else if (node is Core.DecoratorNode decoratorNode)
+        {
+            decoratorNode.Child = DeserializeSingleChild(element, context);
+        }
+        
+        return node;
     }
 }

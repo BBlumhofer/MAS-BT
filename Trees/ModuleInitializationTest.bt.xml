@@ -1,81 +1,38 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<BehaviorTree>
-  <Root name="ModuleInitialization">
+<root BTCPP_format="4" main_tree_to_execute="ModuleInitialization">
+  <BehaviorTree ID="ModuleInitialization">
     <Sequence name="InitializationSequence">
       
       <!-- ==================== SCHRITT 1: MQTT BROKER VERBINDUNG ==================== -->
       <RetryUntilSuccess name="MqttConnectRetry" numAttempts="-1" delayMs="5000">
         <Sequence name="MqttConnectSequence">
-          <SendLogMessage 
-            name="LogMqttAttempt"
-            LogLevel="INFO"
-            Message="Attempting MQTT connection..."
-            Topic="{AgentId}/logs" />
-          
           <ConnectToMessagingBroker 
             name="ConnectMqtt"
             BrokerHost="localhost"
             BrokerPort="1883"
             DefaultTopic="factory/agents/messages"
             TimeoutMs="10000" />
-          
-          <SendLogMessage 
-            name="LogMqttConnected"
-            LogLevel="INFO"
-            Message="MQTT Broker connected successfully"
-            Topic="{AgentId}/logs" />
         </Sequence>
       </RetryUntilSuccess>
       
       <!-- ==================== SCHRITT 2: CONFIG ALS MQTT LOG SENDEN ==================== -->
       <Sequence name="SendConfigSequence">
-        <SendLogMessage 
-          name="LogConfigStart"
-          LogLevel="INFO"
-          Message="Sending agent configuration..."
-          Topic="{AgentId}/logs" />
-        
         <SendConfigAsLog name="SendConfig" />
-        
-        <SendLogMessage 
-          name="LogConfigSent"
-          LogLevel="INFO"
-          Message="Agent configuration sent successfully"
-          Topic="{AgentId}/logs" />
       </Sequence>
       
       <!-- ==================== SCHRITT 3: OPC UA VERBINDUNG MIT RETRY ==================== -->
       <RetryUntilSuccess name="OpcUaConnectRetry" numAttempts="-1" delayMs="3000">
         <Sequence name="OpcUaConnectSequence">
-          <SendLogMessage 
-            name="LogOpcUaAttempt"
-            LogLevel="INFO"
-            Message="Attempting OPC UA connection..."
-            Topic="{AgentId}/logs" />
-          
           <ConnectToModule 
             name="ConnectOPC"
             Endpoint="{config.OPCUA.Endpoint}"
             TimeoutMs="30000" />
-          
-          <SendLogMessage 
-            name="LogOpcUaConnected"
-            LogLevel="INFO"
-            Message="OPC UA connected successfully"
-            Topic="{AgentId}/logs" />
         </Sequence>
       </RetryUntilSuccess>
       
       <!-- ==================== SCHRITT 4: MODUL LOCKEN MIT RETRY + ÜBERWACHUNG ==================== -->
       <RetryUntilSuccess name="LockRetry" numAttempts="-1" delayMs="2000">
         <Sequence name="LockAndVerifySequence">
-          <SendLogMessage 
-            name="LogLockAttempt"
-            LogLevel="INFO"
-            Message="Attempting to lock module..."
-            Topic="{AgentId}/logs" />
-          
-          <!-- Versuche zu locken -->
           <Fallback name="LockOrWait">
             <Sequence name="TryLockSequence">
               <LockResource 
@@ -84,35 +41,19 @@
                 ResourceId="{config.Agent.ModuleId}"
                 TimeoutSeconds="30" />
               
-              <!-- Warte kurz -->
               <Wait name="WaitAfterLock" DelayMs="500" />
               
-              <!-- Verifiziere Lock-Status -->
               <CheckLockStatus 
                 name="VerifyLock"
                 ModuleName="ScrewingStation" />
-              
-              <SendLogMessage 
-                name="LogLocked"
-                LogLevel="INFO"
-                Message="Module locked and verified successfully"
-                Topic="{AgentId}/logs" />
             </Sequence>
             
-            <!-- Wenn Lock fehlschlägt, sende Wartebenachrichtigung -->
             <Sequence name="LockFailedSequence">
-              <SendLogMessage 
-                name="LogWaitingForUnlock"
-                LogLevel="WARNING"
-                Message="Waiting for Module to be unlocked"
-                Topic="{AgentId}/logs" />
-              
-              <!-- Force Failure um Retry zu triggern -->
-              <Condition name="AlwaysFail">
-                <BlackboardCondition 
-                  Key="__never_exists__" 
-                  ExpectedValue="true" />
-              </Condition>
+              <!-- Always fail to trigger retry -->
+              <BlackboardCondition 
+                name="AlwaysFail"
+                Key="__never_exists__" 
+                ExpectedValue="true" />
             </Sequence>
           </Fallback>
         </Sequence>
@@ -120,28 +61,13 @@
       
       <!-- ==================== SCHRITT 5: STARTUP SKILL MIT LOCK-ÜBERWACHUNG ==================== -->
       <Sequence name="StartupWithLockMonitoring">
-        
-        <!-- Prüfe Lock vor Start -->
         <Sequence name="PreStartupLockCheck">
-          <SendLogMessage 
-            name="LogPreStartupCheck"
-            LogLevel="INFO"
-            Message="Verifying lock before starting skill..."
-            Topic="{AgentId}/logs" />
-          
           <CheckLockStatus 
             name="CheckLockBeforeStartup"
             ModuleName="ScrewingStation" />
         </Sequence>
         
-        <!-- Starte Skill -->
         <Sequence name="StartupSequence">
-          <SendLogMessage 
-            name="LogStartupBegin"
-            LogLevel="INFO"
-            Message="Starting module with StartupSkill..."
-            Topic="{AgentId}/logs" />
-          
           <ExecuteSkill 
             name="ExecuteStartup"
             ModuleName="ScrewingStation"
@@ -149,42 +75,56 @@
             WaitForCompletion="false"
             TimeoutSeconds="60"
             ResetBeforeIfHalted="true" />
-          
-          <SendLogMessage 
-            name="LogStartupComplete"
-            LogLevel="INFO"
-            Message="StartupSkill started successfully (Running)"
-            Topic="{AgentId}/logs" />
         </Sequence>
-        
       </Sequence>
       
       <!-- ==================== SCHRITT 6: STORAGE AUSLESEN ==================== -->
       <Sequence name="ReadStorageSequence">
-        <SendLogMessage 
-          name="LogStorageReadStart"
-          LogLevel="INFO"
-          Message="Reading storage component..."
-          Topic="{AgentId}/logs" />
-        
         <ReadStorage 
           name="ReadModuleStorage"
           ModuleName="ScrewingStation" />
-        
-        <SendLogMessage 
-          name="LogStorageReadComplete"
-          LogLevel="INFO"
-          Message="Storage component read successfully"
-          Topic="{AgentId}/logs" />
       </Sequence>
       
-      <!-- ==================== FINALE STATUS-NACHRICHT ==================== -->
-      <SendLogMessage 
-        name="LogInitComplete"
-        LogLevel="INFO"
-        Message="Module initialization completed successfully"
-        Topic="{AgentId}/logs" />
-      
     </Sequence>
-  </Root>
-</BehaviorTree>
+  </BehaviorTree>
+  
+  <!-- TreeNodesModel for Groot2 Editor -->
+  <TreeNodesModel>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost"/>
+      <input_port name="BrokerPort"/>
+      <input_port name="DefaultTopic"/>
+      <input_port name="TimeoutMs"/>
+    </Action>
+    <Action ID="SendConfigAsLog"/>
+    <Action ID="ConnectToModule">
+      <input_port name="Endpoint"/>
+      <input_port name="TimeoutMs"/>
+    </Action>
+    <Action ID="LockResource">
+      <input_port name="ModuleName"/>
+      <input_port name="ResourceId"/>
+      <input_port name="TimeoutSeconds"/>
+    </Action>
+    <Action ID="Wait">
+      <input_port name="DelayMs"/>
+    </Action>
+    <Condition ID="CheckLockStatus">
+      <input_port name="ModuleName"/>
+    </Condition>
+    <Action ID="ExecuteSkill">
+      <input_port name="ModuleName"/>
+      <input_port name="SkillName"/>
+      <input_port name="WaitForCompletion"/>
+      <input_port name="TimeoutSeconds"/>
+      <input_port name="ResetBeforeIfHalted"/>
+    </Action>
+    <Action ID="ReadStorage">
+      <input_port name="ModuleName"/>
+    </Action>
+    <Condition ID="BlackboardCondition">
+      <input_port name="Key"/>
+      <input_port name="ExpectedValue"/>
+    </Condition>
+  </TreeNodesModel>
+</root>

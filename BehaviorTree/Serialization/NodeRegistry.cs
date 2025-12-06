@@ -7,6 +7,7 @@ using MAS_BT.Nodes.Messaging;
 using MAS_BT.Nodes.Monitoring;
 using MAS_BT.Nodes.Skills;
 using MAS_BT.Nodes.Core;
+using MAS_BT.Nodes; // Neue Monitoring Nodes
 
 namespace MAS_BT.Serialization;
 
@@ -55,13 +56,33 @@ public class NodeRegistry
             throw new InvalidOperationException($"Unbekannter Node-Typ: {name}. Verfügbare Typen: {string.Join(", ", _nodeTypes.Keys)}");
         }
         
-        var node = Activator.CreateInstance(type) as BTNode;
-        if (node == null)
+        // Versuche Constructor mit ILogger Parameter
+        var ctorWithLogger = type.GetConstructor(new[] { typeof(ILogger) });
+        if (ctorWithLogger != null)
+        {
+            var node = ctorWithLogger.Invoke(new object[] { _logger }) as BTNode;
+            if (node == null)
+            {
+                throw new InvalidOperationException($"Fehler beim Erstellen von Node mit Logger: {name}");
+            }
+            return node;
+        }
+        
+        // Fallback: Parameter-loser Constructor
+        var node2 = Activator.CreateInstance(type) as BTNode;
+        if (node2 == null)
         {
             throw new InvalidOperationException($"Fehler beim Erstellen von Node: {name}");
         }
         
-        return node;
+        // Setze Logger via Property falls vorhanden
+        var loggerProp = type.GetProperty("Logger");
+        if (loggerProp != null && loggerProp.CanWrite)
+        {
+            loggerProp.SetValue(node2, _logger);
+        }
+        
+        return node2;
     }
     
     /// <summary>
@@ -124,9 +145,15 @@ public class NodeRegistry
         Register<SendConfigAsLogNode>();
         Register<WaitForMessageNode>();
         
-        // Monitoring Nodes
+        // Monitoring Nodes (bestehende)
         Register<ReadStorageNode>();
         Register<CheckStartupSkillStatusNode>();
+        
+        // Monitoring Nodes (Phase 1 - Core Monitoring)
+        Register<CheckReadyStateNode>();
+        Register<CheckErrorStateNode>();
+        Register<CheckLockedStateNode>();
+        Register<MonitoringSkillNode>();
         
         // Skill Nodes
         Register<ExecuteSkillNode>();

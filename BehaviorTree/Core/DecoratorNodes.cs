@@ -5,10 +5,8 @@ namespace MAS_BT.Core;
 /// <summary>
 /// Retry Node - Wiederholt Child bei Failure
 /// </summary>
-public class RetryNode : BTNode
+public class RetryNode : DecoratorNode
 {
-    public BTNode Child { get; set; } = null!;
-    
     /// <summary>
     /// Maximale Anzahl Versuche
     /// </summary>
@@ -67,25 +65,13 @@ public class RetryNode : BTNode
         Logger.LogWarning("Retry '{Name}' failed after {Max} attempts", Name, MaxRetries);
         return NodeStatus.Failure;
     }
-    
-    public override async Task OnAbort()
-    {
-        await Child.OnAbort();
-    }
-    
-    public override async Task OnReset()
-    {
-        await Child.OnReset();
-    }
 }
 
 /// <summary>
 /// Timeout Node - Begrenzt Ausführungszeit des Childs
 /// </summary>
-public class TimeoutNode : BTNode
+public class TimeoutNode : DecoratorNode
 {
-    public BTNode Child { get; set; } = null!;
-    
     /// <summary>
     /// Timeout in Millisekunden
     /// </summary>
@@ -130,25 +116,13 @@ public class TimeoutNode : BTNode
             return NodeStatus.Failure;
         }
     }
-    
-    public override async Task OnAbort()
-    {
-        await Child.OnAbort();
-    }
-    
-    public override async Task OnReset()
-    {
-        await Child.OnReset();
-    }
 }
 
 /// <summary>
 /// Repeat Node - Wiederholt Child N-mal oder unendlich
 /// </summary>
-public class RepeatNode : BTNode
+public class RepeatNode : DecoratorNode
 {
-    public BTNode Child { get; set; } = null!;
-    
     /// <summary>
     /// Anzahl Wiederholungen
     /// -1 = unendlich
@@ -209,13 +183,13 @@ public class RepeatNode : BTNode
     public override async Task OnAbort()
     {
         _currentIteration = 0;
-        await Child.OnAbort();
+        await base.OnAbort();
     }
     
     public override async Task OnReset()
     {
         _currentIteration = 0;
-        await Child.OnReset();
+        await base.OnReset();
     }
 }
 
@@ -223,10 +197,8 @@ public class RepeatNode : BTNode
 /// Inverter Node - Kehrt Ergebnis des Childs um
 /// Success → Failure, Failure → Success
 /// </summary>
-public class InverterNode : BTNode
+public class InverterNode : DecoratorNode
 {
-    public BTNode Child { get; set; } = null!;
-    
     public InverterNode() : base("Inverter")
     {
     }
@@ -251,25 +223,13 @@ public class InverterNode : BTNode
         
         return inverted;
     }
-    
-    public override async Task OnAbort()
-    {
-        await Child.OnAbort();
-    }
-    
-    public override async Task OnReset()
-    {
-        await Child.OnReset();
-    }
 }
 
 /// <summary>
 /// Succeeder Node - Gibt immer Success zurück (außer Running)
 /// </summary>
-public class SucceederNode : BTNode
+public class SucceederNode : DecoratorNode
 {
-    public BTNode Child { get; set; } = null!;
-    
     public SucceederNode() : base("Succeeder")
     {
     }
@@ -290,26 +250,14 @@ public class SucceederNode : BTNode
         Logger.LogDebug("Succeeder '{Name}' forcing success (was {Original})", Name, result);
         return NodeStatus.Success;
     }
-    
-    public override async Task OnAbort()
-    {
-        await Child.OnAbort();
-    }
-    
-    public override async Task OnReset()
-    {
-        await Child.OnReset();
-    }
 }
 
 /// <summary>
 /// RetryUntilSuccess Node - Wiederholt Child bis Success erreicht wird
 /// Verwendet für unendliche Retry-Loops (z.B. Verbindungsaufbau)
 /// </summary>
-public class RetryUntilSuccessNode : BTNode
+public class RetryUntilSuccessNode : DecoratorNode
 {
-    public BTNode Child { get; set; } = null!;
-    
     /// <summary>
     /// Maximale Anzahl Versuche (-1 = unendlich)
     /// </summary>
@@ -377,12 +325,12 @@ public class RetryUntilSuccessNode : BTNode
     public override async Task OnAbort()
     {
         _currentAttempt = 0;
-        await Child.OnAbort();
+        await base.OnAbort();
     }
     
     public override async Task OnReset()
     {
         _currentAttempt = 0;
-        await Child.OnReset();
+        await base.OnReset();
     }
 }

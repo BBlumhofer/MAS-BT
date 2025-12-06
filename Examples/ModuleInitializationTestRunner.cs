@@ -1,8 +1,11 @@
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using MAS_BT.Serialization;
+using MAS_BT.Services;
 using System.Text.Json;
 using UAClient.Client;
+using I40Sharp.Messaging;
+using I40Sharp.Messaging.Transport;
 
 namespace MAS_BT.Examples;
 
@@ -15,40 +18,73 @@ public class ModuleInitializationTestRunner
         Console.WriteLine("╚══════════════════════════════════════════════════════════════╝");
         Console.WriteLine();
         
-        using var loggerFactory = LoggerFactory.Create(builder =>
-        {
-            builder.AddConsole().SetMinimumLevel(LogLevel.Debug);
-        });
-        
-        var logger = loggerFactory.CreateLogger<ModuleInitializationTestRunner>();
-        
         // Lade Config
         var config = LoadConfig();
         var opcuaEndpoint = GetConfigValue(config, "OPCUA.Endpoint", "opc.tcp://192.168.178.30:4849");
         var opcuaUsername = GetConfigValue(config, "OPCUA.Username", "orchestrator");
         var opcuaPassword = GetConfigValue(config, "OPCUA.Password", "orchestrator");
         var moduleId = GetConfigValue(config, "Agent.ModuleId", "Module_Assembly_01");
+        var agentId = GetConfigValue(config, "Agent.AgentId", "TestAgent");
+        var agentRole = GetConfigValue(config, "Agent.Role", "ResourceHolon");
+        var mqttBroker = GetConfigValue(config, "MQTT.Broker", "localhost");
+        var mqttPort = GetConfigInt(config, "MQTT.Port", 1883);
         
         Console.WriteLine($"📋 Configuration:");
         Console.WriteLine($"   OPC UA Endpoint: {opcuaEndpoint}");
         Console.WriteLine($"   OPC UA Username: {opcuaUsername}");
         Console.WriteLine($"   Module ID: {moduleId}");
+        Console.WriteLine($"   Agent ID: {agentId}");
+        Console.WriteLine($"   MQTT Broker: {mqttBroker}:{mqttPort}");
         Console.WriteLine();
+        
+        // MQTT Client erstellen (optional - nur wenn MQTT verfügbar)
+        MessagingClient? messagingClient = null;
+        try
+        {
+            Console.WriteLine("🔌 Connecting to MQTT Broker...");
+            var mqttTransport = new MqttTransport(mqttBroker, mqttPort, agentId);
+            messagingClient = new MessagingClient(mqttTransport, $"{agentId}/logs");
+            await messagingClient.ConnectAsync();
+            Console.WriteLine("✓ MQTT Connected - Logs werden automatisch via MQTT gesendet");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️  MQTT Connection failed: {ex.Message}");
+            Console.WriteLine("   → Logs werden nur auf Console ausgegeben");
+        }
+        Console.WriteLine();
+        
+        // Logger mit MQTT-Integration erstellen
+        using var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Debug);
+            builder.AddProvider(new MqttLoggerProvider(messagingClient, agentId, agentRole));
+        });
+        
+        var logger = loggerFactory.CreateLogger<ModuleInitializationTestRunner>();
         
         var context = new BTContext(loggerFactory.CreateLogger<BTContext>())
         {
-            AgentId = "TestAgent",
-            AgentRole = "ResourceHolon"
+            AgentId = agentId,
+            AgentRole = agentRole
         };
         
         context.Set("config.OPCUA.Endpoint", opcuaEndpoint);
         context.Set("config.OPCUA.Username", opcuaUsername);
         context.Set("config.OPCUA.Password", opcuaPassword);
         context.Set("config.Agent.ModuleId", moduleId);
+        context.Set("AgentId", agentId);
+        
+        // MessagingClient im Context speichern (für SendLogMessage Nodes - falls noch vorhanden)
+        if (messagingClient != null)
+        {
+            context.Set("MessagingClient", messagingClient);
+        }
         
         Console.WriteLine("🔧 Setup:");
         Console.WriteLine("   ✓ BTContext erstellt");
         Console.WriteLine("   ✓ Config-Werte gesetzt (inkl. Username/Password)");
+        Console.WriteLine("   ✓ MqttLogger aktiviert - alle Logs ab INFO werden automatisch via MQTT gesendet");
         Console.WriteLine("   → ConnectToModule wird den UaClient mit Credentials erstellen");
         Console.WriteLine();
         
@@ -143,6 +179,20 @@ public class ModuleInitializationTestRunner
             Console.WriteLine(ex.StackTrace);
             Console.ResetColor();
         }
+        finally
+        {
+            // MQTT Cleanup
+            if (messagingClient != null)
+            {
+                try
+                {
+                    await messagingClient.DisconnectAsync();
+                    messagingClient.Dispose();
+                    Console.WriteLine("✓ MQTT Client disconnected");
+                }
+                catch { }
+            }
+        }
         
         Console.WriteLine();
         Console.WriteLine("👋 Test beendet");
@@ -215,6 +265,54 @@ public class ModuleInitializationTestRunner
         }
         
         return current?.ToString() ?? defaultValue;
+    }
+    
+    private static int GetConfigInt(Dictionary<string, object> config, string path, int defaultValue)
+    {
+        var parts = path.Split('.');
+        object? current = config;
+        
+        foreach (var part in parts)
+        {
+            if (current is Dictionary<string, object> dict && dict.TryGetValue(part, out var value))
+            {
+                current = value;
+            }
+            else if (current is JsonElement element && element.ValueKind == JsonValueKind.Object)
+            {
+                if (element.TryGetProperty(part, out var prop))
+                {
+                    current = prop;
+                }
+                else
+                {
+                    return defaultValue;
+                }
+            }
+            else
+            {
+                return defaultValue;
+            }
+        }
+        
+        if (current is JsonElement jsonElem)
+        {
+            if (jsonElem.ValueKind == JsonValueKind.Number)
+            {
+                return jsonElem.GetInt32();
+            }
+            else if (jsonElem.ValueKind == JsonValueKind.String)
+            {
+                return int.TryParse(jsonElem.GetString(), out var intValue) ? intValue : defaultValue;
+            }
+        }
+        
+        if (current is int intVal)
+        {
+            return intVal;
+        }
+        
+        return int.TryParse(current?.ToString() ?? "", out var parsed) ? parsed : defaultValue;
     }
     
     private static void PrintContextState(BTContext context)
