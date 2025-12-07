@@ -15,7 +15,7 @@ BROKER_PORT = 1883
 TOPIC = "/Modules/CA-Module/SkillRequest/"
 
 # I4.0 Message with Action
-def create_skill_request(action_title="Store"):
+def create_skill_request(action_title="Retrieve"):
     """Erstellt eine I4.0 Message mit Action für SkillRequest"""
     
     conversation_id = f"conv_{int(time.time())}"
@@ -75,7 +75,13 @@ def create_skill_request(action_title="Store"):
                                 "idShort": "ProductId",
                                 "modelType": "Property",
                                 "valueType": "xs:string",
-                                "value": "HelloWorld"
+                                "value": "https://smartfactory.de/shells/test_product"
+                            },
+                            {
+                                "idShort": "RetrieveByProductID",
+                                "modelType": "Property",
+                                "valueType": "xs:boolean",
+                                "value": "true"
                             }
                         ]
                     },
@@ -167,9 +173,7 @@ def main():
     # Erstelle und sende SkillRequest
     print(f"\n📤 Sende SkillRequest auf Topic: {TOPIC}")
     
-    skill_request = create_skill_request(
-        action_title="Store"
-    )
+    skill_request = create_skill_request()
     
     payload = json.dumps(skill_request, indent=2)
     print(f"\n📋 Payload:\n{payload}\n")

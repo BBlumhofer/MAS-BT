@@ -29,6 +29,9 @@
             TimeoutMs="30000" />
         </Sequence>
       </RetryUntilSuccess>
+
+      <!-- Storage MQTT OnChange aktivieren -->
+      <EnableStorageChangeMqtt name="EnableStorageOnChange" />
       
       <!-- ==================== SCHRITT 4: MODUL LOCKEN MIT RETRY + ÜBERWACHUNG ==================== -->
       <RetryUntilSuccess name="LockRetry" numAttempts="-1" delayMs="2000">
@@ -122,6 +125,7 @@
     <Action ID="ReadStorage">
       <input_port name="ModuleName"/>
     </Action>
+    <Action ID="EnableStorageChangeMqtt"/>
     <Condition ID="BlackboardCondition">
       <input_port name="Key"/>
       <input_port name="ExpectedValue"/>

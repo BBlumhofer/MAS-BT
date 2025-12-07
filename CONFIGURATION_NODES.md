@@ -92,6 +92,12 @@ var result = await node.Execute();
 
 *Hinweis: OPC UA Integration noch nicht implementiert (Placeholder)*
 
+**Aktualisierung (2025-12-07):**
+- `ConnectToModuleNode` registriert beim `RemoteServer` nun automatisch einen `RemoteServerMqttNotifier`-Subscriber.
+    - Bei Verbindungsverlust zum OPC UA Server wird eine Fehler-Log-Nachricht via MQTT (`{AgentId}/logs`) publiziert.
+    - Beim Wiederverbinden wird eine Info-Nachricht publiziert.
+    - Der Notifier nutzt den vorhandenen `MessagingClient` aus dem BT-Context; falls kein Messaging-Client vorhanden ist, bleibt die Notifier-Registrierung ohne Wirkung.
+
 ### 8. CoupleModuleNode ⭐
 
 **Zweck:** Registriert Nachbarmodul zur Laufzeit und sendet Coupling-Nachricht über MQTT.
@@ -135,6 +141,15 @@ await messagingClient.PublishAsync(message, "factory/system/coupling");
 **Besonderheiten:**
 - Nutzt die port-spezifischen `RemotePort.CoupleAsync`-Methoden aus dem SkillSharp-Client.
 - Bricht mit `Failure` ab, falls mindestens ein Couple-Skill nicht auf `Running` gebracht werden konnte.
+
+**Aktualisierung (2025-12-07):**
+- `EnsurePortsCoupledNode` setzt jetzt sowohl `portsCoupled` als auch `coupled` im BT-Context (via `UpdateCouplingFlags`) um historische Kontext-Inkonsistenzen zu vermeiden.
+- Die Node wurde in den `NodeRegistry` aufgenommen und wird in Beispiel-Trees vor dem Start des `StartupSkill` verwendet (häufig in einem `RetryUntilSuccess`-Wrapper), damit Kopplung zuverlässig vor Skill-Ausführung sichergestellt ist.
+- Verhalten bei Startfehlern eines `CoupleSkill`: Die Implementierung versucht `Reset` + `Start` zur Fehlerbehebung; wenn das fehlschlägt, wird das Ergebnis geloggt und die Node liefert `Failure`.
+- Empfehlung: Wenn ein Modul Ports mit `CoupleSkill` anbietet, vor dem Veröffentlichen von SkillRequests sicherstellen, dass `portsCoupled == true` (z.B. Tree-Pattern: RetryUntilSuccess → EnsurePortsCoupled → Start StartupSkill).
+
+**Diagnostics:**
+- Nutze `Tools/RemoteInspector` um aktuelle Port-Informationen zu prüfen (Coupled-Status, PartnerTag, CoupleSkill-Vorhanden). Beispielausgabe zeigt z.B. `Port_1: Coupled=False, CoupleSkill=yes, Active=True`.
 
 ## 🏗️ Architektur
 

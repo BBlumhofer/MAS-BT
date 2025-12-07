@@ -23,6 +23,9 @@
           Endpoint="{config.OPCUA.Endpoint}"
           TimeoutMs="30000" />
       </RetryUntilSuccess>
+
+      <!-- Storage MQTT OnChange aktivieren -->
+      <EnableStorageChangeMqtt name="EnableStorageOnChange" />
       
       <!-- ==================== SCHRITT 4: INITIAL LOCK + STARTUP ==================== -->
       <Sequence name="InitialLockAndStartup">
@@ -166,5 +169,6 @@
     <Action ID="ReadStorage">
       <input_port name="ModuleName"/>
     </Action>
+    <Action ID="EnableStorageChangeMqtt"/>
   </TreeNodesModel>
 </root>

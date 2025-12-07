@@ -145,7 +145,7 @@ public class ReadMqttSkillRequestNode : BTNode
                 Context.Set("RequestSender", senderId);
                 
                 // Extrahiere InputParameters
-                var inputParams = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                var inputParams = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
                 foreach (var prop in actionValue.EnumerateArray())
                 {
                     if (prop.TryGetProperty("idShort", out var propIdShort) && 
@@ -155,10 +155,20 @@ public class ReadMqttSkillRequestNode : BTNode
                         {
                             foreach (var param in paramsArray.EnumerateArray())
                             {
-                                if (param.TryGetProperty("idShort", out var paramName) &&
-                                    param.TryGetProperty("value", out var paramValue))
+                                if (param.TryGetProperty("idShort", out var paramName))
                                 {
-                                    inputParams[paramName.GetString() ?? ""] = paramValue.GetString() ?? "";
+                                    // Hole valueType falls vorhanden (z.B. "xs:boolean", "xs:integer")
+                                    string? valueType = null;
+                                    if (param.TryGetProperty("valueType", out var valueTypeElement))
+                                    {
+                                        valueType = valueTypeElement.GetString();
+                                    }
+                                    
+                                    if (param.TryGetProperty("value", out var paramValue))
+                                    {
+                                        var typedValue = ExtractTypedValue(paramValue, valueType);
+                                        inputParams[paramName.GetString() ?? ""] = typedValue;
+                                    }
                                 }
                             }
                         }
@@ -202,16 +212,114 @@ public class ReadMqttSkillRequestNode : BTNode
         }
         return "";
     }
+    
+    /// <summary>
+    /// Extrahiert einen typisierten Wert aus einem JsonElement basierend auf seinem ValueKind und optionalem XSD ValueType
+    /// </summary>
+    private object ExtractTypedValue(JsonElement element, string? xsdValueType = null)
+    {
+        // Wenn ein XSD ValueType angegeben ist, nutze diesen für die Konvertierung
+        if (!string.IsNullOrEmpty(xsdValueType))
+        {
+            var valueStr = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
+            if (string.IsNullOrEmpty(valueStr)) return "";
+            
+            // Normalisiere XSD Type (entferne "xs:" Prefix falls vorhanden)
+            var normalizedType = xsdValueType.ToLowerInvariant();
+            if (normalizedType.StartsWith("xs:")) normalizedType = normalizedType.Substring(3);
+            
+            switch (normalizedType)
+            {
+                case "boolean":
+                case "bool":
+                    if (bool.TryParse(valueStr, out var boolValue))
+                        return boolValue;
+                    // Fallback für "1"/"0"
+                    if (valueStr == "1") return true;
+                    if (valueStr == "0") return false;
+                    Logger.LogWarning("ReadMqttSkillRequest: Could not parse boolean value '{Value}', defaulting to false", valueStr);
+                    return false;
+                    
+                case "integer":
+                case "int":
+                    if (int.TryParse(valueStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var intValue))
+                        return intValue;
+                    Logger.LogWarning("ReadMqttSkillRequest: Could not parse integer value '{Value}', defaulting to 0", valueStr);
+                    return 0;
+                    
+                case "long":
+                    if (long.TryParse(valueStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var longValue))
+                        return longValue;
+                    Logger.LogWarning("ReadMqttSkillRequest: Could not parse long value '{Value}', defaulting to 0", valueStr);
+                    return 0L;
+                    
+                case "double":
+                    if (double.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var doubleValue))
+                        return doubleValue;
+                    Logger.LogWarning("ReadMqttSkillRequest: Could not parse double value '{Value}', defaulting to 0.0", valueStr);
+                    return 0.0;
+                    
+                case "float":
+                    if (float.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var floatValue))
+                        return floatValue;
+                    Logger.LogWarning("ReadMqttSkillRequest: Could not parse float value '{Value}', defaulting to 0.0", valueStr);
+                    return 0.0f;
+                    
+                case "string":
+                default:
+                    return valueStr;
+            }
+        }
+        
+        // Fallback: Versuche JSON ValueKind zu nutzen
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                var str = element.GetString() ?? "";
+                // Auto-detect: versuche String als Boolean zu parsen
+                if (bool.TryParse(str, out var autoBool))
+                    return autoBool;
+                // Auto-detect: versuche String als Number zu parsen
+                if (int.TryParse(str, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var autoInt))
+                    return autoInt;
+                if (double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var autoDouble))
+                    return autoDouble;
+                return str;
+                
+            case JsonValueKind.Number:
+                // Versuche zuerst Int32, dann Int64, dann Double
+                if (element.TryGetInt32(out var intValue))
+                    return intValue;
+                if (element.TryGetInt64(out var longValue))
+                    return longValue;
+                if (element.TryGetDouble(out var doubleValue))
+                    return doubleValue;
+                return element.GetRawText();
+                
+            case JsonValueKind.True:
+                return true;
+                
+            case JsonValueKind.False:
+                return false;
+                
+            case JsonValueKind.Null:
+                return "";
+                
+            default:
+                // Für Arrays, Objects, etc. - gebe String-Repräsentation zurück
+                return element.GetRawText();
+        }
+    }
 
     private static AasSharpClient.Models.Action BuildAasAction(
         string actionId,
         string actionTitle,
         string status,
         string machineName,
-        IDictionary<string, string> inputParameters)
+        IDictionary<string, object> inputParameters)
     {
         var mappedStatus = MapActionStatus(status);
-        var inputModel = new InputParameters(inputParameters);
+        var inputModel = InputParameters.FromTypedValues(inputParameters);
         var finalResult = new FinalResultData();
         return new AasSharpClient.Models.Action(actionId, actionTitle, mappedStatus, inputModel, finalResult, null, machineName);
     }

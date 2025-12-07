@@ -155,6 +155,7 @@ public class NodeRegistry
         Register<SendSkillResponseNode>();
         Register<UpdateInventoryFromActionNode>();
         Register<SendStateMessageNode>();
+        Register<EnableStorageChangeMqttNode>();
         
         // Monitoring Nodes (bestehende)
         Register<ReadStorageNode>();

@@ -65,6 +65,43 @@ public class SendSkillResponseNode : BTNode
             
             // Setze Action Status (die Action-Klasse übernimmt die Serialisierung!)
             action.SetStatus(mappedState);
+
+            // Ergänze FinalResultData falls vorhanden im Context (gesetzt von ExecuteSkill)
+            try
+            {
+                // Versuche Skill-Namen aus Context (ExecuteSkill setzt 'lastExecutedSkill')
+                var lastSkill = Context.Get<string>("lastExecutedSkill") ?? string.Empty;
+                if (string.IsNullOrEmpty(lastSkill))
+                {
+                    // Fallback: versuche Action.ActionTitle als Skill-Name
+                    try { lastSkill = action.GetActionTitle(); } catch { lastSkill = string.Empty; }
+                }
+
+                if (!string.IsNullOrEmpty(lastSkill))
+                {
+                    var finalKey = $"Skill_{lastSkill}_FinalResultData";
+                    var finalData = Context.Get<IDictionary<string, object?>>(finalKey);
+                    if (finalData != null && finalData.Count > 0)
+                    {
+                        foreach (var kv in finalData)
+                        {
+                            try
+                            {
+                                action.SetFinalResultValue(kv.Key, kv.Value);
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.LogWarning(ex, "SendSkillResponse: Could not set FinalResultData key {Key} on Action", kv.Key);
+                            }
+                        }
+                        Logger.LogInformation("SendSkillResponse: Included FinalResultData keys={Count} from context ({Source})", finalData.Count, finalKey);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "SendSkillResponse: Error while attaching FinalResultData to Action (continuing)");
+            }
             
             // Erstelle I4.0 Message mit Action
             var messageBuilder = new I40MessageBuilder()

@@ -20,6 +20,9 @@
           Endpoint="{config.OPCUA.Endpoint}"
           TimeoutMs="30000" />
       </RetryUntilSuccess>
+
+      <!-- Storage MQTT OnChange aktivieren -->
+      <EnableStorageChangeMqtt name="EnableStorageOnChange" />
       
       <!-- ==================== SCHRITT 3: MODUL LOCKEN ==================== -->
       <Sequence name="LockSequence">
@@ -333,6 +336,7 @@
       <input_port name="ModuleName"/>
       <input_port name="State"/>
     </Action>
+    <Action ID="EnableStorageChangeMqtt"/>
     <Condition ID="CheckModuleState">
       <input_port name="ModuleName"/>
       <input_port name="ExpectedState"/>

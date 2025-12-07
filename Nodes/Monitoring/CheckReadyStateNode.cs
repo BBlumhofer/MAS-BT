@@ -43,12 +43,33 @@ public class CheckReadyStateNode : BTNode
             bool isLocked = module.IsLockedByUs;
             
             // Prüfe auf Fehler (Skills in Halted State)
+            // Use live read via GetStateAsync() because cached CurrentState may be uninitialized (defaults to Halted)
             bool hasError = false;
             foreach (var skill in module.SkillSet.Values)
             {
-                if (skill.CurrentState == UAClient.Common.SkillStates.Halted)
+                try
                 {
-                    Logger.LogWarning("CheckReadyState: Skill {SkillName} is in Halted state", skill.Name);
+                    var st = await skill.GetStateAsync();
+                    if (st == null)
+                    {
+                        // Unknown state: fall back to cached value but log for diagnostics
+                        Logger.LogDebug("CheckReadyState: Skill {SkillName} state unknown (no CurrentState node found), cached={Cached}", skill.Name, skill.CurrentState);
+                    }
+                    else
+                    {
+                        // Log numeric state for diagnostics and map to enum when possible
+                        Logger.LogDebug("CheckReadyState: Skill {SkillName} numeric state={State}", skill.Name, st);
+                        if (st == (int)UAClient.Common.SkillStates.Halted)
+                        {
+                            Logger.LogWarning("CheckReadyState: Skill {SkillName} is in Halted state", skill.Name);
+                            hasError = true;
+                            break;
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "CheckReadyState: Failed to read state for skill {SkillName}, treating as error", skill.Name);
                     hasError = true;
                     break;
                 }

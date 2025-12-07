@@ -1,5 +1,6 @@
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
+using MAS_BT.Services;
 using UAClient.Client;
 using UAClient.Common;
 
@@ -81,6 +82,29 @@ public class ConnectToModuleNode : BTNode
             var timeoutSeconds = TimeoutMs / 1000.0;
             await server.ConnectAsync(timeoutSeconds);
 
+            // 3b. Warte kurz auf eine stabile Session (Schutz gegen sofortige Disconnects beim Server)
+            try
+            {
+                var maxWait = TimeSpan.FromMilliseconds(TimeoutMs);
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                while (sw.Elapsed < maxWait)
+                {
+                    if (client.Session != null && client.Session.Connected)
+                    {
+                        // give a small settle time
+                        await Task.Delay(250);
+                        if (client.Session != null && client.Session.Connected) break;
+                    }
+                    await Task.Delay(100);
+                }
+
+                if (client.Session == null || !client.Session.Connected)
+                {
+                    Logger.LogWarning("ConnectToModule: Session did not stabilise after ConnectAsync; continuing but some operations may fail and will be retried by auto-reconnect.");
+                }
+            }
+            catch { }
+
             // 4. Speichere im Context für andere Nodes (WICHTIG: Nur EINE Instanz!)
             Context.Set("UaClient", client);
             Context.Set("RemoteServer", server);
@@ -99,6 +123,17 @@ public class ConnectToModuleNode : BTNode
                 {
                     Logger.LogWarning(ex, "  ✗ Failed to enable auto-recovery for module '{ModuleName}'", module.Name);
                 }
+            }
+            // 5b. Register RemoteServer MQTT notifier so connection loss/established events are published
+            try
+            {
+                var notifier = new MAS_BT.Services.RemoteServerMqttNotifier(Context);
+                server.AddSubscriber(notifier);
+                Logger.LogInformation("ConnectToModule: Registered RemoteServer MQTT notifier");
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "ConnectToModule: Failed to register RemoteServer MQTT notifier");
             }
             
             Set("connected", true);
