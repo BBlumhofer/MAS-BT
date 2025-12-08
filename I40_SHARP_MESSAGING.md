@@ -1594,7 +1594,7 @@ logger.LogError("Skill execution failed: {Error}", ex.Message);
 
 ## Zusammenfassung
 
-Der **I4.0 Sharp Messaging Client** ist die zentrale Komponente für die standardisierte, AAS-konforme Kommunikation in MAS-BT. Durch die Integration mit MQTT und die Verwendung von typisierenden Nachrichtenformaten ermöglicht er:
+Der **I4.0 Sharp Messaging Client** ist die zentrale Komponente für die standardisierte, AAS-konforme Kommunikation in MAS-BT. Durch die Integration mit MQTT und die Verwendung von typisierten Nachrichtenformaten ermöglicht er:
 
 - **Verteilte Holonische Kommunikation**: Planning ↔ Execution ↔ Resource ↔ Transport Agents
 - **Standardisierte Semantik**: VDI/VDE 2193-2 konforme Nachrichtenformate
@@ -1604,7 +1604,3 @@ Der **I4.0 Sharp Messaging Client** ist die zentrale Komponente für die standar
 - **Production-Ready**: Connection-Pooling, Retry-Logic, Distributed Logging
 
 Die vollständige Integration in Behavior Trees macht I4.0 Messaging zu einem natürlichen, deklarativen Teil der Agentenlogik und ermöglicht testbare, wartbare und skalierbare Multi-Agenten-Systeme für flexible Produktion.
-
----
-
-*Letzte Aktualisierung: 2024-12-08*
