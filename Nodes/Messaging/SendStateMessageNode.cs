@@ -3,7 +3,7 @@ using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
-using BaSyx.Models.AdminShell;
+using AasSharpClient.Models.Messages;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -38,35 +38,30 @@ public class SendStateMessageNode : BTNode
         
         try
         {
-            var stateCollection = new SubmodelElementCollection("ModuleState");
-            
-            if (IncludeModuleLocked)
-            {
-                var isLocked = Context.Get<bool>($"module_{ModuleId}_locked");
-                var prop = new Property<bool>("ModuleLocked");
-                prop.Value = new PropertyValue<bool>(isLocked);
-                stateCollection.Add(prop);
-            }
-            
-            if (IncludeModuleReady)
-            {
-                var isReady = Context.Get<bool>($"module_{ModuleId}_ready");
-                var prop = new Property<bool>("ModuleReady");
-                prop.Value = new PropertyValue<bool>(isReady);
-                stateCollection.Add(prop);
-            }
-            
-            // Füge weitere State-Informationen hinzu
+            bool? isLocked = IncludeModuleLocked ? Context.Get<bool>($"module_{ModuleId}_locked") : null;
+            bool? isReady = IncludeModuleReady ? Context.Get<bool>($"module_{ModuleId}_ready") : null;
             var hasError = Context.Get<bool>($"module_{ModuleId}_has_error");
-            var errorProp = new Property<bool>("HasError");
-            errorProp.Value = new PropertyValue<bool>(hasError);
-            stateCollection.Add(errorProp);
+            var moduleState = Context.Get<string>($"ModuleState_{ModuleId}")
+                ?? Context.Get<string>("ModuleState")
+                ?? (hasError ? "Error" : "Unknown");
+            if (string.IsNullOrWhiteSpace(moduleState))
+            {
+                moduleState = hasError ? "Error" : "Unknown";
+            }
+            var startupSkillRunning = Context.Get<bool>("startupSkillRunning");
+
+            var stateMessage = new StateMessage(
+                isLocked,
+                isReady,
+                moduleState,
+                hasError,
+                startupSkillRunning);
             
             var message = new I40MessageBuilder()
                 .From($"{ModuleId}_Execution_Agent", "ExecutionAgent")
                 .To("Broadcast", "System")
                 .WithType("inform")
-                .AddElement(stateCollection)
+                .AddElement(stateMessage)
                 .Build();
             
             var topic = $"/Modules/{ModuleId}/State/";

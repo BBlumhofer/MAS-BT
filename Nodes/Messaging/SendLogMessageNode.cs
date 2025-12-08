@@ -1,9 +1,10 @@
+using System;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
-using BaSyx.Models.AdminShell;
+using AasSharpClient.Models.Messages;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -42,28 +43,17 @@ public class SendLogMessageNode : BTNode
                 moduleId = Context.Get<string>("ModuleId") ?? "UnknownModule";
             }
 
-            // Erstelle Properties mit korrekten Values
-            var logLevelProp = new Property<string>("LogLevel");
-            logLevelProp.Value = new PropertyValue<string>(LogLevel);
-            
-            var messageProp = new Property<string>("Message");
-            messageProp.Value = new PropertyValue<string>(Message);
-            
-            var timestampProp = new Property<string>("Timestamp");
-            timestampProp.Value = new PropertyValue<string>(DateTime.UtcNow.ToString("o"));
-            
-            var moduleProp = new Property<string>("ModuleId");
-            moduleProp.Value = new PropertyValue<string>(moduleId);
+            var agentRole = string.IsNullOrWhiteSpace(Context.AgentRole) ? "ExecutionAgent" : Context.AgentRole;
+            var agentState = Context.Get<string>($"ModuleState_{moduleId}") ?? string.Empty;
+            var parsedLogLevel = ParseLogLevel(LogLevel);
 
-            // Erstelle I4.0 Message mit Log-Informationen
+            var logElement = new LogMessage(parsedLogLevel, Message, agentRole, agentState, moduleId);
+
             var logMessage = new I40MessageBuilder()
                 .From($"{moduleId}_Execution_Agent", "ExecutionAgent")
                 .To("Broadcast", "System")
                 .WithType(I40MessageTypes.INFORM)
-                .AddElement(logLevelProp)
-                .AddElement(messageProp)
-                .AddElement(timestampProp)
-                .AddElement(moduleProp)
+                .AddElement(logElement)
                 .Build();
 
             // Sende über angegebenes Topic oder Default-Topic
@@ -81,24 +71,23 @@ public class SendLogMessageNode : BTNode
         }
     }
     
-    private static ISubmodelElement CreateProperty(string idShort, string value)
+    private static LogMessage.LogLevel ParseLogLevel(string? level)
     {
-        var prop = new Property<string>(idShort);
-        prop.Value = new PropertyValue<string>(value);
-        return prop;
-    }
-    
-    private static string GetLogLevelName(Microsoft.Extensions.Logging.LogLevel logLevel)
-    {
-        return logLevel switch
+        if (string.IsNullOrWhiteSpace(level))
         {
-            Microsoft.Extensions.Logging.LogLevel.Trace => "TRACE",
-            Microsoft.Extensions.Logging.LogLevel.Debug => "DEBUG",
-            Microsoft.Extensions.Logging.LogLevel.Information => "INFO",
-            Microsoft.Extensions.Logging.LogLevel.Warning => "WARNING",
-            Microsoft.Extensions.Logging.LogLevel.Error => "ERROR",
-            Microsoft.Extensions.Logging.LogLevel.Critical => "CRITICAL",
-            _ => "NONE"
+            return LogMessage.LogLevel.Info;
+        }
+
+        if (Enum.TryParse<LogMessage.LogLevel>(level, true, out var parsed))
+        {
+            return parsed;
+        }
+
+        return level.Trim().ToUpperInvariant() switch
+        {
+            "WARNING" => LogMessage.LogLevel.Warn,
+            "CRITICAL" => LogMessage.LogLevel.Fatal,
+            _ => LogMessage.LogLevel.Info
         };
     }
 }

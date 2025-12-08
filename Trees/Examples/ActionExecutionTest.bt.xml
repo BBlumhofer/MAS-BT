@@ -1,9 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <root BTCPP_format="4" main_tree_to_execute="ActionExecutionTest">
   <BehaviorTree ID="ActionExecutionTest">
-    <Sequence name="MainSequence">
-      
-      <!-- ==================== SCHRITT 1: MQTT BROKER VERBINDUNG ==================== -->
+    <Sequence name="ExecutionAgent">
+      <SubTree name="PreModuleInit" ID="PreModuleInit"/>
+      <SubTree name="ModuleInitialization" ID="ModuleInitialization"/>
+      <SubTree name="SkillExecution" ID="SkillExecution"/>
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- PreModuleInit: Verbindet MQTT und stellt Basis-Kommunikation sicher -->
+  <BehaviorTree ID="PreModuleInit">
+    <Sequence name="PreModuleInitSequence">
       <RetryUntilSuccess name="MqttConnectRetry" numAttempts="5" delayMs="2000">
         <ConnectToMessagingBroker 
           name="ConnectMqtt"
@@ -12,19 +19,21 @@
           DefaultTopic="factory/agents/messages"
           TimeoutMs="10000" />
       </RetryUntilSuccess>
-      
-      <!-- ==================== SCHRITT 2: OPC UA VERBINDUNG ==================== -->
-        <RetryUntilSuccess name="OpcUaConnectRetry" numAttempts="5" delayMs="3000">
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- ModuleInitialization: OPC UA, Locking, Startup -->
+  <BehaviorTree ID="ModuleInitialization">
+    <Sequence name="ModuleInitializationSequence">
+      <RetryUntilSuccess name="OpcUaConnectRetry" numAttempts="5" delayMs="3000">
         <ConnectToModule 
           name="ConnectOPC"
           Endpoint="{config.OPCUA.Endpoint}"
           TimeoutMs="30000" />
       </RetryUntilSuccess>
 
-      <!-- Storage MQTT OnChange aktivieren -->
       <EnableStorageChangeMqtt name="EnableStorageOnChange" />
-      
-      <!-- ==================== SCHRITT 3: MODUL LOCKEN ==================== -->
+
       <Sequence name="LockSequence">
         <LockResource 
           name="LockModule"
@@ -38,15 +47,13 @@
           ExpectLocked="true" />
       </Sequence>
 
-      <!-- ==================== SCHRITT 3b: PORTS COUPLEN ==================== -->
       <RetryUntilSuccess name="EnsureCoupledBeforeStartup" numAttempts="15" delayMs="2000">
         <EnsurePortsCoupled
           name="EnsurePortsCoupled"
           ModuleName="{config.Agent.ModuleId}"
           TimeoutSeconds="45" />
       </RetryUntilSuccess>
-      
-      <!-- ==================== SCHRITT 4: STARTUP SKILL ==================== -->
+
       <Sequence name="StartupSequence">
         <ExecuteSkill 
           name="ExecuteStartup"
@@ -56,7 +63,6 @@
           TimeoutSeconds="60"
           ResetBeforeIfHalted="true" />
         
-        <!-- Warte auf Running State (nicht Completed, da Continuous Skill) -->
         <WaitForSkillState
           name="WaitForStartupRunning"
           ModuleName="{config.Agent.ModuleId}"
@@ -66,7 +72,6 @@
           PollIntervalMs="500"
           SendErrorOnTimeout="true" />
         
-        <!-- Versuche Coupling auch wenn Startup bereits läuft -->
         <Fallback name="EnsureCoupledWhileRunning">
           <EnsurePortsCoupled
             name="EnsurePortsCoupledWhileRunning"
@@ -75,52 +80,43 @@
           <AlwaysSuccess name="SkipCoupleRetry" />
         </Fallback>
         
-        <!-- Send Log Message: Initialization Complete -->
         <SendLogMessage
           name="SendInitComplete"
           LogLevel="INFO"
           Message="Module initialization complete. Ready to accept skill requests."
           ModuleId="Module2"/>
       </Sequence>
-      
-      <!-- ==================== SCHRITT 5: ACTION EXECUTION LOOP ==================== -->
-      <!-- Repeat Loop: Wartet auf SkillRequests und führt sie aus -->
-      <Repeat name="SkillRequestLoop" numCycles="-1">
+    </Sequence>
+  </BehaviorTree>
+
+  <!-- SkillExecution: Wartet auf Requests und führt Actions aus -->
+  <BehaviorTree ID="SkillExecution">
+    <Sequence name="SkillExecutionSequence">
+      <Repeat name="SkillRequestLoop" num_cycles="-1">
         
-        <!-- Sequence: Kompletter Action-Processing-Workflow -->
         <Sequence name="ProcessOneAction">
-          
-          <!-- 1. Warte auf SkillRequest Message (blockiert bis Message da ist) -->
           <ReadMqttSkillRequest name="WaitForSkillRequest" 
                                 ModuleId="{config.Agent.ModuleId}" 
                                 TimeoutMs="100"/>
           
-          <!-- 2. Validate & Execute Action (mit Error Handling) -->
           <Fallback name="ActionExecution">
-            
-            <!-- Sequence: Happy Path (Consent → Execute → Completed) -->
             <Sequence name="ExecuteValidAction">
-              
-              <!-- 2a. Prüfe ob Modul bereits einen Skill ausführt -->
               <Fallback name="CheckModuleAvailability">
                 <CheckModuleState name="CheckNotExecuting"
                                  ModuleName="{MachineName}"
                                  ExpectedState="EXECUTING"
                                  InvertCheck="true"/>
                 
-                <!-- Modul ist busy → Send Refusal (VOR Start!) -->
-                <Sequence name="SendRefusalModuleBusy">
-                  <SendSkillResponse name="SendRefusal" 
-                                    ModuleId="{config.Agent.ModuleId}" 
-                                    ActionState="ERROR" 
-                                    FrameType="refusal"/>
-                  
-                  <!-- Force Failure um Hauptsequenz zu beenden -->
-                  <ForceFailure name="StopAfterRefusal"/>
-                </Sequence>
+                <ForceFailure name="StopAfterRefusalModuleBusy">
+                  <Sequence name="SendRefusalModuleBusy">
+                    <SendSkillResponse name="SendRefusal" 
+                                      ModuleId="{config.Agent.ModuleId}" 
+                                      ActionState="ERROR" 
+                                      FrameType="refusal"/>
+                  </Sequence>
+                </ForceFailure>
               </Fallback>
               
-              <!-- 2b. Validate Action (Preconditions) -->
               <Fallback name="ValidatePreconditions">
                 <Sequence name="CheckPreconditions">
                   <CheckReadyState name="CheckReady" 
@@ -132,36 +128,30 @@
                                   ExpectedHasError="false"/>
                 </Sequence>
                 
-                <!-- Preconditions failed → Send Refusal (VOR Start!) -->
-                <Sequence name="SendRefusalNotReady">
-                  <SendSkillResponse name="SendRefusal" 
-                                    ModuleId="{config.Agent.ModuleId}" 
-                                    ActionState="ERROR" 
-                                    FrameType="refusal"/>
-                  
-                  <!-- Force Failure um Hauptsequenz zu beenden -->
-                  <ForceFailure name="StopAfterRefusal"/>
-                </Sequence>
+                <ForceFailure name="StopAfterRefusalPreconditions">
+                  <Sequence name="SendRefusalNotReady">
+                    <SendSkillResponse name="SendRefusal" 
+                                      ModuleId="{config.Agent.ModuleId}" 
+                                      ActionState="ERROR" 
+                                      FrameType="refusal"/>
+                  </Sequence>
+                </ForceFailure>
               </Fallback>
               
-              <!-- 2c. Send Consent (NACH erfolgreicher Validierung) -->
               <SendSkillResponse name="SendConsent" 
                                 ModuleId="{config.Agent.ModuleId}" 
                                 ActionState="PLANNED" 
                                 FrameType="consent"/>
               
-              <!-- 2d. Setze Module State auf EXECUTING -->
               <SetModuleState name="SetExecuting"
                              ModuleName="{MachineName}"
                              State="EXECUTING"/>
               
-              <!-- 2e. Send Running State (inform) -->
               <SendSkillResponse name="SendRunning" 
                                 ModuleId="{config.Agent.ModuleId}" 
                                 ActionState="EXECUTING" 
                                 FrameType="inform"/>
               
-              <!-- 2f. Execute Skill (mit Failure Handling WÄHREND Ausführung) -->
               <Fallback name="ExecuteWithFailureHandling">
                 <Sequence name="ExecuteActionSkill">
                   <ExecuteSkill name="ExecuteMainSkill" 
@@ -172,65 +162,54 @@
                                ResetAfterCompletion="false"
                                TimeoutSeconds="60"/>
                   
-                  <!-- Monitor Final State (liest FinalResultData) -->
                   <MonitoringSkill name="MonitorFinalState" 
                                   ModuleName="{MachineName}" 
                                   SkillName="{ActionTitle}"/>
                   
-                  <!-- Reset Skill zurück zu Ready State -->
                   <ResetSkill name="ResetAfterCompletion"
                              ModuleName="{MachineName}"
                              SkillName="{ActionTitle}"
                              TimeoutSeconds="10"/>
                 </Sequence>
                 
-                <!-- Skill Execution Failed → Send Failure (NACH Start!) -->
-                <Sequence name="SendFailureAfterError">
-                  <SetModuleState name="SetError"
-                                 ModuleName="{MachineName}"
-                                 State="ERROR"/>
-                  
-                  <SendSkillResponse name="SendFailure" 
-                                    ModuleId="{config.Agent.ModuleId}" 
-                                    ActionState="ERROR" 
-                                    FrameType="failure"/>
-                  
-                  <!-- Force Failure um Hauptsequenz zu beenden -->
-                  <ForceFailure name="StopAfterFailure"/>
-                </Sequence>
+                <ForceFailure name="StopAfterFailure">
+                  <Sequence name="SendFailureAfterError">
+                    <SetModuleState name="SetError"
+                                   ModuleName="{MachineName}"
+                                   State="ERROR"/>
+                    
+                    <SendSkillResponse name="SendFailure" 
+                                      ModuleId="{config.Agent.ModuleId}" 
+                                      ActionState="ERROR" 
+                                      FrameType="failure"/>
+                  </Sequence>
+                </ForceFailure>
               </Fallback>
               
-              <!-- 2g. Update Inventory -->
               <UpdateInventoryFromAction name="UpdateInventory" 
                                          ModuleId="{config.Agent.ModuleId}" 
                                          PublishToMqtt="true"/>
               
-              <!-- 2h. Setze Module State auf DONE -->
               <SetModuleState name="SetDone"
                              ModuleName="{MachineName}"
                              State="DONE"/>
               
-              <!-- 2i. Send Completed State (inform) -->
               <SendSkillResponse name="SendCompleted" 
                                 ModuleId="{config.Agent.ModuleId}" 
                                 ActionState="DONE" 
                                 FrameType="inform"/>
               
-              <!-- 2j. Publish Module State -->
               <SendStateMessage name="PublishState" 
                                ModuleId="{config.Agent.ModuleId}" 
                                IncludeModuleLocked="true" 
                                IncludeModuleReady="true"/>
             </Sequence>
             
-            <!-- Fallback: Wenn die Hauptsequenz fehlschlägt (sollte nicht vorkommen) -->
             <Sequence name="FallbackCleanup">
-              <!-- Setze Module State zurück -->
               <SetModuleState name="ResetModuleState"
                              ModuleName="{MachineName}"
                              State="DONE"/>
               
-              <!-- Return Success um Repeat fortzusetzen -->
               <AlwaysSuccess name="ContinueLoop"/>
             </Sequence>
             
@@ -239,7 +218,6 @@
         </Sequence>
         
       </Repeat>
-      
     </Sequence>
   </BehaviorTree>
   
@@ -271,8 +249,10 @@
     <Action ID="ExecuteSkill">
       <input_port name="ModuleName"/>
       <input_port name="SkillName"/>
+      <input_port name="Parameters"/>
       <input_port name="WaitForCompletion"/>
       <input_port name="TimeoutSeconds"/>
+      <input_port name="ResetAfterCompletion" default="true"/>
       <input_port name="ResetBeforeIfHalted"/>
     </Action>
     <Action ID="WaitForSkillState">
@@ -342,10 +322,5 @@
       <input_port name="ExpectedState"/>
       <input_port name="InvertCheck" default="false"/>
     </Condition>
-    <Control ID="Parallel">
-      <input_port name="successThreshold" default="1"/>
-      <input_port name="failureThreshold" default="1"/>
-    </Control>
-    <Decorator ID="Succeeder"/>
   </TreeNodesModel>
 </root>

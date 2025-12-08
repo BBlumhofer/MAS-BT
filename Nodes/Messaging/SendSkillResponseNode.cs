@@ -1,10 +1,11 @@
+using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
-using BaSyx.Models.AdminShell;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Messages;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -72,89 +73,54 @@ public class SendSkillResponseNode : BTNode
                 messageBuilder.ReplyingTo(originalMessageId);
             }
             
-            // Füge Properties mit VALUES hinzu (korrekte BaSyx Syntax)
-            
-            // ActionState
-            var actionStateProp = new Property<string>("ActionState");
-            actionStateProp.Value = new PropertyValue<string>(mappedActionState);
-            messageBuilder.AddElement(actionStateProp);
-            
-            // ActionTitle
-            if (!string.IsNullOrEmpty(actionTitle))
-            {
-                var titleProp = new Property<string>("ActionTitle");
-                titleProp.Value = new PropertyValue<string>(actionTitle);
-                messageBuilder.AddElement(titleProp);
-            }
-            
-            // Status (für Legacy-Kompatibilität)
             var statusValue = mappedActionState.ToLowerInvariant();
-            var statusProp = new Property<string>("Status");
-            statusProp.Value = new PropertyValue<string>(statusValue);
-            messageBuilder.AddElement(statusProp);
-            
-            // MachineName
-            if (!string.IsNullOrEmpty(machineName))
-            {
-                var machineNameProp = new Property<string>("MachineName");
-                machineNameProp.Value = new PropertyValue<string>(machineName);
-                messageBuilder.AddElement(machineNameProp);
-            }
-            
-            // Step (bei refusal mitschicken)
-            if (!string.IsNullOrEmpty(step) && FrameType == I40MessageTypes.REFUSAL)
-            {
-                var stepProp = new Property<string>("Step");
-                stepProp.Value = new PropertyValue<string>(step);
-                messageBuilder.AddElement(stepProp);
-            }
-            
-            // InputParameters als SubmodelElementCollection
+
+            IDictionary<string, string>? inputParametersDict = null;
             if (inputParameters != null && inputParameters.Any())
             {
-                var inputParamsCollection = new SubmodelElementCollection("InputParameters");
-                foreach (var kvp in inputParameters)
-                {
-                    var prop = new Property<string>(kvp.Key);
-                    prop.Value = new PropertyValue<string>(kvp.Value);
-                    inputParamsCollection.Add(prop);
-                }
-                messageBuilder.AddElement(inputParamsCollection);
+                inputParametersDict = inputParameters;
             }
-            
-            // LogMessage (bei refusal oder failure)
+
+            var includeStep = FrameType == I40MessageTypes.REFUSAL ? step : null;
+            string? logMessage = null;
             if (FrameType == I40MessageTypes.REFUSAL || FrameType == I40MessageTypes.FAILURE)
             {
-                var logMessage = Context.Get<string>("LogMessage") ?? Context.Get<string>("ErrorMessage");
-                if (!string.IsNullOrEmpty(logMessage))
+                logMessage = Context.Get<string>("LogMessage") ?? Context.Get<string>("ErrorMessage");
+                if (!string.IsNullOrWhiteSpace(logMessage))
                 {
-                    var logProp = new Property<string>("LogMessage");
-                    logProp.Value = new PropertyValue<string>(logMessage);
-                    messageBuilder.AddElement(logProp);
                     Logger.LogInformation("SendSkillResponse: Including LogMessage: {LogMessage}", logMessage);
                 }
             }
-            
-            // FinalResultData (nur bei DONE State)
-            if (mappedActionState == "DONE")
+
+            IDictionary<string, object?>? finalResultData = null;
+            long? successfulExecutions = null;
+            if (mappedActionState == ActionStatusEnum.DONE.ToString() && !string.IsNullOrEmpty(actionTitle))
             {
-                var skillName = actionTitle; // ActionTitle = SkillName
-                var finalResultData = Context.Get<IDictionary<string, object>>($"Skill_{skillName}_FinalResultData");
-                
-                if (finalResultData != null && finalResultData.Any())
+                finalResultData = Context.Get<IDictionary<string, object?>>($"Skill_{actionTitle}_FinalResultData");
+                if (finalResultData is { Count: > 0 })
                 {
-                    var resultCollection = new SubmodelElementCollection("FinalResultData");
-                    foreach (var kvp in finalResultData)
-                    {
-                        var prop = new Property<string>(kvp.Key);
-                        prop.Value = new PropertyValue<string>(kvp.Value?.ToString() ?? "");
-                        resultCollection.Add(prop);
-                    }
-                    messageBuilder.AddElement(resultCollection);
-                    
                     Logger.LogInformation("SendSkillResponse: Including {Count} FinalResultData entries", finalResultData.Count);
                 }
+                else
+                {
+                    finalResultData = null;
+                }
+
+                successfulExecutions = Context.Get<long?>($"Skill_{actionTitle}_SuccessfulExecutionsCount");
             }
+
+            var skillResponse = new SkillResponseMessage(
+                mappedActionState,
+                statusValue,
+                actionTitle,
+                machineName,
+                includeStep,
+                inputParametersDict,
+                finalResultData,
+                logMessage,
+                successfulExecutions);
+
+            messageBuilder.AddElement(skillResponse);
             
             var message = messageBuilder.Build();
             

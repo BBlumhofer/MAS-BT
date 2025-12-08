@@ -118,8 +118,10 @@
     <Action ID="ExecuteSkill">
       <input_port name="ModuleName"/>
       <input_port name="SkillName"/>
+      <input_port name="Parameters"/>
       <input_port name="WaitForCompletion"/>
       <input_port name="TimeoutSeconds"/>
+      <input_port name="ResetAfterCompletion" default="true"/>
       <input_port name="ResetBeforeIfHalted"/>
     </Action>
     <Action ID="ReadStorage">

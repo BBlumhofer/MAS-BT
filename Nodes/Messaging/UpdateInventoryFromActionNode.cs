@@ -1,9 +1,11 @@
+using System.Collections.Generic;
+using System.Linq;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
-using BaSyx.Models.AdminShell;
+using AasSharpClient.Models.Messages;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -36,7 +38,7 @@ public class UpdateInventoryFromActionNode : BTNode
             return NodeStatus.Success; // Not an error, just skip
         }
         
-        var finalResultData = Context.Get<IDictionary<string, object>>($"Skill_{actionTitle}_FinalResultData");
+        var finalResultData = Context.Get<IDictionary<string, object?>>($"Skill_{actionTitle}_FinalResultData");
         if (finalResultData == null || !finalResultData.Any())
         {
             Logger.LogDebug("UpdateInventoryFromAction: No FinalResultData found for skill '{SkillName}'", actionTitle);
@@ -65,20 +67,15 @@ public class UpdateInventoryFromActionNode : BTNode
         }
     }
     
-    private async Task PublishInventoryMessage(IDictionary<string, object> inventory)
+    private async Task PublishInventoryMessage(IDictionary<string, object?> inventory)
     {
         var client = Context.Get<MessagingClient>("MessagingClient");
         if (client == null) return;
         
         try
         {
-            var inventoryCollection = new SubmodelElementCollection("Inventory");
-            foreach (var kvp in inventory)
-            {
-                var prop = new Property<string>(kvp.Key);
-                prop.Value = new PropertyValue<string>(kvp.Value?.ToString() ?? "");
-                inventoryCollection.Add(prop);
-            }
+            var normalized = inventory.ToDictionary(kvp => kvp.Key, kvp => (object?)kvp.Value);
+            var inventoryCollection = new InventorySnapshotMessage(normalized);
             
             var message = new I40MessageBuilder()
                 .From($"{ModuleId}_Execution_Agent", "ExecutionAgent")

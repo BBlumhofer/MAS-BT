@@ -78,7 +78,7 @@
         </Sequence>
         
         <!-- Continuous Health Monitor Branch -->
-        <Repeat name="ContinuousHealthMonitor" numCycles="-1">
+        <Repeat name="ContinuousHealthMonitor" num_cycles="-1">
           <Sequence name="HealthCheckCycle">
             
             <!-- Health Checks mit Recovery Fallback -->
@@ -161,10 +161,11 @@
     <Action ID="ExecuteSkill">
       <input_port name="ModuleName"/>
       <input_port name="SkillName"/>
+      <input_port name="Parameters"/>
       <input_port name="WaitForCompletion"/>
       <input_port name="TimeoutSeconds"/>
+      <input_port name="ResetAfterCompletion" default="true"/>
       <input_port name="ResetBeforeIfHalted"/>
-      <input_port name="Parameters"/>
     </Action>
     <Action ID="ReadStorage">
       <input_port name="ModuleName"/>

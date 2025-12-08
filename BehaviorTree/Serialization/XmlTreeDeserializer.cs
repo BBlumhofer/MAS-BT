@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+using System.Linq;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
@@ -11,6 +13,8 @@ public class XmlTreeDeserializer
 {
     private readonly NodeRegistry _registry;
     private readonly ILogger _logger;
+    private Dictionary<string, XElement> _behaviorTrees = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Stack<string> _subTreeStack = new();
     
     public XmlTreeDeserializer(NodeRegistry registry, ILogger logger)
     {
@@ -60,6 +64,8 @@ public class XmlTreeDeserializer
             _logger.LogWarning("main_tree_to_execute attribute is missing. Using the first available BehaviorTree.");
         }
         
+        _behaviorTrees = BuildBehaviorTreeIndex(root);
+
         _logger.LogInformation("Lade Tree (Groot2 V4): {TreeName}", mainTreeName);
         
         // Find BehaviorTree with matching ID
@@ -92,6 +98,8 @@ public class XmlTreeDeserializer
         }
         
         var rootNode = DeserializeNode(rootNodeElement, context);
+        _subTreeStack.Clear();
+        _behaviorTrees.Clear();
         
         _logger.LogInformation("✓ Behavior Tree '{TreeName}' erfolgreich geladen (Groot2 V4)", mainTreeName);
         return rootNode;
@@ -237,6 +245,11 @@ public class XmlTreeDeserializer
     /// </summary>
     private BTNode DeserializeNode(XElement element, BTContext context)
     {
+        if (element.Name.LocalName.Equals("SubTree", StringComparison.OrdinalIgnoreCase))
+        {
+            return ExpandSubTree(element, context);
+        }
+        
         var nodeTypeName = element.Name.LocalName;
         var nodeName = element.Attribute("name")?.Value ?? nodeTypeName;
         
@@ -264,5 +277,80 @@ public class XmlTreeDeserializer
         }
         
         return node;
+    }
+
+    /// <summary>
+    /// Baut ein Dictionary aller BehaviorTree-Definitionen für SubTree-Expansion auf
+    /// </summary>
+    private Dictionary<string, XElement> BuildBehaviorTreeIndex(XElement root)
+    {
+        var map = new Dictionary<string, XElement>(StringComparer.OrdinalIgnoreCase);
+        foreach (var btElement in root.Elements("BehaviorTree"))
+        {
+            var id = btElement.Attribute("ID")?.Value;
+            if (string.IsNullOrWhiteSpace(id))
+                continue;
+
+            if (map.ContainsKey(id))
+            {
+                _logger.LogWarning("Duplicate BehaviorTree ID detected: {Id}. Using last definition.", id);
+            }
+            map[id] = btElement;
+        }
+
+        return map;
+    }
+
+    /// <summary>
+    /// Ersetzt ein <SubTree>-Element durch den referenzierten BehaviorTree
+    /// </summary>
+    private BTNode ExpandSubTree(XElement element, BTContext context)
+    {
+        var subtreeId = element.Attribute("ID")?.Value ?? element.Attribute("id")?.Value;
+        if (string.IsNullOrWhiteSpace(subtreeId))
+        {
+            throw new InvalidOperationException("SubTree node requires an ID attribute");
+        }
+
+        if (_subTreeStack.Contains(subtreeId))
+        {
+            var cycle = string.Join(" → ", _subTreeStack.Reverse().Concat(new[] { subtreeId }));
+            throw new InvalidOperationException($"Detected recursive SubTree reference: {cycle}");
+        }
+
+        if (!_behaviorTrees.TryGetValue(subtreeId, out var subtreeElement))
+        {
+            throw new InvalidOperationException(
+                $"SubTree '{subtreeId}' not found. Available trees: {string.Join(", ", _behaviorTrees.Keys)}");
+        }
+
+        var rootElement = subtreeElement.Elements().FirstOrDefault();
+        if (rootElement == null)
+        {
+            throw new InvalidOperationException($"SubTree '{subtreeId}' must contain a root node");
+        }
+
+        if (element.Elements().Any(e => e.Name.LocalName.Equals("remap", StringComparison.OrdinalIgnoreCase)))
+        {
+            _logger.LogWarning("SubTree remapping elements are not supported yet for '{SubTree}' and will be ignored.", subtreeId);
+        }
+
+        _subTreeStack.Push(subtreeId);
+        var clonedRoot = new XElement(rootElement);
+
+        var customName = element.Attribute("name")?.Value;
+        if (!string.IsNullOrWhiteSpace(customName))
+        {
+            clonedRoot.SetAttributeValue("name", customName);
+        }
+
+        try
+        {
+            return DeserializeNode(clonedRoot, context);
+        }
+        finally
+        {
+            _subTreeStack.Pop();
+        }
     }
 }
