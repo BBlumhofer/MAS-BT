@@ -2,138 +2,6 @@
   "version": 3,
   "targets": {
     "net10.0": {
-      "BaSyx.AAS.Client.Http/1.0.0": {
-        "type": "package",
-        "dependencies": {
-          "BaSyx.API": "1.0.0",
-          "BaSyx.Utils.DependencyInjection": "1.0.0"
-        },
-        "compile": {
-          "lib/netstandard2.0/BaSyx.AAS.Client.Http.dll": {}
-        },
-        "runtime": {
-          "lib/netstandard2.0/BaSyx.AAS.Client.Http.dll": {}
-        }
-      },
-      "BaSyx.API/2.0.24": {
-        "type": "package",
-        "dependencies": {
-          "BaSyx.Models": "2.0.24",
-          "BaSyx.Utils.DependencyInjection": "2.0.24"
-        },
-        "compile": {
-          "lib/net8.0/BaSyx.API.dll": {}
-        },
-        "runtime": {
-          "lib/net8.0/BaSyx.API.dll": {}
-        }
-      },
-      "BaSyx.Clients.Http/2.0.24": {
-        "type": "package",
-        "dependencies": {
-          "BaSyx.API": "2.0.24",
-          "BaSyx.Utils.DependencyInjection": "2.0.24"
-        },
-        "compile": {
-          "lib/net8.0/BaSyx.Clients.Http.dll": {}
-        },
-        "runtime": {
-          "lib/net8.0/BaSyx.Clients.Http.dll": {}
-        }
-      },
-      "BaSyx.Models/2.0.24": {
-        "type": "package",
-        "dependencies": {
-          "BaSyx.Utils": "2.0.24",
-          "BaSyx.Utils.DependencyInjection.Abstractions": "2.0.24"
-        },
-        "compile": {
-          "lib/net8.0/BaSyx.Models.dll": {}
-        },
-        "runtime": {
-          "lib/net8.0/BaSyx.Models.dll": {}
-        }
-      },
-      "BaSyx.Registry.Client.Http/2.0.24": {
-        "type": "package",
-        "dependencies": {
-          "BaSyx.API": "2.0.24",
-          "BaSyx.Utils.DependencyInjection": "2.0.24"
-        },
-        "compile": {
-          "lib/net8.0/BaSyx.Registry.Client.Http.dll": {}
-        },
-        "runtime": {
-          "lib/net8.0/BaSyx.Registry.Client.Http.dll": {}
-        }
-      },
-      "BaSyx.Submodel.Client.Http/1.0.0": {
-        "type": "package",
-        "dependencies": {
-          "BaSyx.API": "1.0.0",
-          "BaSyx.Utils.DependencyInjection": "1.0.0"
-        },
-        "compile": {
-          "lib/netstandard2.0/BaSyx.Submodel.Client.Http.dll": {}
-        },
-        "runtime": {
-          "lib/netstandard2.0/BaSyx.Submodel.Client.Http.dll": {}
-        }
-      },
-      "BaSyx.Utils/2.0.24": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.FileProviders.Embedded": "8.0.7",
-          "Microsoft.Extensions.Logging": "8.0.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.1"
-        },
-        "compile": {
-          "lib/net8.0/BaSyx.Utils.dll": {}
-        },
-        "runtime": {
-          "lib/net8.0/BaSyx.Utils.dll": {}
-        }
-      },
-      "BaSyx.Utils.DependencyInjection/2.0.24": {
-        "type": "package",
-        "dependencies": {
-          "BaSyx.Models": "2.0.24",
-          "BaSyx.Utils": "2.0.24",
-          "BaSyx.Utils.DependencyInjection.Abstractions": "2.0.24",
-          "Microsoft.Extensions.DependencyInjection": "8.0.0"
-        },
-        "compile": {
-          "lib/net8.0/BaSyx.Utils.DependencyInjection.dll": {}
-        },
-        "runtime": {
-          "lib/net8.0/BaSyx.Utils.DependencyInjection.dll": {}
-        }
-      },
-      "BaSyx.Utils.DependencyInjection.Abstractions/2.0.24": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection": "8.0.0"
-        },
-        "compile": {
-          "lib/net8.0/BaSyx.Utils.DependencyInjection.Abstractions.dll": {}
-        },
-        "runtime": {
-          "lib/net8.0/BaSyx.Utils.DependencyInjection.Abstractions.dll": {}
-        }
-      },
-      "BitFaster.Caching/2.5.4": {
-        "type": "package",
-        "compile": {
-          "lib/net6.0/BitFaster.Caching.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net6.0/BitFaster.Caching.dll": {
-            "related": ".xml"
-          }
-        }
-      },
       "Microsoft.CodeCoverage/17.12.0": {
         "type": "package",
         "compile": {
@@ -239,112 +107,6 @@
         },
         "build": {
           "buildTransitive/net8.0/_._": {}
-        }
-      },
-      "Microsoft.Extensions.Diagnostics/8.0.0": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.Configuration": "8.0.0",
-          "Microsoft.Extensions.Diagnostics.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Options.ConfigurationExtensions": "8.0.0"
-        },
-        "compile": {
-          "lib/net8.0/Microsoft.Extensions.Diagnostics.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net8.0/Microsoft.Extensions.Diagnostics.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "buildTransitive/net6.0/_._": {}
-        }
-      },
-      "Microsoft.Extensions.Diagnostics.Abstractions/8.0.0": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Options": "8.0.0"
-        },
-        "compile": {
-          "lib/net8.0/Microsoft.Extensions.Diagnostics.Abstractions.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net8.0/Microsoft.Extensions.Diagnostics.Abstractions.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "buildTransitive/net6.0/_._": {}
-        }
-      },
-      "Microsoft.Extensions.FileProviders.Abstractions/8.0.0": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.Primitives": "8.0.0"
-        },
-        "compile": {
-          "lib/net8.0/Microsoft.Extensions.FileProviders.Abstractions.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net8.0/Microsoft.Extensions.FileProviders.Abstractions.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "buildTransitive/net6.0/_._": {}
-        }
-      },
-      "Microsoft.Extensions.FileProviders.Embedded/8.0.7": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.FileProviders.Abstractions": "8.0.0"
-        },
-        "compile": {
-          "lib/net8.0/Microsoft.Extensions.FileProviders.Embedded.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net8.0/Microsoft.Extensions.FileProviders.Embedded.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "build/netstandard2.0/_._": {}
-        },
-        "buildMultiTargeting": {
-          "buildMultiTargeting/_._": {}
-        }
-      },
-      "Microsoft.Extensions.Http/8.0.0": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.Configuration.Abstractions": "8.0.0",
-          "Microsoft.Extensions.DependencyInjection.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Diagnostics": "8.0.0",
-          "Microsoft.Extensions.Logging": "8.0.0",
-          "Microsoft.Extensions.Logging.Abstractions": "8.0.0",
-          "Microsoft.Extensions.Options": "8.0.0"
-        },
-        "compile": {
-          "lib/net8.0/Microsoft.Extensions.Http.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net8.0/Microsoft.Extensions.Http.dll": {
-            "related": ".xml"
-          }
-        },
-        "build": {
-          "buildTransitive/net6.0/_._": {}
         }
       },
       "Microsoft.Extensions.Logging/10.0.0": {
@@ -761,99 +523,15 @@
           "build/netcoreapp3.1/Microsoft.TestPlatform.TestHost.props": {}
         }
       },
-      "Microsoft.VisualStudio.Azure.Containers.Tools.Targets/1.23.0": {
-        "type": "package",
-        "build": {
-          "build/_._": {}
-        }
-      },
-      "MQTTnet/4.3.7.1207": {
+      "Newtonsoft.Json/13.0.1": {
         "type": "package",
         "compile": {
-          "lib/net7.0/MQTTnet.dll": {
+          "lib/netstandard2.0/Newtonsoft.Json.dll": {
             "related": ".xml"
           }
         },
         "runtime": {
-          "lib/net7.0/MQTTnet.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "Newtonsoft.Json/13.0.3": {
-        "type": "package",
-        "compile": {
-          "lib/net6.0/Newtonsoft.Json.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net6.0/Newtonsoft.Json.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "OPCFoundation.NetStandard.Opc.Ua.Client/1.5.377.22": {
-        "type": "package",
-        "dependencies": {
-          "BitFaster.Caching": "2.5.4",
-          "OPCFoundation.NetStandard.Opc.Ua.Configuration": "1.5.377.22",
-          "OPCFoundation.NetStandard.Opc.Ua.Core": "1.5.377.22"
-        },
-        "compile": {
-          "lib/net9.0/Opc.Ua.Client.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net9.0/Opc.Ua.Client.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "OPCFoundation.NetStandard.Opc.Ua.Configuration/1.5.377.22": {
-        "type": "package",
-        "dependencies": {
-          "OPCFoundation.NetStandard.Opc.Ua.Core": "1.5.377.22"
-        },
-        "compile": {
-          "lib/net9.0/Opc.Ua.Configuration.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net9.0/Opc.Ua.Configuration.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "OPCFoundation.NetStandard.Opc.Ua.Core/1.5.377.22": {
-        "type": "package",
-        "dependencies": {
-          "Microsoft.Extensions.Logging.Abstractions": "9.0.9",
-          "Newtonsoft.Json": "13.0.3",
-          "OPCFoundation.NetStandard.Opc.Ua.Security.Certificates": "1.5.377.22"
-        },
-        "compile": {
-          "lib/net9.0/Opc.Ua.Core.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net9.0/Opc.Ua.Core.dll": {
-            "related": ".xml"
-          }
-        }
-      },
-      "OPCFoundation.NetStandard.Opc.Ua.Security.Certificates/1.5.377.22": {
-        "type": "package",
-        "compile": {
-          "lib/net9.0/Opc.Ua.Security.Certificates.dll": {
-            "related": ".xml"
-          }
-        },
-        "runtime": {
-          "lib/net9.0/Opc.Ua.Security.Certificates.dll": {
+          "lib/netstandard2.0/Newtonsoft.Json.dll": {
             "related": ".xml"
           }
         }
@@ -969,196 +647,10 @@
         "build": {
           "build/net6.0/xunit.runner.visualstudio.props": {}
         }
-      },
-      "AAS Sharp Client/1.0.0": {
-        "type": "project",
-        "framework": ".NETCoreApp,Version=v10.0",
-        "dependencies": {
-          "BaSyx.AAS.Client.Http": "1.0.0",
-          "BaSyx.API": "2.0.24",
-          "BaSyx.Clients.Http": "2.0.24",
-          "BaSyx.Models": "2.0.24",
-          "BaSyx.Registry.Client.Http": "2.0.24",
-          "BaSyx.Submodel.Client.Http": "1.0.0",
-          "BaSyx.Utils": "2.0.24",
-          "Microsoft.Extensions.Http": "8.0.0",
-          "Microsoft.Extensions.Logging.Console": "8.0.0",
-          "Microsoft.VisualStudio.Azure.Containers.Tools.Targets": "1.23.0"
-        },
-        "compile": {
-          "bin/placeholder/AAS Sharp Client.dll": {}
-        },
-        "runtime": {
-          "bin/placeholder/AAS Sharp Client.dll": {}
-        }
-      },
-      "I40Sharp.Messaging/1.0.0": {
-        "type": "project",
-        "framework": ".NETCoreApp,Version=v10.0",
-        "dependencies": {
-          "BaSyx.Models": "2.0.24",
-          "MQTTnet": "4.3.7.1207"
-        },
-        "compile": {
-          "bin/placeholder/I40Sharp.Messaging.dll": {}
-        },
-        "runtime": {
-          "bin/placeholder/I40Sharp.Messaging.dll": {}
-        }
-      },
-      "SkillSharp.Client/1.0.0": {
-        "type": "project",
-        "framework": ".NETCoreApp,Version=v10.0",
-        "dependencies": {
-          "OPCFoundation.NetStandard.Opc.Ua.Client": "1.5.377.22",
-          "OPCFoundation.NetStandard.Opc.Ua.Core": "1.5.377.22"
-        },
-        "compile": {
-          "bin/placeholder/SkillSharp.Client.dll": {}
-        },
-        "runtime": {
-          "bin/placeholder/SkillSharp.Client.dll": {}
-        }
       }
     }
   },
   "libraries": {
-    "BaSyx.AAS.Client.Http/1.0.0": {
-      "sha512": "7QJ6bmkUM03sfMCtx5vwqRzrQy7h71Apwo1BkRiJjTBu8lUEZvwnFGjJTk5Q7LTDzWcgtgqJMg0cqEZh4LeK7w==",
-      "type": "package",
-      "path": "basyx.aas.client.http/1.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.aas.client.http.1.0.0.nupkg.sha512",
-        "basyx.aas.client.http.nuspec",
-        "basyxlogo.png",
-        "lib/netstandard2.0/BaSyx.AAS.Client.Http.dll"
-      ]
-    },
-    "BaSyx.API/2.0.24": {
-      "sha512": "m3OSkUBSAgOA8bL+IP0yAED0AqN0zvUgJbZ58rrFX4drVzgr3mT6k9CEiKIMuwC3vZFNyKvYM0HcC47UYO8NAQ==",
-      "type": "package",
-      "path": "basyx.api/2.0.24",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.api.2.0.24.nupkg.sha512",
-        "basyx.api.nuspec",
-        "basyxlogo.png",
-        "lib/net8.0/BaSyx.API.dll"
-      ]
-    },
-    "BaSyx.Clients.Http/2.0.24": {
-      "sha512": "Gm5L0v4HlIs773wVB6bEO3KRepUqMPT2ZFEqvZGIPb/iLrsuj1hqzJKyjPoZAcu846E+ekX2jWlYhgBMopcdwg==",
-      "type": "package",
-      "path": "basyx.clients.http/2.0.24",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.clients.http.2.0.24.nupkg.sha512",
-        "basyx.clients.http.nuspec",
-        "basyxlogo.png",
-        "lib/net8.0/BaSyx.Clients.Http.dll"
-      ]
-    },
-    "BaSyx.Models/2.0.24": {
-      "sha512": "YH1kWh/PGEu9N+djWiqkIWcwWdpowLuNwZ8iEekKTI7xl/nZa6Olo/2TTN9vKEK1RUdZ3/gPn5SwfsjdFdMKrQ==",
-      "type": "package",
-      "path": "basyx.models/2.0.24",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.models.2.0.24.nupkg.sha512",
-        "basyx.models.nuspec",
-        "basyxlogo.png",
-        "lib/net8.0/BaSyx.Models.dll"
-      ]
-    },
-    "BaSyx.Registry.Client.Http/2.0.24": {
-      "sha512": "7j+PFUtsEW2HaBs5KIOwLVyzNucSf9ai/pAIRThr0IHyRMo3rif/yBkKagTuFcS1RbsCr5WuL+FgXk3U4H8GMg==",
-      "type": "package",
-      "path": "basyx.registry.client.http/2.0.24",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.registry.client.http.2.0.24.nupkg.sha512",
-        "basyx.registry.client.http.nuspec",
-        "basyxlogo.png",
-        "lib/net8.0/BaSyx.Registry.Client.Http.dll"
-      ]
-    },
-    "BaSyx.Submodel.Client.Http/1.0.0": {
-      "sha512": "MsiSn7/yMzXM7Ra49NRvlfiHAy8eP0UAphgY1zDr7feWPpSLXqq8pRKRz+yl5db7ejoFQ47o9DjYkkePicY1HA==",
-      "type": "package",
-      "path": "basyx.submodel.client.http/1.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.submodel.client.http.1.0.0.nupkg.sha512",
-        "basyx.submodel.client.http.nuspec",
-        "basyxlogo.png",
-        "lib/netstandard2.0/BaSyx.Submodel.Client.Http.dll"
-      ]
-    },
-    "BaSyx.Utils/2.0.24": {
-      "sha512": "4Z5PvDLD/iWTPXPqFkD09za+gebWeQOIx6mZcc4U9Yv9e2zNfZBY02x6Rp6PlXWn4aT+6Zh6Kkn9uSR4K01hJw==",
-      "type": "package",
-      "path": "basyx.utils/2.0.24",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.utils.2.0.24.nupkg.sha512",
-        "basyx.utils.nuspec",
-        "basyxlogo.png",
-        "lib/net8.0/BaSyx.Utils.dll"
-      ]
-    },
-    "BaSyx.Utils.DependencyInjection/2.0.24": {
-      "sha512": "YDJQNz+SpsScQzzf2MN/V0ndSAUYCT6au8Ahgv4mZuuw2oLcb0bhTrcz7DepUmcbfzX5+zTIpXkt8pJLMIfG3A==",
-      "type": "package",
-      "path": "basyx.utils.dependencyinjection/2.0.24",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.utils.dependencyinjection.2.0.24.nupkg.sha512",
-        "basyx.utils.dependencyinjection.nuspec",
-        "basyxlogo.png",
-        "lib/net8.0/BaSyx.Utils.DependencyInjection.dll"
-      ]
-    },
-    "BaSyx.Utils.DependencyInjection.Abstractions/2.0.24": {
-      "sha512": "wgxHl7xRoPTB56wc8SffbX9GDXvfyl30FDyy0pNnPtMYVcUxxFFcPCiQYfGWjQ5evryfmmDjzeDZV84aH+SukA==",
-      "type": "package",
-      "path": "basyx.utils.dependencyinjection.abstractions/2.0.24",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "basyx.utils.dependencyinjection.abstractions.2.0.24.nupkg.sha512",
-        "basyx.utils.dependencyinjection.abstractions.nuspec",
-        "basyxlogo.png",
-        "lib/net8.0/BaSyx.Utils.DependencyInjection.Abstractions.dll"
-      ]
-    },
-    "BitFaster.Caching/2.5.4": {
-      "sha512": "1QroTY1PVCZOSG9FnkkCrmCKk/+bZCgI/YXq376HnYwUDJ4Ho0EaV4YaA/5v5WYLnwIwIO7RZkdWbg9pxIpueQ==",
-      "type": "package",
-      "path": "bitfaster.caching/2.5.4",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "LICENSE",
-        "ReadMe.md",
-        "bitfaster.caching.2.5.4.nupkg.sha512",
-        "bitfaster.caching.nuspec",
-        "lib/net6.0/BitFaster.Caching.dll",
-        "lib/net6.0/BitFaster.Caching.xml",
-        "lib/netcoreapp3.1/BitFaster.Caching.dll",
-        "lib/netcoreapp3.1/BitFaster.Caching.xml",
-        "lib/netstandard2.0/BitFaster.Caching.dll",
-        "lib/netstandard2.0/BitFaster.Caching.xml"
-      ]
-    },
     "Microsoft.CodeCoverage/17.12.0": {
       "sha512": "4svMznBd5JM21JIG2xZKGNanAHNXplxf/kQDFfLHXQ3OnpJkayRK/TjacFjA+EYmoyuNXHo/sOETEfcYtAzIrA==",
       "type": "package",
@@ -1382,145 +874,6 @@
         "lib/netstandard2.1/Microsoft.Extensions.DependencyInjection.Abstractions.xml",
         "microsoft.extensions.dependencyinjection.abstractions.10.0.0.nupkg.sha512",
         "microsoft.extensions.dependencyinjection.abstractions.nuspec",
-        "useSharedDesignerContext.txt"
-      ]
-    },
-    "Microsoft.Extensions.Diagnostics/8.0.0": {
-      "sha512": "3PZp/YSkIXrF7QK7PfC1bkyRYwqOHpWFad8Qx+4wkuumAeXo1NHaxpS9LboNA9OvNSAu+QOVlXbMyoY+pHSqcw==",
-      "type": "package",
-      "path": "microsoft.extensions.diagnostics/8.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/net461/Microsoft.Extensions.Diagnostics.targets",
-        "buildTransitive/net462/_._",
-        "buildTransitive/net6.0/_._",
-        "buildTransitive/netcoreapp2.0/Microsoft.Extensions.Diagnostics.targets",
-        "lib/net462/Microsoft.Extensions.Diagnostics.dll",
-        "lib/net462/Microsoft.Extensions.Diagnostics.xml",
-        "lib/net6.0/Microsoft.Extensions.Diagnostics.dll",
-        "lib/net6.0/Microsoft.Extensions.Diagnostics.xml",
-        "lib/net7.0/Microsoft.Extensions.Diagnostics.dll",
-        "lib/net7.0/Microsoft.Extensions.Diagnostics.xml",
-        "lib/net8.0/Microsoft.Extensions.Diagnostics.dll",
-        "lib/net8.0/Microsoft.Extensions.Diagnostics.xml",
-        "lib/netstandard2.0/Microsoft.Extensions.Diagnostics.dll",
-        "lib/netstandard2.0/Microsoft.Extensions.Diagnostics.xml",
-        "microsoft.extensions.diagnostics.8.0.0.nupkg.sha512",
-        "microsoft.extensions.diagnostics.nuspec",
-        "useSharedDesignerContext.txt"
-      ]
-    },
-    "Microsoft.Extensions.Diagnostics.Abstractions/8.0.0": {
-      "sha512": "JHYCQG7HmugNYUhOl368g+NMxYE/N/AiclCYRNlgCY9eVyiBkOHMwK4x60RYMxv9EL3+rmj1mqHvdCiPpC+D4Q==",
-      "type": "package",
-      "path": "microsoft.extensions.diagnostics.abstractions/8.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/net461/Microsoft.Extensions.Diagnostics.Abstractions.targets",
-        "buildTransitive/net462/_._",
-        "buildTransitive/net6.0/_._",
-        "buildTransitive/netcoreapp2.0/Microsoft.Extensions.Diagnostics.Abstractions.targets",
-        "lib/net462/Microsoft.Extensions.Diagnostics.Abstractions.dll",
-        "lib/net462/Microsoft.Extensions.Diagnostics.Abstractions.xml",
-        "lib/net6.0/Microsoft.Extensions.Diagnostics.Abstractions.dll",
-        "lib/net6.0/Microsoft.Extensions.Diagnostics.Abstractions.xml",
-        "lib/net7.0/Microsoft.Extensions.Diagnostics.Abstractions.dll",
-        "lib/net7.0/Microsoft.Extensions.Diagnostics.Abstractions.xml",
-        "lib/net8.0/Microsoft.Extensions.Diagnostics.Abstractions.dll",
-        "lib/net8.0/Microsoft.Extensions.Diagnostics.Abstractions.xml",
-        "lib/netstandard2.0/Microsoft.Extensions.Diagnostics.Abstractions.dll",
-        "lib/netstandard2.0/Microsoft.Extensions.Diagnostics.Abstractions.xml",
-        "microsoft.extensions.diagnostics.abstractions.8.0.0.nupkg.sha512",
-        "microsoft.extensions.diagnostics.abstractions.nuspec",
-        "useSharedDesignerContext.txt"
-      ]
-    },
-    "Microsoft.Extensions.FileProviders.Abstractions/8.0.0": {
-      "sha512": "ZbaMlhJlpisjuWbvXr4LdAst/1XxH3vZ6A0BsgTphZ2L4PGuxRLz7Jr/S7mkAAnOn78Vu0fKhEgNF5JO3zfjqQ==",
-      "type": "package",
-      "path": "microsoft.extensions.fileproviders.abstractions/8.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "PACKAGE.md",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/net461/Microsoft.Extensions.FileProviders.Abstractions.targets",
-        "buildTransitive/net462/_._",
-        "buildTransitive/net6.0/_._",
-        "buildTransitive/netcoreapp2.0/Microsoft.Extensions.FileProviders.Abstractions.targets",
-        "lib/net462/Microsoft.Extensions.FileProviders.Abstractions.dll",
-        "lib/net462/Microsoft.Extensions.FileProviders.Abstractions.xml",
-        "lib/net6.0/Microsoft.Extensions.FileProviders.Abstractions.dll",
-        "lib/net6.0/Microsoft.Extensions.FileProviders.Abstractions.xml",
-        "lib/net8.0/Microsoft.Extensions.FileProviders.Abstractions.dll",
-        "lib/net8.0/Microsoft.Extensions.FileProviders.Abstractions.xml",
-        "lib/netstandard2.0/Microsoft.Extensions.FileProviders.Abstractions.dll",
-        "lib/netstandard2.0/Microsoft.Extensions.FileProviders.Abstractions.xml",
-        "microsoft.extensions.fileproviders.abstractions.8.0.0.nupkg.sha512",
-        "microsoft.extensions.fileproviders.abstractions.nuspec",
-        "useSharedDesignerContext.txt"
-      ]
-    },
-    "Microsoft.Extensions.FileProviders.Embedded/8.0.7": {
-      "sha512": "ABsn0T09b5lzVNbOcuRc10+kNZkO+RGtZWfzqVay0Ah+/ouhEvG7JrXc+9+7zFgoPuH4E4N6+uWfTp+pJqMeGw==",
-      "type": "package",
-      "path": "microsoft.extensions.fileproviders.embedded/8.0.7",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "build/netstandard2.0/Microsoft.Extensions.FileProviders.Embedded.props",
-        "build/netstandard2.0/Microsoft.Extensions.FileProviders.Embedded.targets",
-        "buildMultiTargeting/Microsoft.Extensions.FileProviders.Embedded.props",
-        "buildMultiTargeting/Microsoft.Extensions.FileProviders.Embedded.targets",
-        "lib/net462/Microsoft.Extensions.FileProviders.Embedded.dll",
-        "lib/net462/Microsoft.Extensions.FileProviders.Embedded.xml",
-        "lib/net8.0/Microsoft.Extensions.FileProviders.Embedded.dll",
-        "lib/net8.0/Microsoft.Extensions.FileProviders.Embedded.xml",
-        "lib/netstandard2.0/Microsoft.Extensions.FileProviders.Embedded.dll",
-        "lib/netstandard2.0/Microsoft.Extensions.FileProviders.Embedded.xml",
-        "microsoft.extensions.fileproviders.embedded.8.0.7.nupkg.sha512",
-        "microsoft.extensions.fileproviders.embedded.nuspec",
-        "tasks/netstandard2.0/Microsoft.Extensions.FileProviders.Embedded.Manifest.Task.dll"
-      ]
-    },
-    "Microsoft.Extensions.Http/8.0.0": {
-      "sha512": "cWz4caHwvx0emoYe7NkHPxII/KkTI8R/LC9qdqJqnKv2poTJ4e2qqPGQqvRoQ5kaSA4FU5IV3qFAuLuOhoqULQ==",
-      "type": "package",
-      "path": "microsoft.extensions.http/8.0.0",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "Icon.png",
-        "LICENSE.TXT",
-        "PACKAGE.md",
-        "THIRD-PARTY-NOTICES.TXT",
-        "buildTransitive/net461/Microsoft.Extensions.Http.targets",
-        "buildTransitive/net462/_._",
-        "buildTransitive/net6.0/_._",
-        "buildTransitive/netcoreapp2.0/Microsoft.Extensions.Http.targets",
-        "lib/net462/Microsoft.Extensions.Http.dll",
-        "lib/net462/Microsoft.Extensions.Http.xml",
-        "lib/net6.0/Microsoft.Extensions.Http.dll",
-        "lib/net6.0/Microsoft.Extensions.Http.xml",
-        "lib/net7.0/Microsoft.Extensions.Http.dll",
-        "lib/net7.0/Microsoft.Extensions.Http.xml",
-        "lib/net8.0/Microsoft.Extensions.Http.dll",
-        "lib/net8.0/Microsoft.Extensions.Http.xml",
-        "lib/netstandard2.0/Microsoft.Extensions.Http.dll",
-        "lib/netstandard2.0/Microsoft.Extensions.Http.xml",
-        "microsoft.extensions.http.8.0.0.nupkg.sha512",
-        "microsoft.extensions.http.nuspec",
         "useSharedDesignerContext.txt"
       ]
     },
@@ -1978,130 +1331,14 @@
         "microsoft.testplatform.testhost.nuspec"
       ]
     },
-    "Microsoft.VisualStudio.Azure.Containers.Tools.Targets/1.23.0": {
-      "sha512": "2wDnb4umupJZ/1ikgWozFVpggH1mlHQFc0odXVv2ZagL3RYwXgW9zmC15fiqIBzmaC0vLZUnLGwDY+p8ZR7Syw==",
+    "Newtonsoft.Json/13.0.1": {
+      "sha512": "ppPFpBcvxdsfUonNcvITKqLl3bqxWbDCZIzDWHzjpdAHRFfZe0Dw9HmA0+za13IdyrgJwpkDTDA9fHaxOrt20A==",
       "type": "package",
-      "path": "microsoft.visualstudio.azure.containers.tools.targets/1.23.0",
-      "hasTools": true,
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "CHANGELOG.md",
-        "EULA.md",
-        "ThirdPartyNotices.txt",
-        "build/Container.props",
-        "build/Container.targets",
-        "build/Microsoft.VisualStudio.Azure.Containers.Tools.Targets.props",
-        "build/Microsoft.VisualStudio.Azure.Containers.Tools.Targets.targets",
-        "build/Rules/GeneralBrowseObject.xaml",
-        "build/Rules/cs-CZ/GeneralBrowseObject.xaml",
-        "build/Rules/de-DE/GeneralBrowseObject.xaml",
-        "build/Rules/es-ES/GeneralBrowseObject.xaml",
-        "build/Rules/fr-FR/GeneralBrowseObject.xaml",
-        "build/Rules/it-IT/GeneralBrowseObject.xaml",
-        "build/Rules/ja-JP/GeneralBrowseObject.xaml",
-        "build/Rules/ko-KR/GeneralBrowseObject.xaml",
-        "build/Rules/pl-PL/GeneralBrowseObject.xaml",
-        "build/Rules/pt-BR/GeneralBrowseObject.xaml",
-        "build/Rules/ru-RU/GeneralBrowseObject.xaml",
-        "build/Rules/tr-TR/GeneralBrowseObject.xaml",
-        "build/Rules/zh-CN/GeneralBrowseObject.xaml",
-        "build/Rules/zh-TW/GeneralBrowseObject.xaml",
-        "build/ToolsTarget.props",
-        "build/ToolsTarget.targets",
-        "icon.png",
-        "microsoft.visualstudio.azure.containers.tools.targets.1.23.0.nupkg.sha512",
-        "microsoft.visualstudio.azure.containers.tools.targets.nuspec",
-        "tools/Microsoft.VisualStudio.Containers.Tools.Common.dll",
-        "tools/Microsoft.VisualStudio.Containers.Tools.Shared.dll",
-        "tools/Microsoft.VisualStudio.Containers.Tools.Tasks.dll",
-        "tools/Newtonsoft.Json.dll",
-        "tools/System.Security.Principal.Windows.dll",
-        "tools/cs/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/cs/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/cs/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/de/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/de/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/de/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/es/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/es/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/es/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/fr/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/fr/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/fr/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/it/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/it/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/it/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/ja/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/ja/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/ja/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/ko/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/ko/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/ko/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/pl/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/pl/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/pl/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/pt-BR/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/pt-BR/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/pt-BR/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/ru/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/ru/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/ru/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/tr/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/tr/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/tr/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/zh-Hans/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/zh-Hans/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/zh-Hans/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll",
-        "tools/zh-Hant/Microsoft.VisualStudio.Containers.Tools.Common.resources.dll",
-        "tools/zh-Hant/Microsoft.VisualStudio.Containers.Tools.Shared.resources.dll",
-        "tools/zh-Hant/Microsoft.VisualStudio.Containers.Tools.Tasks.resources.dll"
-      ]
-    },
-    "MQTTnet/4.3.7.1207": {
-      "sha512": "ah7aHXoedWp5m5a4zy2u4phOEVj0QFYzOb5tFKQeV8RRBrxp+1QREF4ymZuG8D+hzB2dhtrrG81WxTFv0PzOeQ==",
-      "type": "package",
-      "path": "mqttnet/4.3.7.1207",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "lib/net452/MQTTnet.dll",
-        "lib/net452/MQTTnet.xml",
-        "lib/net461/MQTTnet.dll",
-        "lib/net461/MQTTnet.xml",
-        "lib/net48/MQTTnet.dll",
-        "lib/net48/MQTTnet.xml",
-        "lib/net5.0/MQTTnet.dll",
-        "lib/net5.0/MQTTnet.xml",
-        "lib/net6.0/MQTTnet.dll",
-        "lib/net6.0/MQTTnet.xml",
-        "lib/net7.0/MQTTnet.dll",
-        "lib/net7.0/MQTTnet.xml",
-        "lib/netcoreapp3.1/MQTTnet.dll",
-        "lib/netcoreapp3.1/MQTTnet.xml",
-        "lib/netstandard1.3/MQTTnet.dll",
-        "lib/netstandard1.3/MQTTnet.xml",
-        "lib/netstandard2.0/MQTTnet.dll",
-        "lib/netstandard2.0/MQTTnet.xml",
-        "lib/netstandard2.1/MQTTnet.dll",
-        "lib/netstandard2.1/MQTTnet.xml",
-        "lib/uap10.0.10240/MQTTnet.dll",
-        "lib/uap10.0.10240/MQTTnet.pri",
-        "lib/uap10.0.10240/MQTTnet.xml",
-        "mqttnet.4.3.7.1207.nupkg.sha512",
-        "mqttnet.nuspec",
-        "nuget.png"
-      ]
-    },
-    "Newtonsoft.Json/13.0.3": {
-      "sha512": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ==",
-      "type": "package",
-      "path": "newtonsoft.json/13.0.3",
+      "path": "newtonsoft.json/13.0.1",
       "files": [
         ".nupkg.metadata",
         ".signature.p7s",
         "LICENSE.md",
-        "README.md",
         "lib/net20/Newtonsoft.Json.dll",
         "lib/net20/Newtonsoft.Json.xml",
         "lib/net35/Newtonsoft.Json.dll",
@@ -2110,121 +1347,15 @@
         "lib/net40/Newtonsoft.Json.xml",
         "lib/net45/Newtonsoft.Json.dll",
         "lib/net45/Newtonsoft.Json.xml",
-        "lib/net6.0/Newtonsoft.Json.dll",
-        "lib/net6.0/Newtonsoft.Json.xml",
         "lib/netstandard1.0/Newtonsoft.Json.dll",
         "lib/netstandard1.0/Newtonsoft.Json.xml",
         "lib/netstandard1.3/Newtonsoft.Json.dll",
         "lib/netstandard1.3/Newtonsoft.Json.xml",
         "lib/netstandard2.0/Newtonsoft.Json.dll",
         "lib/netstandard2.0/Newtonsoft.Json.xml",
-        "newtonsoft.json.13.0.3.nupkg.sha512",
+        "newtonsoft.json.13.0.1.nupkg.sha512",
         "newtonsoft.json.nuspec",
         "packageIcon.png"
-      ]
-    },
-    "OPCFoundation.NetStandard.Opc.Ua.Client/1.5.377.22": {
-      "sha512": "jMmCp7tuWCT0mVLtPQ80fAK2EuJ3+S+RJx6xml1kjb3NnBIthS6UJLjgJgUVO1tK9H/NgqI3TOmY92uv5E8JWQ==",
-      "type": "package",
-      "path": "opcfoundation.netstandard.opc.ua.client/1.5.377.22",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "NugetREADME.md",
-        "OPC Foundation MIT license.txt",
-        "images/logo.jpg",
-        "lib/net472/Opc.Ua.Client.dll",
-        "lib/net472/Opc.Ua.Client.xml",
-        "lib/net48/Opc.Ua.Client.dll",
-        "lib/net48/Opc.Ua.Client.xml",
-        "lib/net8.0/Opc.Ua.Client.dll",
-        "lib/net8.0/Opc.Ua.Client.xml",
-        "lib/net9.0/Opc.Ua.Client.dll",
-        "lib/net9.0/Opc.Ua.Client.xml",
-        "lib/netstandard2.0/Opc.Ua.Client.dll",
-        "lib/netstandard2.0/Opc.Ua.Client.xml",
-        "lib/netstandard2.1/Opc.Ua.Client.dll",
-        "lib/netstandard2.1/Opc.Ua.Client.xml",
-        "opcfoundation.netstandard.opc.ua.client.1.5.377.22.nupkg.sha512",
-        "opcfoundation.netstandard.opc.ua.client.nuspec"
-      ]
-    },
-    "OPCFoundation.NetStandard.Opc.Ua.Configuration/1.5.377.22": {
-      "sha512": "XMY7TSZkqvzx9qUJWpxw38UO+2Z4Qt1pKvq5bVOjRpnTM/xQ4JWSfpYghtSc6Ud3IUConwkn8E/aPRRYMGgNOA==",
-      "type": "package",
-      "path": "opcfoundation.netstandard.opc.ua.configuration/1.5.377.22",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "NugetREADME.md",
-        "OPC Foundation MIT license.txt",
-        "images/logo.jpg",
-        "lib/net472/Opc.Ua.Configuration.dll",
-        "lib/net472/Opc.Ua.Configuration.xml",
-        "lib/net48/Opc.Ua.Configuration.dll",
-        "lib/net48/Opc.Ua.Configuration.xml",
-        "lib/net8.0/Opc.Ua.Configuration.dll",
-        "lib/net8.0/Opc.Ua.Configuration.xml",
-        "lib/net9.0/Opc.Ua.Configuration.dll",
-        "lib/net9.0/Opc.Ua.Configuration.xml",
-        "lib/netstandard2.0/Opc.Ua.Configuration.dll",
-        "lib/netstandard2.0/Opc.Ua.Configuration.xml",
-        "lib/netstandard2.1/Opc.Ua.Configuration.dll",
-        "lib/netstandard2.1/Opc.Ua.Configuration.xml",
-        "opcfoundation.netstandard.opc.ua.configuration.1.5.377.22.nupkg.sha512",
-        "opcfoundation.netstandard.opc.ua.configuration.nuspec"
-      ]
-    },
-    "OPCFoundation.NetStandard.Opc.Ua.Core/1.5.377.22": {
-      "sha512": "vKZG6Spa8ugUfs83dfrelc9jsIr9Q3HblM5rSJ1KNox5VizdUhNRfBk+1wEIgrxCsJpzKwlFW804h/Y/YZxcEw==",
-      "type": "package",
-      "path": "opcfoundation.netstandard.opc.ua.core/1.5.377.22",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "NugetREADME.md",
-        "images/logo.jpg",
-        "lib/net472/Opc.Ua.Core.dll",
-        "lib/net472/Opc.Ua.Core.xml",
-        "lib/net48/Opc.Ua.Core.dll",
-        "lib/net48/Opc.Ua.Core.xml",
-        "lib/net8.0/Opc.Ua.Core.dll",
-        "lib/net8.0/Opc.Ua.Core.xml",
-        "lib/net9.0/Opc.Ua.Core.dll",
-        "lib/net9.0/Opc.Ua.Core.xml",
-        "lib/netstandard2.0/Opc.Ua.Core.dll",
-        "lib/netstandard2.0/Opc.Ua.Core.xml",
-        "lib/netstandard2.1/Opc.Ua.Core.dll",
-        "lib/netstandard2.1/Opc.Ua.Core.xml",
-        "licenses/LICENSE.txt",
-        "opcfoundation.netstandard.opc.ua.core.1.5.377.22.nupkg.sha512",
-        "opcfoundation.netstandard.opc.ua.core.nuspec"
-      ]
-    },
-    "OPCFoundation.NetStandard.Opc.Ua.Security.Certificates/1.5.377.22": {
-      "sha512": "ztXUJ6YXmo3lxMAbRMlAjjeCX/yEjNLsOAyyaDgtz+5Z/63eY/1Pur1JEUX2/drpMgyyNoiRikySPNwTT2Th2w==",
-      "type": "package",
-      "path": "opcfoundation.netstandard.opc.ua.security.certificates/1.5.377.22",
-      "files": [
-        ".nupkg.metadata",
-        ".signature.p7s",
-        "NugetREADME.md",
-        "OPC Foundation MIT license.txt",
-        "images/logo.jpg",
-        "lib/net472/Opc.Ua.Security.Certificates.dll",
-        "lib/net472/Opc.Ua.Security.Certificates.xml",
-        "lib/net48/Opc.Ua.Security.Certificates.dll",
-        "lib/net48/Opc.Ua.Security.Certificates.xml",
-        "lib/net8.0/Opc.Ua.Security.Certificates.dll",
-        "lib/net8.0/Opc.Ua.Security.Certificates.xml",
-        "lib/net9.0/Opc.Ua.Security.Certificates.dll",
-        "lib/net9.0/Opc.Ua.Security.Certificates.xml",
-        "lib/netstandard2.0/Opc.Ua.Security.Certificates.dll",
-        "lib/netstandard2.0/Opc.Ua.Security.Certificates.xml",
-        "lib/netstandard2.1/Opc.Ua.Security.Certificates.dll",
-        "lib/netstandard2.1/Opc.Ua.Security.Certificates.xml",
-        "opcfoundation.netstandard.opc.ua.security.certificates.1.5.377.22.nupkg.sha512",
-        "opcfoundation.netstandard.opc.ua.security.certificates.nuspec"
       ]
     },
     "System.Text.Json/10.0.0": {
@@ -2438,73 +1569,44 @@
         "xunit.runner.visualstudio.3.0.0.nupkg.sha512",
         "xunit.runner.visualstudio.nuspec"
       ]
-    },
-    "AAS Sharp Client/1.0.0": {
-      "type": "project",
-      "path": "../AAS-Sharp-Client/AAS Sharp Client.csproj",
-      "msbuildProject": "../AAS-Sharp-Client/AAS Sharp Client.csproj"
-    },
-    "I40Sharp.Messaging/1.0.0": {
-      "type": "project",
-      "path": "../I4.0-Sharp-Messaging/I40Sharp.Messaging/I40Sharp.Messaging.csproj",
-      "msbuildProject": "../I4.0-Sharp-Messaging/I40Sharp.Messaging/I40Sharp.Messaging.csproj"
-    },
-    "SkillSharp.Client/1.0.0": {
-      "type": "project",
-      "path": "../Skill-Sharp-Client/UAClient/UAClient.csproj",
-      "msbuildProject": "../Skill-Sharp-Client/UAClient/UAClient.csproj"
     }
   },
   "projectFileDependencyGroups": {
     "net10.0": [
-      "AAS Sharp Client >= 1.0.0",
-      "I40Sharp.Messaging >= 1.0.0",
       "Microsoft.Extensions.DependencyInjection >= 10.0.0",
       "Microsoft.Extensions.Logging >= 10.0.0",
       "Microsoft.Extensions.Logging.Console >= 10.0.0",
       "Microsoft.NET.Test.Sdk >= 17.12.0",
-      "SkillSharp.Client >= 1.0.0",
       "System.Text.Json >= 10.0.0",
       "xunit >= 2.9.2",
       "xunit.runner.visualstudio >= 3.0.0"
     ]
   },
   "packageFolders": {
-    "/home/benjamin/.nuget/packages/": {}
+    "/home/runner/.nuget/packages/": {}
   },
   "project": {
     "version": "1.0.0",
     "restore": {
-      "projectUniqueName": "/home/benjamin/AgentDevelopment/MAS-BT/MAS-BT.csproj",
+      "projectUniqueName": "/home/runner/work/MAS-BT/MAS-BT/MAS-BT.csproj",
       "projectName": "MAS-BT",
-      "projectPath": "/home/benjamin/AgentDevelopment/MAS-BT/MAS-BT.csproj",
-      "packagesPath": "/home/benjamin/.nuget/packages/",
-      "outputPath": "/home/benjamin/AgentDevelopment/MAS-BT/obj/",
+      "projectPath": "/home/runner/work/MAS-BT/MAS-BT/MAS-BT.csproj",
+      "packagesPath": "/home/runner/.nuget/packages/",
+      "outputPath": "/home/runner/work/MAS-BT/MAS-BT/obj/",
       "projectStyle": "PackageReference",
       "configFilePaths": [
-        "/home/benjamin/.nuget/NuGet/NuGet.Config"
+        "/home/runner/.nuget/NuGet/NuGet.Config"
       ],
       "originalTargetFrameworks": [
         "net10.0"
       ],
       "sources": {
-        "/usr/lib/dotnet/library-packs": {},
         "https://api.nuget.org/v3/index.json": {}
       },
       "frameworks": {
         "net10.0": {
           "targetAlias": "net10.0",
-          "projectReferences": {
-            "/home/benjamin/AgentDevelopment/AAS-Sharp-Client/AAS Sharp Client.csproj": {
-              "projectPath": "/home/benjamin/AgentDevelopment/AAS-Sharp-Client/AAS Sharp Client.csproj"
-            },
-            "/home/benjamin/AgentDevelopment/I4.0-Sharp-Messaging/I40Sharp.Messaging/I40Sharp.Messaging.csproj": {
-              "projectPath": "/home/benjamin/AgentDevelopment/I4.0-Sharp-Messaging/I40Sharp.Messaging/I40Sharp.Messaging.csproj"
-            },
-            "/home/benjamin/AgentDevelopment/Skill-Sharp-Client/UAClient/UAClient.csproj": {
-              "projectPath": "/home/benjamin/AgentDevelopment/Skill-Sharp-Client/UAClient/UAClient.csproj"
-            }
-          }
+          "projectReferences": {}
         }
       },
       "warningProperties": {
@@ -2570,7 +1672,7 @@
             "privateAssets": "all"
           }
         },
-        "runtimeIdentifierGraphPath": "/usr/lib/dotnet/sdk/10.0.100/PortableRuntimeIdentifierGraph.json",
+        "runtimeIdentifierGraphPath": "/usr/share/dotnet/sdk/10.0.100/PortableRuntimeIdentifierGraph.json",
         "packagesToPrune": {
           "Microsoft.CSharp": "(,4.7.32767]",
           "Microsoft.VisualBasic": "(,10.4.32767]",
