@@ -7,6 +7,8 @@ using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using UAClient.Client;
 using Opc.Ua.Client;
+using Opc.Ua;
+using AasSharpClient.Models.Messages;
 
 namespace MAS_BT.Services
 {

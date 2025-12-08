@@ -14,7 +14,7 @@
 
   <ItemGroup>
 
-    <ProjectReference Include="../I4.0L-Sharp-Messaging/I40Sharp.Messaging/I40Sharp.Messaging.csproj" />
+    <ProjectReference Include="../I4.0-Sharp-Messaging/I40Sharp.Messaging/I40Sharp.Messaging.csproj" />
     <ProjectReference Include="../AAS-Sharp-Client/AAS Sharp Client.csproj" />
     <ProjectReference Include="../Skill-Sharp-Client/UAClient/UAClient.csproj" />
   </ItemGroup>

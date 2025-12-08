@@ -3,23 +3,19 @@ using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
-using AasSharpClient.Models;
+using BaSyx.Models.AdminShell;
 
 namespace MAS_BT.Nodes.Messaging;
 
 /// <summary>
 /// SendStateMessage - Sendet Modulzustände via MQTT
 /// Topic: /Modules/{ModuleID}/State/
-/// Verwendet ModuleState aus AAS-Sharp-Client
 /// </summary>
 public class SendStateMessageNode : BTNode
 {
     public string ModuleId { get; set; } = "";
     public bool IncludeModuleLocked { get; set; } = true;
     public bool IncludeModuleReady { get; set; } = true;
-
-    private bool _hasPublishedState;
-    private (bool Locked, bool Ready, bool Error) _lastState;
     
     public SendStateMessageNode() : base("SendStateMessage")
     {
@@ -31,7 +27,7 @@ public class SendStateMessageNode : BTNode
     
     public override async Task<NodeStatus> Execute()
     {
-        Logger.LogDebug("SendStateMessage: Evaluating state for module '{ModuleId}'", ModuleId);
+        Logger.LogDebug("SendStateMessage: Publishing state for module '{ModuleId}'", ModuleId);
         
         var client = Context.Get<MessagingClient>("MessagingClient");
         if (client == null)
@@ -42,41 +38,41 @@ public class SendStateMessageNode : BTNode
         
         try
         {
-            var moduleName = Context.Get<string>("config.Agent.ModuleName") ?? "UnknownModule";
+            var stateCollection = new SubmodelElementCollection("ModuleState");
             
-            // Hole State-Werte aus Context
-            var isLocked = IncludeModuleLocked && Context.Get<bool>($"{moduleName}_Locked");
-            var isReady = IncludeModuleReady && Context.Get<bool>($"{moduleName}_Ready");
-            var hasError = Context.Get<bool>($"{moduleName}_HasError");
-
-            var currentState = (Locked: isLocked, Ready: isReady, Error: hasError);
-            var shouldPublish = !_hasPublishedState || !StatesEqual(_lastState, currentState);
-
-            if (!shouldPublish)
+            if (IncludeModuleLocked)
             {
-                Logger.LogDebug("SendStateMessage: State unchanged for module '{ModuleId}', skipping MQTT publish", ModuleId);
-                return NodeStatus.Success;
+                var isLocked = Context.Get<bool>($"module_{ModuleId}_locked");
+                var prop = new Property<bool>("ModuleLocked");
+                prop.Value = new PropertyValue<bool>(isLocked);
+                stateCollection.Add(prop);
             }
             
-            // Erstelle ModuleState (AAS-Sharp-Client Klasse)
-            var moduleState = new ModuleState(isLocked, isReady, hasError);
+            if (IncludeModuleReady)
+            {
+                var isReady = Context.Get<bool>($"module_{ModuleId}_ready");
+                var prop = new Property<bool>("ModuleReady");
+                prop.Value = new PropertyValue<bool>(isReady);
+                stateCollection.Add(prop);
+            }
             
-            // Erstelle I4.0 Message mit ModuleState
+            // Füge weitere State-Informationen hinzu
+            var hasError = Context.Get<bool>($"module_{ModuleId}_has_error");
+            var errorProp = new Property<bool>("HasError");
+            errorProp.Value = new PropertyValue<bool>(hasError);
+            stateCollection.Add(errorProp);
+            
             var message = new I40MessageBuilder()
                 .From($"{ModuleId}_Execution_Agent", "ExecutionAgent")
                 .To("Broadcast", "System")
-                .WithType(I40MessageTypes.INFORM)
-                .AddElement(moduleState)
+                .WithType("inform")
+                .AddElement(stateCollection)
                 .Build();
             
             var topic = $"/Modules/{ModuleId}/State/";
             await client.PublishAsync(message, topic);
             
-            Logger.LogInformation("SendStateMessage: Published module state (Locked={Locked}, Ready={Ready}, Error={Error}) to topic '{Topic}'", 
-                isLocked, isReady, hasError, topic);
-
-            _lastState = currentState;
-            _hasPublishedState = true;
+            Logger.LogInformation("SendStateMessage: Published module state to topic '{Topic}'", topic);
             
             return NodeStatus.Success;
         }
@@ -89,16 +85,11 @@ public class SendStateMessageNode : BTNode
     
     public override Task OnAbort()
     {
-        _hasPublishedState = false;
         return Task.CompletedTask;
     }
     
     public override Task OnReset()
     {
-        _hasPublishedState = false;
         return Task.CompletedTask;
     }
-
-    private static bool StatesEqual((bool Locked, bool Ready, bool Error) left, (bool Locked, bool Ready, bool Error) right)
-        => left.Locked == right.Locked && left.Ready == right.Ready && left.Error == right.Error;
 }

@@ -3,15 +3,14 @@ using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
+using BaSyx.Models.AdminShell;
 using AasSharpClient.Models;
-using AasSharpClient.Models.Messages;
 
 namespace MAS_BT.Nodes.Messaging;
 
 /// <summary>
 /// SendSkillResponse - Sendet ActionState Update an Planning Agent
 /// Topic: /Modules/{ModuleID}/SkillResponse/
-/// Verwendet Action aus AAS-Sharp-Client für korrekte Serialisierung
 /// Uses I40MessageTypes: consent, refusal (before start), inform (updates), failure (errors during execution)
 /// </summary>
 public class SendSkillResponseNode : BTNode
@@ -43,6 +42,7 @@ public class SendSkillResponseNode : BTNode
         var conversationId = Context.Get<string>("ConversationId");
         var originalMessageId = Context.Get<string>("OriginalMessageId");
         var requestSender = Context.Get<string>("RequestSender");
+        var actionTitle = Context.Get<string>("ActionTitle");
         
         if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(requestSender))
         {
@@ -52,58 +52,15 @@ public class SendSkillResponseNode : BTNode
         
         try
         {
-            // Hole Action aus Context (wurde von ParseActionRequest erstellt)
-            var action = Context.Get<AasSharpClient.Models.Action>("CurrentAction");
-            if (action == null)
-            {
-                Logger.LogError("SendSkillResponse: No Action found in context");
-                return NodeStatus.Failure;
-            }
+            // Hole Original Action aus Context
+            var machineName = Context.Get<string>("MachineName");
+            var inputParameters = Context.Get<Dictionary<string, string>>("InputParameters");
+            var step = Context.Get<string>("Step");
             
             // Mappe ActionState zu gültigen ActionStatusEnum Werten
-            var mappedState = MapToActionState(ActionState);
+            var mappedActionState = MapToActionState(ActionState);
             
-            // Setze Action Status (die Action-Klasse übernimmt die Serialisierung!)
-            action.SetStatus(mappedState);
-
-            // Ergänze FinalResultData falls vorhanden im Context (gesetzt von ExecuteSkill)
-            try
-            {
-                // Versuche Skill-Namen aus Context (ExecuteSkill setzt 'lastExecutedSkill')
-                var lastSkill = Context.Get<string>("lastExecutedSkill") ?? string.Empty;
-                if (string.IsNullOrEmpty(lastSkill))
-                {
-                    // Fallback: versuche Action.ActionTitle als Skill-Name
-                    try { lastSkill = action.GetActionTitle(); } catch { lastSkill = string.Empty; }
-                }
-
-                if (!string.IsNullOrEmpty(lastSkill))
-                {
-                    var finalKey = $"Skill_{lastSkill}_FinalResultData";
-                    var finalData = Context.Get<IDictionary<string, object?>>(finalKey);
-                    if (finalData != null && finalData.Count > 0)
-                    {
-                        foreach (var kv in finalData)
-                        {
-                            try
-                            {
-                                action.SetFinalResultValue(kv.Key, kv.Value);
-                            }
-                            catch (Exception ex)
-                            {
-                                Logger.LogWarning(ex, "SendSkillResponse: Could not set FinalResultData key {Key} on Action", kv.Key);
-                            }
-                        }
-                        Logger.LogInformation("SendSkillResponse: Included FinalResultData keys={Count} from context ({Source})", finalData.Count, finalKey);
-                    }
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "SendSkillResponse: Error while attaching FinalResultData to Action (continuing)");
-            }
-            
-            // Erstelle I4.0 Message mit Action
+            // Erstelle I4.0 Message
             var messageBuilder = new I40MessageBuilder()
                 .From($"{ModuleId}_Execution_Agent", "ExecutionAgent")
                 .To(requestSender, "PlanningAgent")
@@ -115,18 +72,87 @@ public class SendSkillResponseNode : BTNode
                 messageBuilder.ReplyingTo(originalMessageId);
             }
             
-            // Füge die Action direkt hinzu (enthält alle Properties mit korrekten Values!)
-            messageBuilder.AddElement(action);
+            // Füge Properties mit VALUES hinzu (korrekte BaSyx Syntax)
             
-            // LogMessage (Optional bei Refusal/Failure)
+            // ActionState
+            var actionStateProp = new Property<string>("ActionState");
+            actionStateProp.Value = new PropertyValue<string>(mappedActionState);
+            messageBuilder.AddElement(actionStateProp);
+            
+            // ActionTitle
+            if (!string.IsNullOrEmpty(actionTitle))
+            {
+                var titleProp = new Property<string>("ActionTitle");
+                titleProp.Value = new PropertyValue<string>(actionTitle);
+                messageBuilder.AddElement(titleProp);
+            }
+            
+            // Status (für Legacy-Kompatibilität)
+            var statusValue = mappedActionState.ToLowerInvariant();
+            var statusProp = new Property<string>("Status");
+            statusProp.Value = new PropertyValue<string>(statusValue);
+            messageBuilder.AddElement(statusProp);
+            
+            // MachineName
+            if (!string.IsNullOrEmpty(machineName))
+            {
+                var machineNameProp = new Property<string>("MachineName");
+                machineNameProp.Value = new PropertyValue<string>(machineName);
+                messageBuilder.AddElement(machineNameProp);
+            }
+            
+            // Step (bei refusal mitschicken)
+            if (!string.IsNullOrEmpty(step) && FrameType == I40MessageTypes.REFUSAL)
+            {
+                var stepProp = new Property<string>("Step");
+                stepProp.Value = new PropertyValue<string>(step);
+                messageBuilder.AddElement(stepProp);
+            }
+            
+            // InputParameters als SubmodelElementCollection
+            if (inputParameters != null && inputParameters.Any())
+            {
+                var inputParamsCollection = new SubmodelElementCollection("InputParameters");
+                foreach (var kvp in inputParameters)
+                {
+                    var prop = new Property<string>(kvp.Key);
+                    prop.Value = new PropertyValue<string>(kvp.Value);
+                    inputParamsCollection.Add(prop);
+                }
+                messageBuilder.AddElement(inputParamsCollection);
+            }
+            
+            // LogMessage (bei refusal oder failure)
             if (FrameType == I40MessageTypes.REFUSAL || FrameType == I40MessageTypes.FAILURE)
             {
                 var logMessage = Context.Get<string>("LogMessage") ?? Context.Get<string>("ErrorMessage");
                 if (!string.IsNullOrEmpty(logMessage))
                 {
-                    var logElement = BuildResponseLog(FrameType, logMessage, ModuleId);
-                    messageBuilder.AddElement(logElement);
+                    var logProp = new Property<string>("LogMessage");
+                    logProp.Value = new PropertyValue<string>(logMessage);
+                    messageBuilder.AddElement(logProp);
                     Logger.LogInformation("SendSkillResponse: Including LogMessage: {LogMessage}", logMessage);
+                }
+            }
+            
+            // FinalResultData (nur bei DONE State)
+            if (mappedActionState == "DONE")
+            {
+                var skillName = actionTitle; // ActionTitle = SkillName
+                var finalResultData = Context.Get<IDictionary<string, object>>($"Skill_{skillName}_FinalResultData");
+                
+                if (finalResultData != null && finalResultData.Any())
+                {
+                    var resultCollection = new SubmodelElementCollection("FinalResultData");
+                    foreach (var kvp in finalResultData)
+                    {
+                        var prop = new Property<string>(kvp.Key);
+                        prop.Value = new PropertyValue<string>(kvp.Value?.ToString() ?? "");
+                        resultCollection.Add(prop);
+                    }
+                    messageBuilder.AddElement(resultCollection);
+                    
+                    Logger.LogInformation("SendSkillResponse: Including {Count} FinalResultData entries", finalResultData.Count);
                 }
             }
             
@@ -136,7 +162,7 @@ public class SendSkillResponseNode : BTNode
             await client.PublishAsync(message, topic);
             
             Logger.LogInformation("SendSkillResponse: Sent ActionState '{ActionState}' (FrameType: {FrameType}) to '{Receiver}' on topic '{Topic}'", 
-                mappedState, FrameType, requestSender, topic);
+                mappedActionState, FrameType, requestSender, topic);
             
             return NodeStatus.Success;
         }
@@ -150,25 +176,25 @@ public class SendSkillResponseNode : BTNode
     /// <summary>
     /// Mappt Skill States oder andere Werte zu gültigen ActionStatusEnum Werten
     /// </summary>
-    private ActionStatusEnum MapToActionState(string state)
+    private string MapToActionState(string state)
     {
         if (string.IsNullOrEmpty(state))
-            return ActionStatusEnum.OPEN;
+            return ActionStatusEnum.OPEN.ToString();
             
         // Direkt gültige ActionStates
         if (Enum.TryParse<ActionStatusEnum>(state.ToUpperInvariant(), out var enumValue))
-            return enumValue;
+            return enumValue.ToString();
             
         // Mapping von Skill States zu Action States
         return state.ToUpperInvariant() switch
         {
-            "COMPLETED" => ActionStatusEnum.DONE,
-            "RUNNING" => ActionStatusEnum.EXECUTING,
-            "STARTING" => ActionStatusEnum.EXECUTING,
-            "HALTED" => ActionStatusEnum.ABORTED,
-            "READY" => ActionStatusEnum.PLANNED,
-            "SUSPENDED" => ActionStatusEnum.SUSPENDED,
-            _ => ActionStatusEnum.OPEN
+            "COMPLETED" => ActionStatusEnum.DONE.ToString(),
+            "RUNNING" => ActionStatusEnum.EXECUTING.ToString(),
+            "STARTING" => ActionStatusEnum.EXECUTING.ToString(),
+            "HALTED" => ActionStatusEnum.ABORTED.ToString(),
+            "READY" => ActionStatusEnum.PLANNED.ToString(),
+            "SUSPENDED" => ActionStatusEnum.SUSPENDED.ToString(),
+            _ => state.ToUpperInvariant()
         };
     }
     
@@ -180,18 +206,5 @@ public class SendSkillResponseNode : BTNode
     public override Task OnReset()
     {
         return Task.CompletedTask;
-    }
-
-    private static LogMessage BuildResponseLog(string frameType, string message, string moduleId)
-    {
-        var level = frameType switch
-        {
-            I40MessageTypes.FAILURE => LogMessage.LogLevel.Error,
-            I40MessageTypes.REFUSAL => LogMessage.LogLevel.Warn,
-            _ => LogMessage.LogLevel.Info
-        };
-
-        var agentState = string.IsNullOrWhiteSpace(moduleId) ? "" : moduleId;
-        return new LogMessage(level, message, "ExecutionAgent", agentState);
     }
 }

@@ -7,10 +7,9 @@
     "LogLevel": "Information"
   },
   "OPCUA": {
-    "Endpoint": "opc.tcp://172.24.100.85:4892",
+    "Endpoint": "opc.tcp://localhost:4892",
     "UseAuth": true,
     "Username": "orchestrator",
-    
     "Password": "orchestrator",
     "SecurityMode": "None",
     "SecurityPolicy": "None",
@@ -30,8 +29,8 @@
     }
   },
   "MQTT": {
-    "Broker": "172.24.100.85",
-    "BrokerAddress": "172.24.100.85",
+    "Broker": "localhost",
+    "BrokerAddress": "localhost",
     "Port": 1883,
     "Username": "mqttuser",
     "Password": "mqttpass",

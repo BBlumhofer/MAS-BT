@@ -75,7 +75,8 @@ public class UpdateInventoryFromActionNode : BTNode
             var inventoryCollection = new SubmodelElementCollection("Inventory");
             foreach (var kvp in inventory)
             {
-                var prop = I40MessageBuilder.CreateStringProperty(kvp.Key, kvp.Value?.ToString() ?? "");
+                var prop = new Property<string>(kvp.Key);
+                prop.Value = new PropertyValue<string>(kvp.Value?.ToString() ?? "");
                 inventoryCollection.Add(prop);
             }
             

@@ -10,7 +10,7 @@ import paho.mqtt.client as mqtt
 from datetime import datetime, timezone
 
 # MQTT Broker Configuration
-BROKER_HOST = "172.24.100.85"
+BROKER_HOST = "localhost"
 BROKER_PORT = 1883
 TOPIC = "/Modules/CA-Module/SkillRequest/"
 
