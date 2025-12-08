@@ -283,11 +283,20 @@ await client.PublishAsync(message, topic);
 Die AAS Nodes (ReadShell, ReadCapability, etc.) sind vorbereitet für Integration mit dem AAS-Sharp-Client:
 
 ```csharp
-// TODO: Integration beispiel
+// Initialization
 var aasClient = new AasSharpClient(endpoint);
-var shell = await aasClient.GetShellAsync(agentId);
-var capability = await aasClient.GetSubmodelAsync(agentId, "CapabilityDescription");
+Context.Set("AASClient", aasClient);
+
+// Load shell and submodels
+var shell = await aasClient.GetShellByIdAsync(agentId);
+var capability = await aasClient.GetSubmodelByIdAsync(agentId, "CapabilityDescription");
+
+// Store in context
+Context.Set("shell", shell);
+Context.Set("capabilitySM", capability);
 ```
+
+**📖 Für eine vollständige API-Referenz und Beispiele siehe: [AAS Sharp Client Documentation](./docs/AAS_SHARP_CLIENT.md)**
 
 Aktuell: Placeholder-Implementierungen die Test-Daten zurückgeben.
 
@@ -361,6 +370,7 @@ Ermöglicht komplexe Composite Nodes (Sequence, Selector, Parallel).
 ## 📚 Weiterführende Dokumentation
 
 - [I4.0 Sharp Messaging README](../I4.0-Sharp-Messaging/README.md)
+- [AAS Sharp Client Documentation](./docs/AAS_SHARP_CLIENT.md) ⭐ **Comprehensive Guide**
 - [AAS Sharp Client README](../AAS-Sharp-Client/README.md)
 - [MAS-BT Architecture README](./README.md)
 - [specs.json](./specs.json)
