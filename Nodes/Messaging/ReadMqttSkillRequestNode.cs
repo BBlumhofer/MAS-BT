@@ -2,10 +2,17 @@ using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
+using I40Sharp.Messaging.Core;
 using BaSyx.Models.AdminShell;
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using BaSyx.Models.Extensions;
 using AasSharpClient.Models;
+using ActionModel = AasSharpClient.Models.Action;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -20,6 +27,13 @@ public class ReadMqttSkillRequestNode : BTNode
     
     private readonly ConcurrentQueue<string> _messageQueue = new(); // Store raw JSON
     private bool _subscribed = false;
+
+    private static readonly JsonSerializerOptions BasyxOptions = new()
+    {
+        Converters = { new FullSubmodelElementConverter(new ConverterOptions()), new JsonStringEnumConverter() },
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+        PropertyNameCaseInsensitive = true
+    };
     
     public ReadMqttSkillRequestNode() : base("ReadMqttSkillRequest")
     {
@@ -109,30 +123,112 @@ public class ReadMqttSkillRequestNode : BTNode
                     return NodeStatus.Failure;
                 }
                 
-                // Finde Action (erstes SubmodelElementCollection mit idShort="Action*")
-                JsonElement? actionElement = null;
+                SubmodelElementCollection? actionCollection = null;
+                JsonElement? rawActionElement = null;
+
                 foreach (var element in interactionElements.EnumerateArray())
                 {
-                    if (element.TryGetProperty("idShort", out var idShort) && 
-                        idShort.GetString()?.StartsWith("Action") == true)
+                    var raw = element.GetRawText();
+                    // Log the raw JSON we attempt to parse with BaSyx for easier debugging
+                    Logger.LogInformation("ReadMqttSkillRequest: Attempting BaSyx parse of interaction element JSON: {Json}", raw);
+                    try
                     {
-                        actionElement = element;
-                        break;
+                        // BaSyx-konforme Deserialisierung mit Fallback ähnlich Testhelper
+                        var collection = BuildCollectionFromElement(element);
+                        if (!string.IsNullOrEmpty(collection.IdShort) && collection.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
+                        {
+                            actionCollection = collection;
+                            rawActionElement = element;
+                            break;
+                        }
+                        // Falls keine Collection erkannt, versuche direkten Deserialize (kann z.B. bei einzelnen SubmodelElements greifen)
+                        var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(raw, BasyxOptions);
+                        if (sme is SubmodelElementCollection col && !string.IsNullOrEmpty(col.IdShort) && col.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
+                        {
+                            actionCollection = col;
+                            rawActionElement = element;
+                            break;
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        // Wenn BaSyx-Deserialisierung fehlschlägt, logge Exception + das rohe JSON und versuche weiterhin eine manuelle Extraktion
+                        Logger.LogInformation("ReadMqttSkillRequest: BaSyx deserialization failed for interaction element; raw JSON: {Json}. Exception: {Ex}", raw, ex.Message);
+                        if (element.TryGetProperty("idShort", out var idShort) && idShort.GetString()?.StartsWith("Action") == true)
+                        {
+                            rawActionElement = element;
+                            break;
+                        }
                     }
                 }
-                
-                if (actionElement == null)
+
+                if (actionCollection == null && rawActionElement == null)
                 {
                     Logger.LogWarning("ReadMqttSkillRequest: No Action found in interactionElements");
                     return NodeStatus.Failure;
                 }
-                
-                // Extrahiere Action Properties aus value[] Array
-                var actionValue = actionElement.Value.GetProperty("value");
-                var actionTitle = ExtractPropertyValue(actionValue, "ActionTitle");
-                var status = ExtractPropertyValue(actionValue, "Status");
-                var machineName = ExtractPropertyValue(actionValue, "MachineName");
-                
+
+                string actionTitle = string.Empty;
+                string status = string.Empty;
+                string machineName = string.Empty;
+
+                // Wenn BaSyx-Collection vorhanden, extrahiere Werte daraus, sonst nutze das rohe JsonElement
+                if (actionCollection != null)
+                {
+                    var actionModel = CreateActionFromCollection(actionCollection);
+
+                    actionTitle = actionModel.ActionTitle.Value.Value?.ToString() ?? string.Empty;
+                    status = actionModel.State.ToString();
+                    machineName = actionModel.MachineName.Value.Value?.ToString() ?? string.Empty;
+
+                    var inputParams = ExtractInputParametersDictionary(actionModel);
+                    Context.Set("InputParameters", inputParams);
+                    Logger.LogInformation("ReadMqttSkillRequest: Extracted {Count} input parameters (BaSyx)", inputParams.Count);
+
+                    Context.Set("CurrentAction", actionModel);
+                    Context.Set("ActionId", actionModel.IdShort ?? "Action001");
+                }
+                else if (rawActionElement.HasValue)
+                {
+                    var actionValue = rawActionElement.Value.GetProperty("value");
+                    actionTitle = ExtractPropertyValue(actionValue, "ActionTitle");
+                    status = ExtractPropertyValue(actionValue, "Status");
+                    machineName = ExtractPropertyValue(actionValue, "MachineName");
+
+                    // Extrahiere InputParameters (manuelle Pfad wie vorher)
+                    var inputParams = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var prop in actionValue.EnumerateArray())
+                    {
+                        if (prop.TryGetProperty("idShort", out var propIdShort) && 
+                            propIdShort.GetString() == "InputParameters")
+                        {
+                            if (prop.TryGetProperty("value", out var paramsArray))
+                            {
+                                foreach (var param in paramsArray.EnumerateArray())
+                                {
+                                    if (param.TryGetProperty("idShort", out var paramName))
+                                    {
+                                        string? valueType = null;
+                                        if (param.TryGetProperty("valueType", out var valueTypeElement))
+                                        {
+                                            valueType = valueTypeElement.GetString();
+                                        }
+
+                                        if (param.TryGetProperty("value", out var paramValue))
+                                        {
+                                            var typedValue = ExtractTypedValue(paramValue, valueType);
+                                            inputParams[paramName.GetString() ?? ""] = typedValue;
+                                        }
+                                    }
+                                }
+                            }
+                            break;
+                        }
+                    }
+                    Context.Set("InputParameters", inputParams);
+                    Logger.LogInformation("ReadMqttSkillRequest: Extracted {Count} input parameters", inputParams.Count);
+                }
+
                 Logger.LogInformation("ReadMqttSkillRequest: Received Action '{ActionTitle}' with status '{Status}' for machine '{MachineName}'", 
                     actionTitle, status, machineName);
                 
@@ -143,47 +239,27 @@ public class ReadMqttSkillRequestNode : BTNode
                 Context.Set("ConversationId", conversationId);
                 Context.Set("OriginalMessageId", messageId);
                 Context.Set("RequestSender", senderId);
-                
-                // Extrahiere InputParameters
-                var inputParams = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                foreach (var prop in actionValue.EnumerateArray())
-                {
-                    if (prop.TryGetProperty("idShort", out var propIdShort) && 
-                        propIdShort.GetString() == "InputParameters")
-                    {
-                        if (prop.TryGetProperty("value", out var paramsArray))
-                        {
-                            foreach (var param in paramsArray.EnumerateArray())
-                            {
-                                if (param.TryGetProperty("idShort", out var paramName))
-                                {
-                                    // Hole valueType falls vorhanden (z.B. "xs:boolean", "xs:integer")
-                                    string? valueType = null;
-                                    if (param.TryGetProperty("valueType", out var valueTypeElement))
-                                    {
-                                        valueType = valueTypeElement.GetString();
-                                    }
-                                    
-                                    if (param.TryGetProperty("value", out var paramValue))
-                                    {
-                                        var typedValue = ExtractTypedValue(paramValue, valueType);
-                                        inputParams[paramName.GetString() ?? ""] = typedValue;
-                                    }
-                                }
-                            }
-                        }
-                        break;
-                    }
-                }
-                
-                Context.Set("InputParameters", inputParams);
-                Logger.LogInformation("ReadMqttSkillRequest: Extracted {Count} input parameters", inputParams.Count);
 
-                var actionIdShort = actionElement.Value.GetProperty("idShort").GetString() ?? "Action001";
-                var aasAction = BuildAasAction(actionIdShort, actionTitle, status, machineName, inputParams);
-                Context.Set("CurrentAction", aasAction);
+                // InputParameters sollten bereits in Context gesetzt worden sein (BaSyx oder manuell)
+                var inputParamsFromContext = Context.Get<Dictionary<string, object>>("InputParameters") ?? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+                // Bestimme actionId
+                string actionIdShort;
+                if (actionCollection != null)
+                    actionIdShort = actionCollection.IdShort ?? "Action001";
+                else if (rawActionElement.HasValue && rawActionElement.Value.TryGetProperty("idShort", out var idShortProp))
+                    actionIdShort = idShortProp.GetString() ?? "Action001";
+                else
+                    actionIdShort = "Action001";
+
+                var existingAction = Context.Get<ActionModel>("CurrentAction");
+                if (existingAction == null)
+                {
+                    var aasAction = BuildAasAction(actionIdShort, actionTitle, status, machineName, inputParamsFromContext);
+                    Context.Set("CurrentAction", aasAction);
+                }
                 Context.Set("ActionId", actionIdShort);
-                
+
                 return NodeStatus.Success;
             }
             catch (Exception ex)
@@ -311,6 +387,143 @@ public class ReadMqttSkillRequestNode : BTNode
         }
     }
 
+    private static SubmodelElementCollection BuildCollectionFromElement(JsonElement element)
+    {
+        var idShort = element.TryGetProperty("idShort", out var idShortNode)
+            ? idShortNode.GetString() ?? "Collection"
+            : "Collection";
+
+        var collection = new SubmodelElementCollection(idShort);
+
+        if (element.TryGetProperty("value", out var val) && val.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in val.EnumerateArray())
+            {
+                var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(child.GetRawText(), BasyxOptions);
+                if (sme != null)
+                {
+                    collection.Add(sme);
+                    continue;
+                }
+
+                var fallback = CreateFallbackElement(child);
+                if (fallback != null)
+                {
+                    collection.Add(fallback);
+                }
+            }
+        }
+
+        return collection;
+    }
+
+    private static ISubmodelElement? CreateFallbackElement(JsonElement element)
+    {
+        if (!element.TryGetProperty("idShort", out var idShortNode))
+        {
+            return null;
+        }
+
+        var idShort = idShortNode.GetString() ?? string.Empty;
+        var modelType = element.TryGetProperty("modelType", out var mtNode) ? mtNode.GetString() : null;
+
+        if (string.Equals(modelType, "SubmodelElementCollection", StringComparison.OrdinalIgnoreCase))
+        {
+            return BuildNestedCollection(element, idShort);
+        }
+
+        if (string.Equals(modelType, "Property", StringComparison.OrdinalIgnoreCase))
+        {
+            var value = element.TryGetProperty("value", out var valueNode) ? valueNode.GetString() ?? string.Empty : string.Empty;
+            return new Property<string>(idShort, value);
+        }
+
+        return null;
+    }
+
+    private static SubmodelElementCollection BuildNestedCollection(JsonElement element, string idShort)
+    {
+        var collection = new SubmodelElementCollection(idShort);
+        if (element.TryGetProperty("value", out var valNode) && valNode.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var child in valNode.EnumerateArray())
+            {
+                var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(child.GetRawText(), BasyxOptions) ?? CreateFallbackElement(child);
+                if (sme != null)
+                {
+                    collection.Add(sme);
+                }
+            }
+        }
+
+        return collection;
+    }
+
+    private static IEnumerable<ISubmodelElement> Elements(SubmodelElementCollection? coll)
+    {
+        if (coll is null)
+        {
+            return Array.Empty<ISubmodelElement>();
+        }
+
+        if (coll.Value is IEnumerable<ISubmodelElement> seq)
+        {
+            return seq;
+        }
+
+        if (coll is IEnumerable<ISubmodelElement> enumerable)
+        {
+            return enumerable;
+        }
+
+        return Array.Empty<ISubmodelElement>();
+    }
+
+    private static SubmodelElementCollection? GetCollection(SubmodelElementCollection coll, string idShort)
+    {
+        return Elements(coll)
+            .OfType<SubmodelElementCollection>()
+            .FirstOrDefault(e => string.Equals(e.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string GetStringProperty(SubmodelElementCollection coll, string idShort, string fallback)
+    {
+        var property = Elements(coll)
+            .FirstOrDefault(e => string.Equals(e.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
+
+        if (property is Property<string> stringProp)
+        {
+            return stringProp.Value?.Value?.ToString() ?? fallback;
+        }
+
+        if (property is IProperty prop && prop.Value?.Value is not null)
+        {
+            return prop.Value.Value.ToString() ?? fallback;
+        }
+
+        return fallback;
+    }
+
+    private static Dictionary<string, object> BuildInputParameterDictionary(SubmodelElementCollection? collection)
+    {
+        var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        foreach (var element in Elements(collection).OfType<IProperty>())
+        {
+            object? raw = element.Value?.Value;
+            if (raw is IValue inner)
+            {
+                raw = inner.Value;
+            }
+
+            if (raw != null)
+            {
+                dict[element.IdShort] = ConvertLooseType(raw);
+            }
+        }
+
+        return dict;
+    }
+
     private static AasSharpClient.Models.Action BuildAasAction(
         string actionId,
         string actionTitle,
@@ -322,6 +535,130 @@ public class ReadMqttSkillRequestNode : BTNode
         var inputModel = InputParameters.FromTypedValues(inputParameters);
         var finalResult = new FinalResultData();
         return new AasSharpClient.Models.Action(actionId, actionTitle, mappedStatus, inputModel, finalResult, null, machineName);
+    }
+
+    private static ActionModel CreateActionFromCollection(SubmodelElementCollection coll)
+    {
+        var title = GetStringProperty(coll, "ActionTitle", "Unknown");
+        var statusValue = GetStringProperty(coll, "Status", "planned");
+        var machineName = GetStringProperty(coll, "MachineName", string.Empty);
+
+        var status = Enum.TryParse<ActionStatusEnum>(statusValue, true, out var parsedStatus)
+            ? parsedStatus
+            : ActionStatusEnum.PLANNED;
+
+        var inputParams = InputParameters.FromTypedValues(BuildInputParameterDictionary(GetCollection(coll, "InputParameters")));
+        var finalResultData = new FinalResultData(BuildInputParameterDictionary(GetCollection(coll, "FinalResultData")));
+        var skillReference = new SkillReference(Array.Empty<(object Key, string Value)>());
+
+        return new ActionModel(
+            idShort: coll.IdShort ?? "Action001",
+            actionTitle: title,
+            status: status,
+            inputParameters: inputParams,
+            finalResultData: finalResultData,
+            skillReference: skillReference,
+            machineName: machineName
+        );
+    }
+
+    private static Dictionary<string, object> ExtractInputParametersDictionary(ActionModel action)
+    {
+        var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+        foreach (var element in Elements(action.InputParameters).OfType<IProperty>())
+        {
+            object? raw = element.Value?.Value;
+            if (raw is IValue inner)
+            {
+                raw = inner.Value;
+            }
+
+            if (raw != null)
+            {
+                dict[element.IdShort] = ConvertLooseType(raw);
+            }
+        }
+
+        return dict;
+    }
+
+    private static object ConvertLooseType(object raw)
+    {
+        switch (raw)
+        {
+            case string s:
+                if (bool.TryParse(s, out var b)) return b;
+                if (int.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var i)) return i;
+                if (long.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var l)) return l;
+                if (double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)) return d;
+                return s;
+            case JsonElement je:
+                return ExtractTypedValueStatic(je, null);
+            default:
+                return raw;
+        }
+    }
+
+    private static object ExtractTypedValueStatic(JsonElement element, string? xsdValueType)
+    {
+        // reuse logic from instance method but static for converter helper
+        if (!string.IsNullOrEmpty(xsdValueType))
+        {
+            var valueStr = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
+            if (string.IsNullOrEmpty(valueStr)) return string.Empty;
+
+            var normalizedType = xsdValueType.ToLowerInvariant();
+            if (normalizedType.StartsWith("xs:")) normalizedType = normalizedType.Substring(3);
+
+            switch (normalizedType)
+            {
+                case "boolean":
+                case "bool":
+                    if (bool.TryParse(valueStr, out var boolValue)) return boolValue;
+                    if (valueStr == "1") return true;
+                    if (valueStr == "0") return false;
+                    return false;
+                case "integer":
+                case "int":
+                    if (int.TryParse(valueStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var intValue)) return intValue;
+                    return 0;
+                case "long":
+                    if (long.TryParse(valueStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var longValue)) return longValue;
+                    return 0L;
+                case "double":
+                    if (double.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var doubleValue)) return doubleValue;
+                    return 0.0;
+                case "float":
+                    if (float.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var floatValue)) return floatValue;
+                    return 0.0f;
+                case "string":
+                default:
+                    return valueStr;
+            }
+        }
+
+        switch (element.ValueKind)
+        {
+            case JsonValueKind.String:
+                var str = element.GetString() ?? string.Empty;
+                if (bool.TryParse(str, out var autoBool)) return autoBool;
+                if (int.TryParse(str, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var autoInt)) return autoInt;
+                if (double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var autoDouble)) return autoDouble;
+                return str;
+            case JsonValueKind.Number:
+                if (element.TryGetInt32(out var i)) return i;
+                if (element.TryGetInt64(out var l)) return l;
+                if (element.TryGetDouble(out var d)) return d;
+                return element.GetRawText();
+            case JsonValueKind.True:
+                return true;
+            case JsonValueKind.False:
+                return false;
+            case JsonValueKind.Null:
+                return string.Empty;
+            default:
+                return element.GetRawText();
+        }
     }
 
     private static ActionStatusEnum MapActionStatus(string status)

@@ -153,7 +153,7 @@ public class NodeRegistry
         // Messaging Integration Nodes (Phase 3 - NEW)
         Register<ReadMqttSkillRequestNode>();
         Register<SendSkillResponseNode>();
-        Register<UpdateInventoryFromActionNode>();
+        Register<UpdateInventoryNode>("UpdateInventory");
         Register<SendStateMessageNode>();
         Register<EnableStorageChangeMqttNode>();
         

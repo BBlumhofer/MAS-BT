@@ -1,6 +1,7 @@
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Services;
+using I40Sharp.Messaging;
 using UAClient.Client;
 using UAClient.Common;
 
@@ -134,6 +135,26 @@ public class ConnectToModuleNode : BTNode
             catch (Exception ex)
             {
                 Logger.LogWarning(ex, "ConnectToModule: Failed to register RemoteServer MQTT notifier");
+            }
+
+            // 5c. Register Storage change MQTT notifier (on-change, no polling)
+            try
+            {
+                var messagingClient = Context.Get<MessagingClient>("MessagingClient");
+                if (messagingClient != null)
+                {
+                    var storageNotifier = new MAS_BT.Services.StorageMqttNotifier(Context, server, messagingClient);
+                    await storageNotifier.RegisterAsync();
+                    Logger.LogInformation("ConnectToModule: Registered StorageMqttNotifier (on-change storage updates)");
+                }
+                else
+                {
+                    Logger.LogWarning("ConnectToModule: MessagingClient not in context; StorageMqttNotifier not registered");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "ConnectToModule: Failed to register StorageMqttNotifier");
             }
             
             Set("connected", true);

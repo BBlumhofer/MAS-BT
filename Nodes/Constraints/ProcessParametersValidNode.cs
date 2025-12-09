@@ -1,4 +1,3 @@
-// filepath: /home/benjamin/AgentDevelopment/MAS-BT/Nodes/Constraints/ProcessParametersValidNode.cs
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 using System.Text.Json;
@@ -91,7 +90,7 @@ public class ProcessParametersValidNode : BTNode
                 if (prop.Value.TryGetProperty("max", out var maxProp))
                     constraint.Max = maxProp.GetDouble();
                 if (prop.Value.TryGetProperty("equals", out var eqProp))
-                    constraint.Equals = eqProp.ToString();
+                    constraint.ExpectedEquals = eqProp.ToString();
                 if (prop.Value.TryGetProperty("notEquals", out var neqProp))
                     constraint.NotEquals = neqProp.ToString();
                 if (prop.Value.TryGetProperty("required", out var reqProp))
@@ -144,10 +143,10 @@ public class ProcessParametersValidNode : BTNode
             
             // String-Prüfungen
             var strValue = actualValue?.ToString() ?? "";
-            if (!string.IsNullOrEmpty(constraint.Equals) && 
-                !strValue.Equals(constraint.Equals, StringComparison.OrdinalIgnoreCase))
+            if (!string.IsNullOrEmpty(constraint.ExpectedEquals) && 
+                !strValue.Equals(constraint.ExpectedEquals, StringComparison.OrdinalIgnoreCase))
             {
-                violations.Add($"{paramName}: '{strValue}' != expected '{constraint.Equals}'");
+                violations.Add($"{paramName}: '{strValue}' != expected '{constraint.ExpectedEquals}'");
             }
             if (!string.IsNullOrEmpty(constraint.NotEquals) && 
                 strValue.Equals(constraint.NotEquals, StringComparison.OrdinalIgnoreCase))
@@ -204,7 +203,7 @@ public class ProcessParametersValidNode : BTNode
         public string Name { get; set; } = "";
         public double? Min { get; set; }
         public double? Max { get; set; }
-        public string? Equals { get; set; }
+        public string? ExpectedEquals { get; set; }
         public string? NotEquals { get; set; }
         public bool Required { get; set; } = false;
     }

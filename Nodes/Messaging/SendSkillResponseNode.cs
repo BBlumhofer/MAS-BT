@@ -55,7 +55,12 @@ public class SendSkillResponseNode : BTNode
         {
             // Hole Original Action aus Context
             var machineName = Context.Get<string>("MachineName");
-            var inputParameters = Context.Get<Dictionary<string, string>>("InputParameters");
+            var rawInputParameters = Context.Get<Dictionary<string, object>>("InputParameters");
+            Dictionary<string, string>? inputParameters = null;
+            if (rawInputParameters != null && rawInputParameters.Any())
+            {
+                inputParameters = rawInputParameters.ToDictionary(k => k.Key, v => v.Value?.ToString() ?? string.Empty);
+            }
             var step = Context.Get<string>("Step");
             
             // Mappe ActionState zu gültigen ActionStatusEnum Werten

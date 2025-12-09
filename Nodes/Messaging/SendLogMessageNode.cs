@@ -48,7 +48,7 @@ public class SendLogMessageNode : BTNode
             var parsedLogLevel = ParseLogLevel(LogLevel);
 
             var logElement = new LogMessage(parsedLogLevel, Message, agentRole, agentState, moduleId);
-
+            Logger.LogInformation("SendLogMessage: Sent log message to MQTT topic '{logElement}'", logElement);
             var logMessage = new I40MessageBuilder()
                 .From($"{moduleId}_Execution_Agent", "ExecutionAgent")
                 .To("Broadcast", "System")

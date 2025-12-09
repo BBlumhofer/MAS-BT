@@ -84,8 +84,14 @@
           name="SendInitComplete"
           LogLevel="INFO"
           Message="Module initialization complete. Ready to accept skill requests."
-          ModuleId="Module2"/>
+          ModuleId="{config.Agent.ModuleId}"/>
       </Sequence>
+
+      <UpdateInventory name="PublishInventoryAfterInit" 
+               ModuleId="{config.Agent.ModuleId}" 
+               ModuleName="{config.Agent.ModuleId}"
+               PublishToMqtt="true"
+               ForcePublish="true"/>
     </Sequence>
   </BehaviorTree>
 
@@ -186,9 +192,10 @@
                 </ForceFailure>
               </Fallback>
               
-              <UpdateInventoryFromAction name="UpdateInventory" 
-                                         ModuleId="{config.Agent.ModuleId}" 
-                                         PublishToMqtt="true"/>
+              <UpdateInventory name="UpdateInventory" 
+                               ModuleId="{config.Agent.ModuleId}" 
+                               ModuleName="{config.Agent.ModuleId}"
+                               PublishToMqtt="true"/>
               
               <SetModuleState name="SetDone"
                              ModuleName="{MachineName}"
@@ -284,9 +291,10 @@
       <input_port name="ModuleName"/>
       <input_port name="SkillName"/>
     </Action>
-    <Action ID="UpdateInventoryFromAction">
+    <Action ID="UpdateInventory">
       <input_port name="ModuleId"/>
       <input_port name="PublishToMqtt" default="true"/>
+      <input_port name="ForcePublish" default="false"/>
     </Action>
     <Action ID="SendStateMessage">
       <input_port name="ModuleId"/>

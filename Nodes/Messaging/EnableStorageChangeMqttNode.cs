@@ -16,39 +16,9 @@ public class EnableStorageChangeMqttNode : BTNode
 
     public override async Task<NodeStatus> Execute()
     {
-        var server = Context.Get<RemoteServer>("RemoteServer");
-        if (server == null)
-        {
-            Logger.LogError("EnableStorageChangeMqtt: RemoteServer not found in context");
-            return NodeStatus.Failure;
-        }
-
-        var messagingClient = Context.Get<MessagingClient>("MessagingClient");
-        if (messagingClient == null)
-        {
-            Logger.LogError("EnableStorageChangeMqtt: MessagingClient not found in context");
-            return NodeStatus.Failure;
-        }
-
-        // avoid duplicate registration in the same run
-        if (Context.Has("StorageNotifierRegistered") && Context.Get<bool>("StorageNotifierRegistered"))
-        {
-            Logger.LogDebug("EnableStorageChangeMqtt: notifier already registered");
-            return NodeStatus.Success;
-        }
-
-        try
-        {
-            var notifier = new StorageMqttNotifier(Context, server, messagingClient);
-            await notifier.RegisterAsync();
-            Context.Set("StorageNotifierRegistered", true);
-            Logger.LogInformation("EnableStorageChangeMqtt: Storage change MQTT publishing enabled");
-            return NodeStatus.Success;
-        }
-        catch (Exception ex)
-        {
-            Logger.LogWarning(ex, "EnableStorageChangeMqtt: registration failed");
-            return NodeStatus.Failure;
-        }
+        Logger.LogInformation("EnableStorageChangeMqtt: Skipped; storage subscriptions are now registered during ConnectToModule.");
+        Context.Set("StorageNotifierRegistered", true);
+        await Task.CompletedTask;
+        return NodeStatus.Success;
     }
 }
