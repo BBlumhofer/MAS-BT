@@ -34,7 +34,7 @@ public class ReadMqttSkillRequestNode : BTNode
 
     private static readonly JsonSerializerOptions BasyxOptions = new()
     {
-        Converters = { new FullSubmodelElementConverter(new ConverterOptions()), new JsonStringEnumConverter() },
+        Converters = { new FullSubmodelElementConverter(new ConverterOptions()), new ReferenceJsonConverter(), new JsonStringEnumConverter() },
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
         PropertyNameCaseInsensitive = true
     };
@@ -630,8 +630,8 @@ public class ReadMqttSkillRequestNode : BTNode
                     }
 
                     Reference reference = string.Equals(refType, "ModelReference", StringComparison.OrdinalIgnoreCase)
-                        ? ReferenceFactory.Model(keyTuples.Select(t => (t.Item1, t.Item2)).ToArray())
-                        : ReferenceFactory.External(keyTuples.Select(t => (t.Item1, t.Item2)).ToArray());
+                        ? new Reference(keyTuples.Select(t => new Key(t.Item1, t.Item2)).ToArray()) { Type = ReferenceType.ModelReference }
+                        : new Reference(keyTuples.Select(t => new Key(t.Item1, t.Item2)).ToArray()) { Type = ReferenceType.ExternalReference };
 
                     var refElem = new ReferenceElement(idShort)
                     {
@@ -648,6 +648,22 @@ public class ReadMqttSkillRequestNode : BTNode
         }
 
         return null;
+    }
+
+    private static KeyType MapKeyType(string? type)
+    {
+        if (string.IsNullOrWhiteSpace(type)) return KeyType.Undefined;
+        return type.ToLowerInvariant() switch
+        {
+            "globalreference" => KeyType.GlobalReference,
+            "submodel" => KeyType.Submodel,
+            "submodelelementcollection" => KeyType.SubmodelElementCollection,
+            "property" => KeyType.Property,
+            "referable" => KeyType.Referable,
+            "submodelelement" => KeyType.SubmodelElement,
+            "submodelelementlist" => KeyType.SubmodelElementList,
+            _ => KeyType.GlobalReference
+        };
     }
 
     private static SubmodelElementCollection BuildNestedCollection(JsonElement element, string idShort)

@@ -6,6 +6,7 @@ using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
+using MAS_BT.Services;
 
 namespace MAS_BT.Nodes.Planning;
 
@@ -61,8 +62,24 @@ public class SendSkillRequestNode : BTNode
         {
             action.SetStatus(ActionStatusEnum.EXECUTING);
         }
-
         Logger.LogInformation("SendSkillRequest: Published SkillRequest for action {ActionId} on {Topic}", action.IdShort, topic);
+
+        // Publish step update so dispatcher/execution UIs are informed about action/step state changes
+        try
+        {
+            var plan = Context.Get<ProductionPlan>("ProductionPlan");
+            Step? parentStep = null;
+            if (plan != null)
+            {
+                parentStep = plan.Steps.FirstOrDefault(s => s.Actions.Contains(action));
+            }
+
+            await StepUpdateBroadcaster.PublishStepAsync(Context, client, parentStep ?? new Step("Unknown", "Unknown", StepStatusEnum.OPEN, (AasSharpClient.Models.Action?)null, string.Empty, new SchedulingContainer(string.Empty, string.Empty, string.Empty, string.Empty), string.Empty, string.Empty));
+        }
+        catch
+        {
+            // best-effort
+        }
         return NodeStatus.Success;
     }
 }

@@ -17,6 +17,8 @@
           <Sequence name="DispatchIfReady">
             <SelectSchedulableAction name="SelectSchedulableAction" LeadTimeSeconds="0" />
             <SendSkillRequest name="SendSkillRequest" ModuleId="{config.Agent.ModuleId}" />
+              <AwaitSkillResponse name="AwaitSkillResponse" ModuleId="{config.Agent.ModuleId}" TimeoutMs="10000" />
+              <ApplySkillResponse name="ApplySkillResponse" />
             <Wait name="DispatchThrottle" DelayMs="200" />
           </Sequence>
           <Wait name="IdleWait" DelayMs="500" />
@@ -48,6 +50,11 @@
     <Action ID="SendSkillRequest">
       <input_port name="ModuleId"/>
     </Action>
+    <Action ID="AwaitSkillResponse">
+      <input_port name="ModuleId"/>
+      <input_port name="TimeoutMs" default="100"/>
+    </Action>
+    <Action ID="ApplySkillResponse"/>
     <Action ID="Wait">
       <input_port name="DelayMs" default="1000"/>
     </Action>

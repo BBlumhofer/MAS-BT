@@ -43,7 +43,7 @@ public class LoadProductionPlanNode : BTNode
         });
 
         var action1 = new AasSharpClient.Models.Action("Action001", "Store", ActionStatusEnum.OPEN, inputParameters1, new FinalResultData(), new Preconditions(), skillRef, DefaultMachine);
-        var scheduling1 = new SchedulingContainer(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.UtcNow.AddMinutes(1).ToString("yyyy-MM-dd HH:mm:ss"), "00:00:00", "00:01:00");
+        var scheduling1 = new SchedulingContainer(DateTime.UtcNow.ToString("yyyy-MM-dd HH:mm:ss"), DateTime.UtcNow.AddSeconds(30).ToString("yyyy-MM-dd HH:mm:ss"), "00:00:00", "00:01:00");
         var step1 = new Step("Step0001", "Store", StepStatusEnum.OPEN, action1, DefaultMachine, scheduling1, "SmartFactory-KL", "_PHUKET");
 
         // Step 2: Retrieve
@@ -55,7 +55,7 @@ public class LoadProductionPlanNode : BTNode
         var preconditions = new Preconditions(new[] { storagePre });
 
         var action2 = new AasSharpClient.Models.Action("Action001", "Retrieve", ActionStatusEnum.OPEN, inputParameters2, new FinalResultData(), preconditions, skillRef, DefaultMachine);
-        var scheduling2 = new SchedulingContainer(DateTime.UtcNow.AddMinutes(1).ToString("yyyy-MM-dd HH:mm:ss"), DateTime.UtcNow.AddMinutes(2).ToString("yyyy-MM-dd HH:mm:ss"), "00:00:00", "00:00:50");
+        var scheduling2 = new SchedulingContainer(DateTime.UtcNow.AddSeconds(50).ToString("yyyy-MM-dd HH:mm:ss"), DateTime.UtcNow.AddSeconds(20).ToString("yyyy-MM-dd HH:mm:ss"), "00:00:00", "00:00:50");
         var step2 = new Step("Step0002", "Retrieve", StepStatusEnum.OPEN, action2, DefaultMachine, scheduling2, "SmartFactory-KL", "_PHUKET");
 
         var productionPlan = new ProductionPlan(false, 2, step1)
