@@ -1,6 +1,8 @@
+using System;
 using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
+using MAS_BT.Services;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
@@ -30,6 +32,16 @@ public class SendSkillResponseNode : BTNode
     
     public override async Task<NodeStatus> Execute()
     {
+        // Check if the action was requeued due to preconditions; if so, skip sending ERROR
+        var wasRequeued = Context.Get<bool?>("ActionRequeuedDueToPrecondition") ?? false;
+        if (wasRequeued && (ActionState.Equals("ERROR", StringComparison.OrdinalIgnoreCase) || FrameType == I40MessageTypes.FAILURE))
+        {
+            Logger.LogInformation("SendSkillResponse: Action was requeued due to preconditions, skipping ERROR response");
+            Context.Set("ActionRequeuedDueToPrecondition", false);
+            return NodeStatus.Success;
+        }
+        Context.Set("ActionRequeuedDueToPrecondition", false);
+
         Logger.LogDebug("SendSkillResponse: Sending ActionState '{ActionState}' (FrameType: {FrameType}) for module '{ModuleId}'", 
             ActionState, FrameType, ModuleId);
         
@@ -41,9 +53,40 @@ public class SendSkillResponseNode : BTNode
         }
         
         var conversationId = Context.Get<string>("ConversationId");
-        var originalMessageId = Context.Get<string>("OriginalMessageId");
         var requestSender = Context.Get<string>("RequestSender");
         var actionTitle = Context.Get<string>("ActionTitle");
+        var currentRequest = Context.Get<SkillRequestEnvelope>("CurrentSkillRequest");
+        const string ErrorMapKey = "ActionErrorSentMap";
+        var errorMap = Context.Get<Dictionary<string, bool>>(ErrorMapKey);
+        if (errorMap == null)
+        {
+            errorMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+            Context.Set(ErrorMapKey, errorMap);
+        }
+
+        if (string.IsNullOrWhiteSpace(conversationId))
+        {
+            conversationId = currentRequest?.ConversationId ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(requestSender))
+        {
+            requestSender = currentRequest?.SenderId ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(actionTitle) && currentRequest != null)
+        {
+            actionTitle = currentRequest.ActionTitle;
+        }
+
+        if (!string.IsNullOrWhiteSpace(conversationId))
+        {
+            Context.Set("ConversationId", conversationId);
+        }
+        if (!string.IsNullOrWhiteSpace(requestSender))
+        {
+            Context.Set("RequestSender", requestSender);
+        }
         
         if (string.IsNullOrEmpty(conversationId) || string.IsNullOrEmpty(requestSender))
         {
@@ -55,7 +98,16 @@ public class SendSkillResponseNode : BTNode
         {
             // Hole Original Action aus Context
             var machineName = Context.Get<string>("MachineName");
+            if (string.IsNullOrWhiteSpace(machineName) && currentRequest != null)
+            {
+                machineName = currentRequest.MachineName;
+            }
+
             var rawInputParameters = Context.Get<Dictionary<string, object>>("InputParameters");
+            if ((rawInputParameters == null || rawInputParameters.Count == 0) && currentRequest?.InputParameters is { Count: > 0 })
+            {
+                rawInputParameters = new Dictionary<string, object>(currentRequest.InputParameters, StringComparer.OrdinalIgnoreCase);
+            }
             Dictionary<string, string>? inputParameters = null;
             if (rawInputParameters != null && rawInputParameters.Any())
             {
@@ -65,6 +117,14 @@ public class SendSkillResponseNode : BTNode
             
             // Mappe ActionState zu gültigen ActionStatusEnum Werten
             var mappedActionState = MapToActionState(ActionState);
+
+            if (ShouldSuppressError(conversationId, mappedActionState, errorMap))
+            {
+                Logger.LogInformation(
+                    "SendSkillResponse: Error already sent for conversation '{ConversationId}', skipping duplicate",
+                    conversationId);
+                return NodeStatus.Success;
+            }
             
             // Erstelle I4.0 Message
             var messageBuilder = new I40MessageBuilder()
@@ -73,10 +133,8 @@ public class SendSkillResponseNode : BTNode
                 .WithType(FrameType)
                 .WithConversationId(conversationId);
             
-            if (!string.IsNullOrEmpty(originalMessageId))
-            {
-                messageBuilder.ReplyingTo(originalMessageId);
-            }
+            // Note: messageId / replyTo are considered obsolete in our protocol.
+            // We rely solely on ConversationId to correlate requests and responses.
             
             var statusValue = mappedActionState.ToLowerInvariant();
 
@@ -134,6 +192,10 @@ public class SendSkillResponseNode : BTNode
             
             Logger.LogInformation("SendSkillResponse: Sent ActionState '{ActionState}' (FrameType: {FrameType}) to '{Receiver}' on topic '{Topic}'", 
                 mappedActionState, FrameType, requestSender, topic);
+
+            TrackErrorState(conversationId, mappedActionState, errorMap);
+
+            await RemoveQueueEntryIfTerminalAsync(mappedActionState, conversationId, client);
             
             return NodeStatus.Success;
         }
@@ -178,4 +240,86 @@ public class SendSkillResponseNode : BTNode
     {
         return Task.CompletedTask;
     }
+
+    private async Task RemoveQueueEntryIfTerminalAsync(string mappedActionState, string conversationId, MessagingClient client)
+    {
+        if (!IsTerminalActionState(mappedActionState))
+        {
+            return;
+        }
+
+        var queue = Context.Get<SkillRequestQueue>("SkillRequestQueue");
+        if (queue == null)
+        {
+            return;
+        }
+
+        if (queue.TryRemoveByConversationId(conversationId, out var removed))
+        {
+            await ActionQueueBroadcaster.PublishSnapshotAsync(Context, client, queue, "remove", removed);
+            Logger.LogInformation("SendSkillResponse: Removed conversation '{ConversationId}' from SkillRequestQueue after state {State}", conversationId, mappedActionState);
+        }
+
+        const string ErrorMapKey = "ActionErrorSentMap";
+        if (!string.IsNullOrWhiteSpace(conversationId))
+        {
+            var errorMap = Context.Get<Dictionary<string, bool>>(ErrorMapKey);
+            errorMap?.Remove(conversationId);
+        }
+
+    }
+
+    private static bool IsTerminalActionState(string? state)
+    {
+        if (string.IsNullOrWhiteSpace(state))
+        {
+            return false;
+        }
+
+        return state.Equals(ActionStatusEnum.DONE.ToString(), StringComparison.OrdinalIgnoreCase)
+               || state.Equals(ActionStatusEnum.ABORTED.ToString(), StringComparison.OrdinalIgnoreCase)
+               || state.Equals(ActionStatusEnum.ERROR.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static bool ShouldSuppressError(
+        string conversationId,
+        string mappedActionState,
+        IDictionary<string, bool> errorMap)
+    {
+        if (string.IsNullOrWhiteSpace(conversationId))
+        {
+            return false;
+        }
+
+        if (!IsErrorActionState(mappedActionState))
+        {
+            return false;
+        }
+
+        return errorMap.TryGetValue(conversationId, out var sent) && sent;
+    }
+
+    private static void TrackErrorState(
+        string conversationId,
+        string mappedActionState,
+        IDictionary<string, bool> errorMap)
+    {
+        if (string.IsNullOrWhiteSpace(conversationId))
+        {
+            return;
+        }
+
+        if (!IsErrorActionState(mappedActionState))
+        {
+            return;
+        }
+
+        errorMap[conversationId] = true;
+    }
+
+    private static bool IsErrorActionState(string mappedActionState)
+    {
+        return mappedActionState.Equals(ActionStatusEnum.ERROR.ToString(), StringComparison.OrdinalIgnoreCase);
+    }
+
 }

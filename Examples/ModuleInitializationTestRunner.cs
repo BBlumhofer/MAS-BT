@@ -28,6 +28,8 @@ public class ModuleInitializationTestRunner
         var agentRole = GetConfigValue(config, "Agent.Role", "ResourceHolon");
         var mqttBroker = GetConfigValue(config, "MQTT.Broker", "localhost");
         var mqttPort = GetConfigInt(config, "MQTT.Port", 1883);
+        var preconditionRetries = GetConfigInt(config, "Execution.MaxPreconditionRetries", 10);
+        var preconidionBackoffTime = GetConfigInt(config, "Execution.PreconditionBackoffStartMs", 20000);
         
         Console.WriteLine($"📋 Configuration:");
         Console.WriteLine($"   OPC UA Endpoint: {opcuaEndpoint}");
@@ -57,7 +59,8 @@ public class ModuleInitializationTestRunner
         // Logger mit MQTT-Integration erstellen
         using var loggerFactory = LoggerFactory.Create(builder =>
         {
-            builder.SetMinimumLevel(LogLevel.Debug);
+            // Standard-Log-Level auf Information setzen - Debug/Trace sind standardmäßig aus
+            builder.SetMinimumLevel(LogLevel.Information);
             builder.AddProvider(new MqttLoggerProvider(messagingClient, agentId, agentRole));
         });
         
@@ -73,9 +76,17 @@ public class ModuleInitializationTestRunner
         context.Set("config.OPCUA.Username", opcuaUsername);
         context.Set("config.OPCUA.Password", opcuaPassword);
         context.Set("config.Agent.ModuleId", moduleId);
+        context.Set("config.MQTT.Broker", mqttBroker);
+        context.Set("config.MQTT.Port", mqttPort);
         // Alias für Legacy-Nodes: einige Nodes lesen direkt 'ModuleId' aus dem Context
         context.Set("ModuleId", moduleId);
         context.Set("AgentId", agentId);
+
+        // Execution queue keeps full SkillRequests (conversation/product IDs stay intact)
+        context.Set("SkillRequestQueue", new SkillRequestQueue());
+        // Precondition retry configuration: default to 10 retries and 5 minutes start timeout
+        context.Set("MaxPreconditionRetries", preconditionRetries);
+        context.Set("PreconditionBackoffStartMs", preconidionBackoffTime); // 5 minutes in ms
         
         // MessagingClient im Context speichern (für SendLogMessage Nodes - falls noch vorhanden)
         if (messagingClient != null)
@@ -227,7 +238,9 @@ public class ModuleInitializationTestRunner
             
             Console.WriteLine();
             Console.WriteLine("🧹 Cleanup...");
-            
+            // Graceful shutdown: flush/coalesce pending MQTT publishes from StorageMqttNotifier
+            await MAS_BT.Services.ShutdownHelper.ShutdownStorageNotifierAsync(context, logger);
+
             var server = context.Get<RemoteServer>("RemoteServer");
             if (server != null)
             {

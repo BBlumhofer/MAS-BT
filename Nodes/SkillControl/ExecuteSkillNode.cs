@@ -1,9 +1,14 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
+using System.Linq;
 using MAS_BT.Core;
+using MAS_BT.Services;
 using Microsoft.Extensions.Logging;
+using Opc.Ua;
 using UAClient.Client;
 using UAClient.Common;
+using I40Sharp.Messaging;
 
 namespace MAS_BT.Nodes.SkillControl;
 
@@ -72,13 +77,7 @@ public class ExecuteSkillNode : BTNode
                     module.Name, module.SkillSet.Count);
             }
 
-            // Prüfe ob Modul gelockt ist
-            var isLocked = Context.Get<bool>($"State_{module.Name}_IsLocked");
-            if (!isLocked)
-            {
-                Logger.LogWarning("ExecuteSkill: Module {ModuleName} is not locked! Lock the module first.", module.Name);
-                // Versuche trotzdem fortzufahren - OPC UA Server könnte Lock anders behandeln
-            }
+            var moduleLockKey = $"State_{module.Name}_IsLocked";
 
             // Finde Skill (direkter Lookup, dann heuristische Fallbacks)
             if (!module.SkillSet.TryGetValue(resolvedSkillName, out var skill))
@@ -267,13 +266,24 @@ public class ExecuteSkillNode : BTNode
                 await TryResetBeforeStartAsync(skill, resolvedSkillName, timeout);
             }
 
-            try
+            var startRetryBudgetSeconds = Math.Max(5.0, Math.Min(TimeoutSeconds * 0.5, 30.0));
+            var startConfirmationWindowMs = Math.Max(500.0, Math.Min(TimeoutSeconds * 200.0, 5000.0));
+            Func<bool> lockHeldCheck = () => Context.Get<bool>(moduleLockKey);
+
+            var startSucceeded = await TryStartSkillWithRetryAsync(
+                skill,
+                resolvedSkillName,
+                TimeSpan.FromSeconds(startRetryBudgetSeconds),
+                TimeSpan.FromMilliseconds(startConfirmationWindowMs),
+                lockHeldCheck,
+                module.Name);
+
+            if (!startSucceeded)
             {
-                await skill.StartAsync();
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "ExecuteSkill: StartAsync failed for skill {SkillName}", resolvedSkillName);
+                Logger.LogError(
+                    "ExecuteSkill: Failed to start skill {SkillName} after retry window ({RetrySeconds:F1}s)",
+                    resolvedSkillName,
+                    startRetryBudgetSeconds);
                 Set("started", false);
                 return NodeStatus.Failure;
             }
@@ -488,6 +498,212 @@ public class ExecuteSkillNode : BTNode
         {
             Logger.LogWarning(ex, "ExecuteSkill: Manual reset after completion failed for skill {SkillName}", skillName);
         }
+    }
+
+    private async Task<bool> RequeueCurrentSkillRequestAsync(string reason)
+    {
+        var currentRequest = Context.Get<SkillRequestEnvelope>("CurrentSkillRequest");
+        if (currentRequest == null)
+        {
+            return false;
+        }
+
+        var queue = Context.Get<SkillRequestQueue>("SkillRequestQueue");
+        if (queue == null)
+        {
+            return false;
+        }
+
+        // Enforce max retries here as well
+        var maxRetries = Context.Get<int?>("MaxPreconditionRetries") ?? 5;
+        if (currentRequest.RetryAttempts >= maxRetries)
+        {
+            Logger.LogError("RequeueCurrentSkillRequestAsync: Conversation {ConversationId} reached max retries ({Max}) and will not be requeued.", currentRequest.ConversationId, maxRetries);
+            Context.Set("LogMessage", $"Preconditions not satisfied after {currentRequest.RetryAttempts} attempts: {reason}");
+            return false;
+        }
+
+        if (!queue.TryRequeueByConversationId(currentRequest.ConversationId, out var requeued))
+        {
+            return false;
+        }
+
+        Logger.LogInformation(
+            "ExecuteSkill: Re-queued conversation '{ConversationId}' because {Reason}",
+            currentRequest.ConversationId,
+            reason);
+
+        var client = Context.Get<MessagingClient>("MessagingClient");
+        if (client != null)
+        {
+            await ActionQueueBroadcaster.PublishSnapshotAsync(Context, client, queue, "requeue", requeued);
+        }
+
+        // Clear current request from context so the orchestrator can pick the next queued entry
+        Context.Set("CurrentSkillRequest", null);
+        Context.Set("CurrentSkillRequestRawMessage", null);
+        Context.Set("InputParameters", new Dictionary<string, object>());
+
+        return true;
+    }
+
+    private async Task<bool> TryStartSkillWithRetryAsync(
+        RemoteSkill skill,
+        string skillName,
+        TimeSpan retryBudget,
+        TimeSpan confirmationWindow,
+        Func<bool>? lockHeldCheck,
+        string? moduleName)
+    {
+        var deadline = DateTime.UtcNow + retryBudget;
+        var attempt = 0;
+        var delay = TimeSpan.FromMilliseconds(250);
+
+        while (DateTime.UtcNow < deadline)
+        {
+            if (lockHeldCheck != null && !lockHeldCheck())
+            {
+                Logger.LogError(
+                    "ExecuteSkill: Lost lock on module {ModuleName} while starting skill {SkillName}. Aborting retries.",
+                    moduleName ?? "<unknown>",
+                    skillName);
+                return false;
+            }
+
+            attempt++;
+            var invocationSucceeded = false;
+
+            try
+            {
+                await skill.StartAsync();
+                invocationSucceeded = true;
+            }
+            catch (ServiceResultException sre) when (StatusCode.IsBad(sre.StatusCode))
+            {
+                Logger.LogWarning(
+                    "ExecuteSkill: Start attempt {Attempt} for {SkillName} returned status {StatusCode}",
+                    attempt,
+                    skillName,
+                    sre.StatusCode);
+
+                if (sre.StatusCode == StatusCodes.BadUserAccessDenied)
+                {
+                    Logger.LogError(
+                        "ExecuteSkill: Aborting start retries for {SkillName} because server returned BadUserAccessDenied (likely lock lost)",
+                        skillName);
+                    return false;
+                }
+            }
+
+            if (invocationSucceeded)
+            {
+                if (await ConfirmSkillStartedAsync(skill, skillName, confirmationWindow, lockHeldCheck, moduleName))
+                {
+                    if (attempt > 1)
+                    {
+                        Logger.LogInformation(
+                            "ExecuteSkill: Skill {SkillName} started after {Attempts} attempts",
+                            skillName,
+                            attempt);
+                    }
+
+                    return true;
+                }
+
+                Logger.LogWarning(
+                    "ExecuteSkill: Skill {SkillName} did not reach Running/Completed after start attempt {Attempt}",
+                    skillName,
+                    attempt);
+            }
+
+            if (DateTime.UtcNow >= deadline)
+            {
+                break;
+            }
+
+            Logger.LogDebug(
+                "ExecuteSkill: Waiting {DelayMs}ms before retrying start of {SkillName}",
+                delay.TotalMilliseconds,
+                skillName);
+            await Task.Delay(delay);
+
+            var nextDelayMs = Math.Min(delay.TotalMilliseconds * 1.5, 2000);
+            delay = TimeSpan.FromMilliseconds(nextDelayMs);
+        }
+
+        return false;
+    }
+
+    private async Task<bool> ConfirmSkillStartedAsync(
+        RemoteSkill skill,
+        string skillName,
+        TimeSpan confirmationWindow,
+        Func<bool>? lockHeldCheck,
+        string? moduleName)
+    {
+        var stopwatch = Stopwatch.StartNew();
+        while (stopwatch.Elapsed < confirmationWindow)
+        {
+            if (lockHeldCheck != null && !lockHeldCheck())
+            {
+                Logger.LogError(
+                    "ExecuteSkill: Lost lock on module {ModuleName} during start confirmation for skill {SkillName}",
+                    moduleName ?? "<unknown>",
+                    skillName);
+                return false;
+            }
+
+            var state = skill.CurrentState;
+            if (state == SkillStates.Running || state == SkillStates.Completed)
+            {
+                return true;
+            }
+
+            if (state == SkillStates.Halted)
+            {
+                Logger.LogWarning(
+                    "ExecuteSkill: Skill {SkillName} entered Halted state immediately after Start",
+                    skillName);
+                return false;
+            }
+
+            await Task.Delay(100);
+        }
+
+        SkillStates? observedState = null;
+        try
+        {
+            var stateValue = await skill.GetStateAsync();
+            if (stateValue.HasValue)
+            {
+                observedState = (SkillStates)stateValue.Value;
+                if (observedState == SkillStates.Running || observedState == SkillStates.Completed)
+                {
+                    return true;
+                }
+
+                if (observedState == SkillStates.Halted)
+                {
+                    Logger.LogWarning(
+                        "ExecuteSkill: Skill {SkillName} is Halted after confirmation window",
+                        skillName);
+                    return false;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(
+                ex,
+                "ExecuteSkill: Failed to fetch skill state while confirming start for {SkillName}",
+                skillName);
+        }
+
+        Logger.LogDebug(
+            "ExecuteSkill: Skill {SkillName} did not confirm Running/Completed state (last observed {State})",
+            skillName,
+            observedState?.ToString() ?? "unknown");
+        return false;
     }
 
     private static object? ConvertParameterValue(string? raw)

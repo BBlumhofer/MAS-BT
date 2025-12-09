@@ -13,7 +13,7 @@ Dieser Test demonstriert die vollständige Skill-Ausführung über MQTT SkillReq
   - `CurrentAction` (SubmodelElementCollection)
   - `ActionTitle`, `ActionStatus`, `MachineName`
   - `InputParameters` (Dictionary<string, string>)
-  - `ConversationId`, `OriginalMessageId`, `RequestSender`
+  - `ConversationId`, `RequestSender`
 
 ### ✅ SendSkillResponse
 - **Funktion:** Sendet ActionState Update an Planning Agent
@@ -172,8 +172,7 @@ mosquitto_pub -h localhost -t '/Modules/Module2/SkillRequest/' -m '{
     "sender": {"identification": {"id": "TestClient"}},
     "receiver": {"identification": {"id": "Module2_Execution_Agent"}},
     "type": "request",
-    "conversationId": "test123",
-    "messageId": "msg001"
+    "conversationId": "test123"
   },
   "interactionElements": [{
     "idShort": "Action001",
@@ -195,7 +194,7 @@ mosquitto_pub -h localhost -t '/Modules/Module2/SkillRequest/' -m '{
 
 ### ✅ Conversation Tracking
 - ConversationId wird über gesamten Request/Response-Zyklus beibehalten
-- ReplyTo verweist auf ursprüngliche MessageId
+- Das frühere Feld `replyTo` / `messageId` wurde entfernt; Korrelation erfolgt ausschließlich über `conversationId`
 
 ### ✅ Non-Blocking Message Reading
 - ReadMqttSkillRequest returned `Running` wenn keine Message

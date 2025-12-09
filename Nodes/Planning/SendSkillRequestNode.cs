@@ -1,0 +1,68 @@
+using System;
+using System.Threading.Tasks;
+using AasSharpClient.Models;
+using BaSyx.Models.AdminShell;
+using MAS_BT.Core;
+using Microsoft.Extensions.Logging;
+using I40Sharp.Messaging;
+using I40Sharp.Messaging.Core;
+
+namespace MAS_BT.Nodes.Planning;
+
+/// <summary>
+/// SendSkillRequest - builds and publishes a SkillRequest message for the current plan action.
+/// </summary>
+public class SendSkillRequestNode : BTNode
+{
+    public string ModuleId { get; set; } = string.Empty;
+
+    public SendSkillRequestNode() : base("SendSkillRequest")
+    {
+    }
+
+    public override async Task<NodeStatus> Execute()
+    {
+        var client = Context.Get<MessagingClient>("MessagingClient");
+        if (client == null)
+        {
+            Logger.LogError("SendSkillRequest: MessagingClient missing in context");
+            return NodeStatus.Failure;
+        }
+
+        var action = Context.Get<AasSharpClient.Models.Action>("CurrentPlanAction");
+        var conversationId = Context.Get<string>("ConversationId") ?? Guid.NewGuid().ToString();
+        var machineName = Context.Get<string>("MachineName") ?? ModuleId;
+
+        if (action == null)
+        {
+            Logger.LogError("SendSkillRequest: No CurrentPlanAction in context");
+            return NodeStatus.Failure;
+        }
+
+        var builder = new I40MessageBuilder()
+            .From($"{machineName}_Planning_Agent", "PlanningAgent")
+            .To($"{machineName}_Execution_Agent", "ExecutionAgent")
+            .WithType("request")
+            .WithConversationId(conversationId)
+            .AddElement(action);
+
+        var message = builder.Build();
+        var topic = $"/Modules/{machineName}/SkillRequest/";
+        Logger.LogInformation("SendSkillRequest: publishing to topic {Topic}", topic);
+        await client.PublishAsync(message, topic);
+
+        // Update context for responses
+        Context.Set("ConversationId", conversationId);
+        Context.Set("RequestSender", $"{machineName}_Planning_Agent");
+        Context.Set("RequestReceiver", $"{machineName}_Execution_Agent");
+        Context.Set("DispatchReady", false);
+
+        if (!action.StartProduction())
+        {
+            action.SetStatus(ActionStatusEnum.EXECUTING);
+        }
+
+        Logger.LogInformation("SendSkillRequest: Published SkillRequest for action {ActionId} on {Topic}", action.IdShort, topic);
+        return NodeStatus.Success;
+    }
+}

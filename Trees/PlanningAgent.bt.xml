@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="PlanningAgent">
+  <BehaviorTree ID="PlanningAgent">
+    <Sequence name="PlanningAgentRoot">
+      <ConnectToMessagingBroker name="ConnectMqtt" BrokerHost="{config.MQTT.Broker}" BrokerPort="{config.MQTT.Port}" DefaultTopic="factory/agents/messages" TimeoutMs="10000" ClientId="{config.Agent.ModuleId}_PlanningAgent" />
+      <LoadProductionPlan name="LoadPlan" PlanId="Plan001" DefaultMachine="{config.Agent.ModuleId}" />
+
+      <Parallel name="PlanningParallel">
+        <Repeat name="PlanOfferLoop" num_cycles="-1">
+          <Fallback name="PlanOrRefusal">
+            <Sequence name="PlanSequence">
+              <ReceiverRequestForOffer name="ReceiveOfferReq" RequiredCapability="{ActionTitle}" />
+              <CapabilityMatchmaking name="MatchCapability" RequiredCapability="{RequiredCapability}" />
+              <FeedbackCapabilityMatchmaking name="MatchFeedback" />
+              <DeriveStepFromCapability name="DeriveStep" />
+              <CheckConstraints name="CheckConstraints" />
+              <RequestTransport name="RequestTransport" FromStation="{config.Agent.ModuleId}" ToStation="{TransportTarget}" />
+              <EvaluateRequestTransportResponse name="EvalTransport" />
+              <FeasibilityCheck name="FeasibilityCheck" />
+              <SchedulingExecute name="RunScheduling" Capability="{MatchedCapability}" />
+              <SchedulingFeedback name="SchedulingFeedback" />
+              <CheckScheduleFeasibility name="CheckScheduleFeasibility" />
+              <CalculateOffer name="CalculateOffer" />
+              <SendOffer name="SendOffer" ReceiverId="ProductAgent" />
+              <UpdateMachineSchedule name="UpdateSchedule" ModuleId="{config.Agent.ModuleId}" />
+            </Sequence>
+            <SendPlanningRefusal name="SendRefusal" Reason="{RefusalReason}" ReceiverId="ProductAgent" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="OfferResponseLoop" num_cycles="-1">
+          <Sequence name="OfferResponseSequence">
+            <ReceiveOfferMessage name="ReceiveOfferMessage" />
+            <AwaitOfferDecision name="AwaitOfferDecision" TimeoutMs="2000" />
+            <ApplyOfferDecision name="ApplyOfferDecision" />
+          </Sequence>
+        </Repeat>
+
+        <Repeat name="DispatchLoop" num_cycles="-1">
+          <DispatchScheduledSteps name="DispatchScheduledSteps" />
+        </Repeat>
+      </Parallel>
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Decorator ID="RetryUntilSuccess">
+      <input_port name="numAttempts" default="-1"/>
+      <input_port name="delayMs" default="1000"/>
+    </Decorator>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost"/>
+      <input_port name="BrokerPort"/>
+      <input_port name="DefaultTopic"/>
+      <input_port name="TimeoutMs"/>
+      <input_port name="ClientId"/>
+    </Action>
+    <Action ID="LoadProductionPlan">
+      <input_port name="PlanId"/>
+      <input_port name="DefaultMachine"/>
+    </Action>
+    <Action ID="SelectNextAction"/>
+    <Action ID="SendSkillRequest">
+      <input_port name="ModuleId"/>
+    </Action>
+    <Action ID="CapabilityMatchmaking">
+      <input_port name="RequiredCapability"/>
+    </Action>
+    <Action ID="ReceiverRequestForOffer">
+      <input_port name="RequiredCapability"/>
+    </Action>
+    <Action ID="FeedbackCapabilityMatchmaking"/>
+    <Action ID="DeriveStepFromCapability"/>
+    <Action ID="CheckConstraints"/>
+    <Action ID="FeasibilityCheck"/>
+    <Action ID="SchedulingExecute">
+      <input_port name="Capability"/>
+    </Action>
+    <Action ID="SchedulingFeedback"/>
+    <Action ID="CalculateOffer"/>
+    <Action ID="SendOffer">
+      <input_port name="ReceiverId"/>
+    </Action>
+    <Action ID="ReceiveOfferMessage"/>
+    <Action ID="SendPlanningRefusal">
+      <input_port name="ReceiverId"/>
+      <input_port name="Reason"/>
+    </Action>
+    <Action ID="UpdateMachineSchedule">
+      <input_port name="ModuleId"/>
+    </Action>
+    <Action ID="RequestTransport">
+      <input_port name="FromStation"/>
+      <input_port name="ToStation"/>
+    </Action>
+    <Action ID="EvaluateRequestTransportResponse"/>
+    <Action ID="CheckScheduleFeasibility"/>
+    <Action ID="AwaitOfferDecision">
+      <input_port name="TimeoutMs" default="2000"/>
+    </Action>
+    <Action ID="ApplyOfferDecision"/>
+    <Action ID="DispatchScheduledSteps"/>
+    <Action ID="AwaitSkillResponse">
+      <input_port name="ModuleId"/>
+      <input_port name="TimeoutMs" default="200"/>
+    </Action>
+    <Action ID="ApplySkillResponse"/>
+  </TreeNodesModel>
+</root>

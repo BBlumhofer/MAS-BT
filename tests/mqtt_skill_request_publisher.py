@@ -8,7 +8,7 @@ import json
 import time
 import paho.mqtt.client as mqtt
 from datetime import datetime, timezone
-
+import time
 # MQTT Broker Configuration
 BROKER_HOST = "localhost"
 BROKER_PORT = 1883
@@ -19,13 +19,12 @@ def create_skill_request(action_title="Retrieve"):
     """Erstellt eine I4.0 Message mit Action für SkillRequest"""
     
     conversation_id = f"conv_{int(time.time())}"
-    message_id = f"msg_{int(time.time())}"
     
     message = {
         "frame": {
             "sender": {
                 "identification": {
-                    "id": "Module2_Planning_Agent"
+                    "id": "CA-Module_Planning_Agent"
                 },
                 "role": {
                     "name": "PlanningAgent"
@@ -33,16 +32,14 @@ def create_skill_request(action_title="Retrieve"):
             },
             "receiver": {
                 "identification": {
-                    "id": "Module2_Execution_Agent"
+                    "id": "CA-Module_Execution_Agent"
                 },
                 "role": {
                     "name": "ExecutionAgent"
                 }
             },
             "type": "request",
-            "conversationId": conversation_id,
-            "messageId": message_id,
-            "replyBy": (datetime.now(timezone.utc).isoformat())
+            "conversationId": conversation_id
         },
         "interactionElements": [
             {
@@ -75,7 +72,7 @@ def create_skill_request(action_title="Retrieve"):
                                 "idShort": "ProductId",
                                 "modelType": "Property",
                                 "valueType": "xs:string",
-                                "value": "https://smartfactory.de/shells/test_product"
+                                "value": "https://smartfactory.de/shells/test_product2"
                             },
                             {
                                 "idShort": "RetrieveByProductID",
@@ -106,6 +103,8 @@ def create_skill_request(action_title="Retrieve"):
     }
     
     return message
+
+
 
 
 def on_connect(client, userdata, flags, rc):
@@ -169,21 +168,23 @@ def main():
     
     # Warte kurz auf Verbindung
     time.sleep(2)
-    
-    # Erstelle und sende SkillRequest
-    print(f"\n📤 Sende SkillRequest auf Topic: {TOPIC}")
-    
-    skill_request = create_skill_request()
-    
-    payload = json.dumps(skill_request, indent=2)
-    print(f"\n📋 Payload:\n{payload}\n")
-    
-    result = client.publish(TOPIC, payload, qos=1)
-    
-    if result.rc == mqtt.MQTT_ERR_SUCCESS:
-        print(f"✅ SkillRequest erfolgreich gesendet!")
-    else:
-        print(f"❌ Fehler beim Senden: {result.rc}")
+    for i in range(5):
+        
+        # Erstelle und sende SkillRequest
+        print(f"\n📤 Sende SkillRequest auf Topic: {TOPIC}")
+        
+        skill_request = create_skill_request()
+        
+        payload = json.dumps(skill_request, indent=2)
+        print(f"\n📋 Payload:\n{payload}\n")
+        
+        result = client.publish(TOPIC, payload, qos=1)
+        
+        if result.rc == mqtt.MQTT_ERR_SUCCESS:
+            print(f"✅ SkillRequest {i} erfolgreich gesendet!")
+        else:
+            print(f"❌ Fehler beim Senden: {result.rc}")
+        time.sleep(0.1)
     
     # Warte auf Responses
     print(f"\n⏳ Warte auf SkillResponse vom Execution Agent...")

@@ -10,6 +10,7 @@ using MAS_BT.Nodes.Core;
 using MAS_BT.Nodes.Constraints;
 using MAS_BT.Nodes.Recovery;
 using MAS_BT.Nodes; // Neue Monitoring Nodes
+using MAS_BT.Nodes.Planning;
 
 namespace MAS_BT.Serialization;
 
@@ -33,7 +34,6 @@ public class NodeRegistry
     public void Register<T>(string name) where T : BTNode
     {
         _nodeTypes[name] = typeof(T);
-        _logger.LogDebug("Registriert Node: {Name} → {Type}", name, typeof(T).Name);
     }
     
     /// <summary>
@@ -181,6 +181,34 @@ public class NodeRegistry
         
         // Skill Nodes
         Register<ExecuteSkillNode>();
+        
+        // Planning Nodes
+        Register<LoadProductionPlanNode>("LoadProductionPlan");
+        Register<SelectNextActionNode>("SelectNextAction");
+        Register<SendSkillRequestNode>("SendSkillRequest");
+        Register<AwaitSkillResponseNode>("AwaitSkillResponse");
+        Register<ApplySkillResponseNode>("ApplySkillResponse");
+        Register<CapabilityMatchmakingNode>("CapabilityMatchmaking");
+        Register<SchedulingExecuteNode>("SchedulingExecute");
+        Register<CalculateOfferNode>("CalculateOffer");
+        Register<SendOfferNode>("SendOffer");
+        Register<UpdateMachineScheduleNode>("UpdateMachineSchedule");
+        Register<RequestTransportNode>("RequestTransport");
+        Register<DeriveStepFromCapabilityNode>("DeriveStepFromCapability");
+        Register<CheckConstraintsNode>("CheckConstraints");
+        Register<FeasibilityCheckNode>("FeasibilityCheck");
+        Register<SendPlanningRefusalNode>("SendPlanningRefusal");
+        Register<AwaitOfferDecisionNode>("AwaitOfferDecision");
+        Register<ApplyOfferDecisionNode>("ApplyOfferDecision");
+        Register<DispatchScheduledStepsNode>("DispatchScheduledSteps");
+        Register<ReceiverRequestForOfferNode>("ReceiverRequestForOffer");
+        Register<FeedbackCapabilityMatchmakingNode>("FeedbackCapabilityMatchmaking");
+        Register<SchedulingFeedbackNode>("SchedulingFeedback");
+        Register<EvaluateRequestTransportResponseNode>("EvaluateRequestTransportResponse");
+        Register<CheckScheduleFeasibilityNode>("CheckScheduleFeasibility");
+        Register<ReceiveOfferMessageNode>("ReceiveOfferMessage");
+        Register<SelectSchedulableActionNode>("SelectSchedulableAction");
+        Register<CheckSkillPreconditionsNode>();
 
         // Recovery Nodes
         Register<RecoverySequenceNode>("RecoverySequence");
@@ -188,6 +216,6 @@ public class NodeRegistry
         Register<EnsureStartupRunningNode>("EnsureStartupRunning");
         Register<HaltAllSkillsNode>("HaltAllSkills");
         
-        _logger.LogInformation("Standard Nodes registriert: {Count}", _nodeTypes.Count);
+        _logger.LogDebug("Standard Nodes registriert: {Count}", _nodeTypes.Count);
     }
 }

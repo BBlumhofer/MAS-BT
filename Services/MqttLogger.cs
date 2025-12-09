@@ -57,7 +57,7 @@ public class MqttLogger : ILogger
     
     public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
     
-    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Information;
+    public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Debug;
     
     public void Log<TState>(
         LogLevel logLevel,
@@ -81,8 +81,8 @@ public class MqttLogger : ILogger
             Console.WriteLine($"      Exception: {exception}");
         }
         
-        // MQTT-Output (nur ab INFO)
-        if (logLevel >= LogLevel.Information && _messagingClient != null && _messagingClient.IsConnected)
+        // MQTT-Output (Debug and above)
+        if (logLevel >= LogLevel.Debug && _messagingClient != null && _messagingClient.IsConnected)
         {
             _ = SendLogMessageAsync(logLevel, message);
         }
@@ -116,7 +116,6 @@ public class MqttLogger : ILogger
             .To("broadcast", string.Empty)
             .WithType(I40MessageTypes.INFORM)
             .WithConversationId(Guid.NewGuid().ToString())
-            .WithMessageId(Guid.NewGuid().ToString())
             .AddElement(logCollection);
 
         return builder.Build();

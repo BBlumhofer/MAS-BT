@@ -37,7 +37,7 @@ public class BTContext
     public void Set(string key, object? value)
     {
         _data[key] = value;
-        _logger?.LogDebug("Context: {Key} = {Value}", key, value);
+        _logger?.LogTrace("Context: {Key} = {Value}", key, value);
     }
 
     /// <summary>

@@ -1,22 +1,40 @@
+using System;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 
 namespace MAS_BT.Nodes.Core;
 
 /// <summary>
-/// ForceFailure - Gibt immer Failure zurück
-/// Wird verwendet um einen Branch gezielt zu beenden
+/// ForceFailure - Führt genau ein Kind aus und liefert unabhängig vom Ergebnis Failure.
 /// </summary>
-public class ForceFailureNode : BTNode
+public class ForceFailureNode : DecoratorNode
 {
     public ForceFailureNode() : base("ForceFailure")
     {
     }
-    
+
+    public ForceFailureNode(string name) : base(name)
+    {
+    }
+
     public override async Task<NodeStatus> Execute()
     {
-        Logger.LogDebug("ForceFailure: Returning Failure");
-        await Task.CompletedTask;
+        if (Child == null)
+        {
+            Logger.LogWarning("ForceFailure: No child attached, returning Failure");
+            return NodeStatus.Failure;
+        }
+
+        try
+        {
+            var status = await Child.Execute();
+            Logger.LogDebug("ForceFailure: Child finished with {Status}, forcing Failure", status);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "ForceFailure: Child execution threw exception; forcing Failure");
+        }
+
         return NodeStatus.Failure;
     }
 }

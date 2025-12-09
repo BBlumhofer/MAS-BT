@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
+using MAS_BT.Services;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using System.Collections.Concurrent;
@@ -14,10 +15,14 @@ public class WaitForMessageNode : BTNode
     public string? ExpectedType { get; set; } = null;
     public string? ExpectedSender { get; set; } = null;
     public int TimeoutSeconds { get; set; } = 30;
+    // Optional: wait for messages belonging to a specific conversation.
+    // If null, behavior falls back to matching by Type/Sender as before.
+    public string? ExpectedConversationId { get; set; } = null;
     
     private readonly ConcurrentQueue<I40Message> _messageQueue = new();
     private bool _subscribed = false;
     private DateTime _startTime;
+    private string? _usedConversationId = null;
     
     public WaitForMessageNode() : base("WaitForMessage")
     {
@@ -37,28 +42,44 @@ public class WaitForMessageNode : BTNode
                 Logger.LogError("WaitForMessage: MessagingClient not found");
                 return NodeStatus.Failure;
             }
-            
-            client.OnMessage(msg =>
+            // If an ExpectedConversationId is provided (or available in context), register a conversation callback
+            var convToUse = ExpectedConversationId ?? Context.Get<string>("ConversationId");
+            if (string.IsNullOrWhiteSpace(convToUse))
             {
-                bool matches = true;
-                
-                if (!string.IsNullOrEmpty(ExpectedType) && msg.Frame.Type != ExpectedType)
-                    matches = false;
-                
-                if (!string.IsNullOrEmpty(ExpectedSender) && 
-                    msg.Frame.Sender.Identification.Id != ExpectedSender)
-                    matches = false;
-                
-                if (matches)
+                var currentRequest = Context.Get<SkillRequestEnvelope>("CurrentSkillRequest");
+                convToUse = currentRequest?.ConversationId;
+            }
+            if (!string.IsNullOrWhiteSpace(convToUse))
+            {
+                _usedConversationId = convToUse;
+                client.OnConversation(convToUse, msg => _messageQueue.Enqueue(msg));
+                Logger.LogInformation("WaitForMessage: Subscribed to conversation {Conv}", convToUse);
+            }
+            else
+            {
+                client.OnMessage(msg =>
                 {
-                    _messageQueue.Enqueue(msg);
-                }
-            });
-            
+                    bool matches = true;
+
+                    if (!string.IsNullOrEmpty(ExpectedType) && msg.Frame.Type != ExpectedType)
+                        matches = false;
+
+                    if (!string.IsNullOrEmpty(ExpectedSender) && 
+                        msg.Frame.Sender.Identification.Id != ExpectedSender)
+                        matches = false;
+
+                    if (matches)
+                    {
+                        _messageQueue.Enqueue(msg);
+                    }
+                });
+
+                Logger.LogInformation("WaitForMessage: Waiting for message (Type: {Type}, Sender: {Sender})", 
+                    ExpectedType ?? "any", ExpectedSender ?? "any");
+            }
+
             _subscribed = true;
             _startTime = DateTime.UtcNow;
-            Logger.LogInformation("WaitForMessage: Waiting for message (Type: {Type}, Sender: {Sender})", 
-                ExpectedType ?? "any", ExpectedSender ?? "any");
         }
         
         // Check timeout

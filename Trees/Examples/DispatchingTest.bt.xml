@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="DispatchingTest">
+  <BehaviorTree ID="DispatchingTest">
+    <Sequence name="DispatchRoot">
+      <ConnectToMessagingBroker 
+        name="ConnectMqtt"
+        BrokerHost="{config.MQTT.Broker}"
+        BrokerPort="{config.MQTT.Port}"
+        DefaultTopic="factory/agents/messages"
+        TimeoutMs="10000"
+        ClientId="{config.Agent.ModuleId}_PlanningAgent" />
+
+      <LoadProductionPlan name="LoadPlan" PlanId="DispatchPlan" DefaultMachine="{config.Agent.ModuleId}" />
+
+      <Repeat name="DispatchLoop" num_cycles="-1">
+        <Fallback name="DispatchOrIdle">
+          <Sequence name="DispatchIfReady">
+            <SelectSchedulableAction name="SelectSchedulableAction" LeadTimeSeconds="0" />
+            <SendSkillRequest name="SendSkillRequest" ModuleId="{config.Agent.ModuleId}" />
+            <Wait name="DispatchThrottle" DelayMs="200" />
+          </Sequence>
+          <Wait name="IdleWait" DelayMs="500" />
+        </Fallback>
+      </Repeat>
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Decorator ID="Repeat">
+      <input_port name="num_cycles" default="-1"/>
+    </Decorator>
+    <Control ID="Fallback"/>
+    <Control ID="Sequence"/>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost"/>
+      <input_port name="BrokerPort"/>
+      <input_port name="DefaultTopic"/>
+      <input_port name="TimeoutMs"/>
+      <input_port name="ClientId"/>
+    </Action>
+    <Action ID="LoadProductionPlan">
+      <input_port name="PlanId"/>
+      <input_port name="DefaultMachine"/>
+    </Action>
+    <Action ID="SelectSchedulableAction">
+      <input_port name="LeadTimeSeconds" default="0"/>
+    </Action>
+    <Action ID="SendSkillRequest">
+      <input_port name="ModuleId"/>
+    </Action>
+    <Action ID="Wait">
+      <input_port name="DelayMs" default="1000"/>
+    </Action>
+  </TreeNodesModel>
+</root>

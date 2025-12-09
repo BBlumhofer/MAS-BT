@@ -1,0 +1,1007 @@
+{
+  "kind": "Instance",
+  "semanticId": {
+    "type": "ModelReference",
+    "referredSemanticId": null,
+    "keys": [
+      {
+        "type": "Submodel",
+        "value": "ProductionPlan"
+      },
+      {
+        "type": "Submodel",
+        "value": "ProductionSchedule"
+      },
+      {
+        "type": "Submodel",
+        "value": "https://smartfactory.de/semantics/submodel/ProductionPlan#1/0"
+      }
+    ]
+  },
+  "supplementalSemanticIds": [],
+  "submodelElements": [
+    {
+      "idShort": "IsFinished",
+      "kind": "Instance",
+      "modelType": "Property",
+      "semanticId": {
+        "type": "ExternalReference",
+        "referredSemanticId": null,
+        "keys": []
+      },
+      "valueType": "string",
+      "value": "false"
+    },
+    {
+      "idShort": "QuantityInformation",
+      "kind": "Instance",
+      "modelType": "SubmodelElementCollection",
+      "semanticId": {
+        "type": "ExternalReference",
+        "referredSemanticId": null,
+        "keys": []
+      },
+      "value": [
+        {
+          "idShort": "TotalNumberOfPieces",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": []
+          },
+          "valueType": "string",
+          "value": "1"
+        }
+      ]
+    },
+    {
+      "idShort": "Step0001",
+      "kind": "Instance",
+      "modelType": "SubmodelElementCollection",
+      "semanticId": {
+        "type": "ExternalReference",
+        "referredSemanticId": null,
+        "keys": [
+          {
+            "type": "GlobalReference",
+            "value": "https://smartfactory.de/semantics/submodel-element/Step"
+          }
+        ]
+      },
+      "value": [
+        {
+          "idShort": "StepTitle",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/StepTitle"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "Store"
+        },
+        {
+          "idShort": "Status",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Status"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "booked"
+        },
+        {
+          "idShort": "Actions",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Actions"
+              }
+            ]
+          },
+          "value": [
+            {
+                "idShort": "Action001",
+                "modelType": "SubmodelElementCollection",
+                "value": [
+                    {
+                        "idShort": "ActionTitle",
+                        "modelType": "Property",
+                        "valueType": "xs:string",
+                        "value": "Store"
+                    },
+                    {
+                        "idShort": "Status",
+                        "modelType": "Property",
+                        "valueType": "xs:string",
+                        "value": "planned"
+                    },
+                    {
+                        "idShort": "MachineName",
+                        "modelType": "Property",
+                        "valueType": "xs:string",
+                        "value": "CA-Module"
+                    },
+                    {
+                        "idShort": "InputParameters",
+                        "modelType": "SubmodelElementCollection",
+                        "value": [
+                            {
+                                "idShort": "ProductId",
+                                "modelType": "Property",
+                                "valueType": "xs:string",
+                                "value": "ttps://smartfactory.de/shells/test_product_step"
+                            }
+                        ]
+                    },
+                    {
+                        "idShort": "Preconditions",
+                        "modelType": "SubmodelElementCollection",
+                        "value": []
+                    },
+                    {
+                        "idShort": "Effects",
+                        "modelType": "SubmodelElementCollection",
+                        "value": []
+                    },
+                    {
+                        "idShort": "FinalResultData",
+                        "modelType": "SubmodelElementCollection",
+                        "value": []
+                    }
+                ]
+            }
+            
+          ]
+        },
+        {
+          "idShort": "Station",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Station"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "P17"
+        },
+        {
+          "idShort": "InitialState",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/InitialState"
+              }
+            ]
+          },
+          "value": []
+        },
+        {
+          "idShort": "FinalState",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/FinalState"
+              }
+            ]
+          },
+          "value": []
+        },
+        {
+          "idShort": "Scheduling",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Scheduling"
+              }
+            ]
+          },
+          "value": [
+            {
+              "idShort": "StartDateTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/StartDateTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "2025-12-03 00:05:35"
+            },
+            {
+              "idShort": "EndDateTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/EndTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "2025-12-03 00:06:55"
+            },
+            {
+              "idShort": "SetupTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/SetupTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "00:00:00"
+            },
+            {
+              "idShort": "CycleTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/CycleTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "00:01:20"
+            },
+            {
+              "idShort": "InitialScheduling",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Step/Scheduling"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "StartDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/StartDateTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "EndDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/EndTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "SetupTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/SetupTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "CycleTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/CycleTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "idShort": "ActualScheduling",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Step/Scheduling"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "StartDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/StartDateTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "EndDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/EndTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "SetupTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/SetupTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "CycleTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/CycleTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "idShort": "Enterprise",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Enterprise"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "SmartFactory-KL"
+        },
+        {
+          "idShort": "Workcentre",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Workcentre"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "_PHUKET"
+        }
+      ]
+    },
+    {
+      "idShort": "Step0002",
+      "kind": "Instance",
+      "modelType": "SubmodelElementCollection",
+      "semanticId": {
+        "type": "ExternalReference",
+        "referredSemanticId": null,
+        "keys": [
+          {
+            "type": "GlobalReference",
+            "value": "https://smartfactory.de/semantics/submodel-element/Step"
+          }
+        ]
+      },
+      "value": [
+        {
+          "idShort": "StepTitle",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/StepTitle"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "Retrieve"
+        },
+        {
+          "idShort": "Status",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Status"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "booked"
+        },
+        {
+          "idShort": "Actions",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Actions"
+              }
+            ]
+          },
+          "value": [
+            {       
+                "idShort": "Action001",
+                "modelType": "SubmodelElementCollection",
+                "value": [
+                    {
+                        "idShort": "ActionTitle",
+                        "modelType": "Property",
+                        "valueType": "xs:string",
+                        "value": "Retrieve"
+                    },
+                    {
+                        "idShort": "Status",
+                        "modelType": "Property",
+                        "valueType": "xs:string",
+                        "value": "booked"
+                    },
+                    {
+                        "idShort": "MachineName",
+                        "modelType": "Property",
+                        "valueType": "xs:string",
+                        "value": "CA-Module"
+                    },
+                    {
+                        "idShort": "InputParameters",
+                        "modelType": "SubmodelElementCollection",
+                        "value": [
+                            {
+                                "idShort": "ProductId",
+                                "modelType": "Property",
+                                "valueType": "xs:string",
+                                "value": "ttps://smartfactory.de/shells/test_product_step"
+                            },
+                            {
+                                "idShort": "RetrieveByProductID",
+                                "modelType": "Property",
+                                "valueType": "xs:boolean",
+                                "value": "true"
+                            }
+                        ]
+                    },
+                    {
+                        "idShort": "Preconditions",
+                        "modelType": "SubmodelElementCollection",
+                        "value": [
+                            {
+                            "idShort": "Condition_001",
+                            "modelType": "SubmodelElementCollection",
+                            "value": [
+                                { "idShort": "ConditionType", "modelType": "Property", "valueType": "xs:string", "value": "InStorage" },
+                                {
+                                "idShort": "ConditionValue",
+                                "modelType": "SubmodelElementCollection",
+                                "value": [
+                                    { "idShort": "SlotContentType", "modelType": "Property", "valueType": "xs:string", "value": "ProductId" },
+                                    { "idShort": "SlotValue", "modelType": "Property", "valueType": "xs:string", "value": "https://smartfactory.de/shells/test_product_step" }
+                                ]
+                                }
+                            ]
+                            }
+                        ]
+                    },
+                    {
+                        "idShort": "Effects",
+                        "modelType": "SubmodelElementCollection",
+                        "value": []
+                    },
+                    {
+                        "idShort": "FinalResultData",
+                        "modelType": "SubmodelElementCollection",
+                        "value": []
+                    }
+                ]
+            }
+          ]
+        },
+        {
+          "idShort": "Station",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Station"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "P17"
+        },
+        {
+          "idShort": "InitialState",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/InitialState"
+              }
+            ]
+          },
+          "value": []
+        },
+        {
+          "idShort": "FinalState",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/FinalState"
+              }
+            ]
+          },
+          "value": []
+        },
+        {
+          "idShort": "Scheduling",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Scheduling"
+              }
+            ]
+          },
+          "value": [
+            {
+              "idShort": "StartDateTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/StartDateTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "2025-12-03 00:07:05"
+            },
+            {
+              "idShort": "EndDateTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/EndTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "2025-12-03 00:07:55"
+            },
+            {
+              "idShort": "SetupTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/SetupTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "00:00:00"
+            },
+            {
+              "idShort": "CycleTime",
+              "kind": "Instance",
+              "modelType": "Property",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/CycleTime"
+                  }
+                ]
+              },
+              "valueType": "string",
+              "value": "00:00:50"
+            },
+            {
+              "idShort": "InitialScheduling",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Step/Scheduling"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "StartDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/StartDateTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "EndDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/EndTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "SetupTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/SetupTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "CycleTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/CycleTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                }
+              ]
+            },
+            {
+              "idShort": "ActualScheduling",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "referredSemanticId": null,
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://smartfactory.de/semantics/submodel-element/Step/Scheduling"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "StartDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/StartDateTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "EndDateTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/EndTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "SetupTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/SetupTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                },
+                {
+                  "idShort": "CycleTime",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "semanticId": {
+                    "type": "ExternalReference",
+                    "referredSemanticId": null,
+                    "keys": [
+                      {
+                        "type": "GlobalReference",
+                        "value": "https://smartfactory.de/semantics/submodel-element/Scheduling/CycleTime"
+                      }
+                    ]
+                  },
+                  "valueType": "string",
+                  "value": ""
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "idShort": "Enterprise",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Enterprise"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "SmartFactory-KL"
+        },
+        {
+          "idShort": "Workcentre",
+          "kind": "Instance",
+          "modelType": "Property",
+          "semanticId": {
+            "type": "ExternalReference",
+            "referredSemanticId": null,
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://smartfactory.de/semantics/submodel-element/Step/Workcentre"
+              }
+            ]
+          },
+          "valueType": "string",
+          "value": "_PHUKET"
+        }
+      ]
+    }
+  ],
+  "modelType": "Submodel",
+  "embeddedDataSpecifications": [],
+  "conceptDescription": null,
+  "qualifiers": [],
+  "id": "https://smartfactory.de/submodels/65803fd1-1692-4235-aba8-1c5aed2754ac",
+  "administration": null,
+  "idShort": "ProductionPlan",
+  "category": null,
+  "description": [],
+  "displayName": []
+}

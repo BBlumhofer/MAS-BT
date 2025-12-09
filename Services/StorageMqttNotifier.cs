@@ -327,7 +327,6 @@ namespace MAS_BT.Services
                     .To("broadcast", string.Empty)
                     .WithType(I40MessageTypes.INFORM)
                     .WithConversationId(Guid.NewGuid().ToString())
-                    .WithMessageId(Guid.NewGuid().ToString())
                     .AddElement(inventoryCollection);
 
                 var inventoryTopic = $"/Modules/{moduleName}/Inventory/";
@@ -348,7 +347,6 @@ namespace MAS_BT.Services
                     .To("broadcast", string.Empty)
                     .WithType(I40MessageTypes.INFORM)
                     .WithConversationId(Guid.NewGuid().ToString())
-                    .WithMessageId(Guid.NewGuid().ToString())
                     .AddElement(logElement);
 
                 var logTopic = $"/Modules/{moduleName}/Logs/";

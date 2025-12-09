@@ -1,6 +1,8 @@
 using MAS_BT.Core;
+using MAS_BT.Services;
 using Microsoft.Extensions.Logging;
 using UAClient.Client;
+using I40Sharp.Messaging;
 
 namespace MAS_BT.Nodes.Monitoring;
 
@@ -11,6 +13,7 @@ namespace MAS_BT.Nodes.Monitoring;
 public class CheckReadyStateNode : BTNode
 {
     public string ModuleName { get; set; } = string.Empty;
+    public bool RequeueIfUnlocked { get; set; } = true;
 
     public CheckReadyStateNode() : base("CheckReadyState")
     {
@@ -41,6 +44,24 @@ public class CheckReadyStateNode : BTNode
             // ✅ Ready Check: Modul ist gelockt UND hat keine Fehler
             // Ein gelocktes Modul ist BEREIT für neue Aufgaben (wir haben Kontrolle)
             bool isLocked = module.IsLockedByUs;
+
+            if (!isLocked)
+            {
+                Logger.LogWarning(
+                    "CheckReadyState: Module {ModuleName} not locked by this agent. Re-queueing current request.",
+                    resolvedModuleName);
+
+                if (RequeueIfUnlocked && await TryRequeueCurrentSkillRequestAsync("module not locked"))
+                {
+                    // Clear current request from context so other queue entries can be started
+                    Context.Set("CurrentSkillRequest", null);
+                    Context.Set("CurrentSkillRequestRawMessage", null);
+                    Context.Set("InputParameters", new Dictionary<string, object>());
+                    return NodeStatus.Failure;
+                }
+
+                return NodeStatus.Failure;
+            }
             
             // Prüfe auf Fehler (Skills in Halted State)
             // Use live read via GetStateAsync() because cached CurrentState may be uninitialized (defaults to Halted)
@@ -91,5 +112,39 @@ public class CheckReadyStateNode : BTNode
             Logger.LogError(ex, "CheckReadyState: Error checking module {ModuleName}", resolvedModuleName);
             return NodeStatus.Failure;
         }
+    }
+
+    private async Task<bool> TryRequeueCurrentSkillRequestAsync(string reason)
+    {
+        var currentRequest = Context.Get<SkillRequestEnvelope>("CurrentSkillRequest");
+        if (currentRequest == null)
+        {
+            return false;
+        }
+
+        var queue = Context.Get<SkillRequestQueue>("SkillRequestQueue");
+        if (queue == null)
+        {
+            return false;
+        }
+
+        if (!queue.TryRequeueByConversationId(currentRequest.ConversationId, out var envelope))
+        {
+            return false;
+        }
+
+        Logger.LogInformation(
+            "CheckReadyState: Re-queued conversation '{ConversationId}' because {Reason}",
+            currentRequest.ConversationId,
+            reason);
+
+        var client = Context.Get<MessagingClient>("MessagingClient");
+        if (client != null)
+        {
+            await ActionQueueBroadcaster.PublishSnapshotAsync(Context, client, queue, "requeue", envelope);
+        }
+
+        Context.Set("SkillRequestQueueLength", queue.Count);
+        return true;
     }
 }

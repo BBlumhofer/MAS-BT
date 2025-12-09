@@ -151,7 +151,7 @@ public class XmlTreeDeserializer
                     var convertedValue = ConvertValue(value, prop.PropertyType);
                     prop.SetValue(node, convertedValue);
                     
-                    _logger.LogDebug("Property gesetzt: {Node}.{Property} = {Value}", 
+                    _logger.LogTrace("Property gesetzt: {Node}.{Property} = {Value}", 
                         node.Name, propName, convertedValue);
                 }
                 catch (Exception ex)
@@ -190,7 +190,7 @@ public class XmlTreeDeserializer
             result = result.Substring(0, openBrace) + replacement + result.Substring(closeBrace + 1);
             startIndex = openBrace + replacement.Length;
             
-            _logger.LogDebug("Config-Interpolation: {{{Placeholder}}} → {Value}", placeholder, replacement);
+            _logger.LogTrace("Config-Interpolation: {{{Placeholder}}} → {Value}", placeholder, replacement);
         }
         
         return result;
@@ -253,7 +253,7 @@ public class XmlTreeDeserializer
         var nodeTypeName = element.Name.LocalName;
         var nodeName = element.Attribute("name")?.Value ?? nodeTypeName;
         
-        _logger.LogDebug("Deserialisiere Node: {NodeType}", nodeTypeName);
+        _logger.LogTrace("Deserialisiere Node: {NodeType}", nodeTypeName);
         
         // Erstelle Node über Registry
         var node = _registry.CreateNode(nodeTypeName);

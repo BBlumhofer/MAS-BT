@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
+using MAS_BT.Services;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using I40Sharp.Messaging.Core;
@@ -7,11 +8,13 @@ using BaSyx.Models.AdminShell;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using BaSyx.Models.Extensions;
 using AasSharpClient.Models;
+using UAClient.Client;
 using ActionModel = AasSharpClient.Models.Action;
 
 namespace MAS_BT.Nodes.Messaging;
@@ -26,6 +29,7 @@ public class ReadMqttSkillRequestNode : BTNode
     public int TimeoutMs { get; set; } = 100; // Non-blocking polling
     
     private readonly ConcurrentQueue<string> _messageQueue = new(); // Store raw JSON
+    private SkillRequestQueue? _skillRequestQueue;
     private bool _subscribed = false;
 
     private static readonly JsonSerializerOptions BasyxOptions = new()
@@ -46,28 +50,28 @@ public class ReadMqttSkillRequestNode : BTNode
     public override async Task<NodeStatus> Execute()
     {
         Logger.LogDebug("ReadMqttSkillRequest: Checking for SkillRequest on module '{ModuleId}'", ModuleId);
-        
+
         var client = Context.Get<MessagingClient>("MessagingClient");
         if (client == null)
         {
             Logger.LogError("ReadMqttSkillRequest: MessagingClient not found in context");
             return NodeStatus.Failure;
         }
-        
-        // Subscribe zum SkillRequest Topic (falls noch nicht geschehen)
+
+        var queue = EnsureQueue();
+
         if (!_subscribed)
         {
             var topic = $"/Modules/{ModuleId}/SkillRequest/";
-            
+
             try
             {
                 await client.SubscribeAsync(topic);
-                
-                // Registriere Callback für RAW JSON (umgehe BaSyx Deserialization Problem)
-                var transport = client.GetType().GetField("_transport", 
+
+                var transport = client.GetType().GetField("_transport",
                     System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?
                     .GetValue(client);
-                
+
                 if (transport != null)
                 {
                     var messageReceivedEvent = transport.GetType().GetEvent("MessageReceived");
@@ -85,7 +89,7 @@ public class ReadMqttSkillRequestNode : BTNode
                         messageReceivedEvent.AddEventHandler(transport, handler);
                     }
                 }
-                
+
                 _subscribed = true;
                 Logger.LogInformation("ReadMqttSkillRequest: Subscribed to topic '{Topic}'", topic);
             }
@@ -95,184 +99,345 @@ public class ReadMqttSkillRequestNode : BTNode
                 return NodeStatus.Failure;
             }
         }
-        
-        // Prüfe ob Message in Queue (non-blocking)
-        if (_messageQueue.TryDequeue(out var jsonPayload))
-        {
-            try
-            {
-                // Parse RAW JSON direkt ohne BaSyx SDK
-                using var doc = JsonDocument.Parse(jsonPayload);
-                var root = doc.RootElement;
-                
-                // Extrahiere Frame
-                if (!root.TryGetProperty("frame", out var frameElement))
-                {
-                    Logger.LogWarning("ReadMqttSkillRequest: No 'frame' found in message");
-                    return NodeStatus.Failure;
-                }
-                
-                var conversationId = frameElement.GetProperty("conversationId").GetString() ?? "";
-                var messageId = frameElement.GetProperty("messageId").GetString() ?? "";
-                var senderId = frameElement.GetProperty("sender").GetProperty("identification").GetProperty("id").GetString() ?? "";
-                
-                // Extrahiere InteractionElements
-                if (!root.TryGetProperty("interactionElements", out var interactionElements))
-                {
-                    Logger.LogWarning("ReadMqttSkillRequest: No 'interactionElements' found in message");
-                    return NodeStatus.Failure;
-                }
-                
-                SubmodelElementCollection? actionCollection = null;
-                JsonElement? rawActionElement = null;
 
-                foreach (var element in interactionElements.EnumerateArray())
+        while (_messageQueue.TryDequeue(out var jsonPayload))
+        {
+            var envelope = BuildEnvelopeFromJson(jsonPayload);
+            if (envelope == null)
+            {
+                continue;
+            }
+
+            if (!queue.TryEnqueue(envelope, out var length))
+            {
+                Logger.LogWarning(
+                    "ReadMqttSkillRequest: Queue full, dropping request for product '{ProductId}' (conversation '{ConversationId}')",
+                    envelope.ProductId,
+                    envelope.ConversationId);
+                continue;
+            }
+
+            Logger.LogInformation(
+                "ReadMqttSkillRequest: Enqueued Action '{ActionTitle}' for machine '{MachineName}'. Queue length: {Length}",
+                envelope.ActionTitle,
+                envelope.MachineName,
+                length);
+
+            Context.Set("SkillRequestQueueLength", length);
+            await ActionQueueBroadcaster.PublishSnapshotAsync(Context, client, queue, "enqueue", envelope);
+        }
+
+        Context.Set("SkillRequestQueueLength", queue.Count);
+
+            if (queue.TryStartNext(out var nextRequest) && nextRequest != null)
+            {
+                if (!IsModuleLocked(nextRequest.MachineName))
                 {
-                    var raw = element.GetRawText();
-                    // Log the raw JSON we attempt to parse with BaSyx for easier debugging
-                    Logger.LogInformation("ReadMqttSkillRequest: Attempting BaSyx parse of interaction element JSON: {Json}", raw);
+                    Logger.LogInformation(
+                        "ReadMqttSkillRequest: Module {MachineName} not locked. Moving conversation '{ConversationId}' to queue end.",
+                        nextRequest.MachineName,
+                        nextRequest.ConversationId);
+
+                    // Apply a small backoff and move to end so other actions are preferred
+                    var startMs = Context.Get<int?>("PreconditionBackoffStartMs") ?? 5000;
                     try
                     {
-                        // BaSyx-konforme Deserialisierung mit Fallback ähnlich Testhelper
-                        var collection = BuildCollectionFromElement(element);
-                        if (!string.IsNullOrEmpty(collection.IdShort) && collection.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
-                        {
-                            actionCollection = collection;
-                            rawActionElement = element;
-                            break;
-                        }
-                        // Falls keine Collection erkannt, versuche direkten Deserialize (kann z.B. bei einzelnen SubmodelElements greifen)
-                        var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(raw, BasyxOptions);
-                        if (sme is SubmodelElementCollection col && !string.IsNullOrEmpty(col.IdShort) && col.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
-                        {
-                            actionCollection = col;
-                            rawActionElement = element;
-                            break;
-                        }
+                        nextRequest.IncrementRetry(TimeSpan.FromMilliseconds(startMs));
                     }
-                    catch (Exception ex)
+                    catch
                     {
-                        // Wenn BaSyx-Deserialisierung fehlschlägt, logge Exception + das rohe JSON und versuche weiterhin eine manuelle Extraktion
-                        Logger.LogInformation("ReadMqttSkillRequest: BaSyx deserialization failed for interaction element; raw JSON: {Json}. Exception: {Ex}", raw, ex.Message);
-                        if (element.TryGetProperty("idShort", out var idShort) && idShort.GetString()?.StartsWith("Action") == true)
-                        {
-                            rawActionElement = element;
-                            break;
-                        }
+                        // ignore if increment fails for some reason
                     }
-                }
 
-                if (actionCollection == null && rawActionElement == null)
-                {
-                    Logger.LogWarning("ReadMqttSkillRequest: No Action found in interactionElements");
-                    return NodeStatus.Failure;
-                }
-
-                string actionTitle = string.Empty;
-                string status = string.Empty;
-                string machineName = string.Empty;
-
-                // Wenn BaSyx-Collection vorhanden, extrahiere Werte daraus, sonst nutze das rohe JsonElement
-                if (actionCollection != null)
-                {
-                    var actionModel = CreateActionFromCollection(actionCollection);
-
-                    actionTitle = actionModel.ActionTitle.Value.Value?.ToString() ?? string.Empty;
-                    status = actionModel.State.ToString();
-                    machineName = actionModel.MachineName.Value.Value?.ToString() ?? string.Empty;
-
-                    var inputParams = ExtractInputParametersDictionary(actionModel);
-                    Context.Set("InputParameters", inputParams);
-                    Logger.LogInformation("ReadMqttSkillRequest: Extracted {Count} input parameters (BaSyx)", inputParams.Count);
-
-                    Context.Set("CurrentAction", actionModel);
-                    Context.Set("ActionId", actionModel.IdShort ?? "Action001");
-                }
-                else if (rawActionElement.HasValue)
-                {
-                    var actionValue = rawActionElement.Value.GetProperty("value");
-                    actionTitle = ExtractPropertyValue(actionValue, "ActionTitle");
-                    status = ExtractPropertyValue(actionValue, "Status");
-                    machineName = ExtractPropertyValue(actionValue, "MachineName");
-
-                    // Extrahiere InputParameters (manuelle Pfad wie vorher)
-                    var inputParams = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
-                    foreach (var prop in actionValue.EnumerateArray())
+                    if (queue.MoveToEndByConversationId(nextRequest.ConversationId, out var moved))
                     {
-                        if (prop.TryGetProperty("idShort", out var propIdShort) && 
-                            propIdShort.GetString() == "InputParameters")
-                        {
-                            if (prop.TryGetProperty("value", out var paramsArray))
-                            {
-                                foreach (var param in paramsArray.EnumerateArray())
-                                {
-                                    if (param.TryGetProperty("idShort", out var paramName))
-                                    {
-                                        string? valueType = null;
-                                        if (param.TryGetProperty("valueType", out var valueTypeElement))
-                                        {
-                                            valueType = valueTypeElement.GetString();
-                                        }
-
-                                        if (param.TryGetProperty("value", out var paramValue))
-                                        {
-                                            var typedValue = ExtractTypedValue(paramValue, valueType);
-                                            inputParams[paramName.GetString() ?? ""] = typedValue;
-                                        }
-                                    }
-                                }
-                            }
-                            break;
-                        }
+                        await ActionQueueBroadcaster.PublishSnapshotAsync(Context, client, queue, "requeue", moved);
                     }
-                    Context.Set("InputParameters", inputParams);
-                    Logger.LogInformation("ReadMqttSkillRequest: Extracted {Count} input parameters", inputParams.Count);
+
+                    Context.Set("SkillRequestQueueLength", queue.Count);
+                    return NodeStatus.Running;
                 }
 
-                Logger.LogInformation("ReadMqttSkillRequest: Received Action '{ActionTitle}' with status '{Status}' for machine '{MachineName}'", 
-                    actionTitle, status, machineName);
-                
-                // Speichere im Context
-                Context.Set("ActionTitle", actionTitle);
-                Context.Set("ActionStatus", status);
-                Context.Set("MachineName", machineName);
-                Context.Set("ConversationId", conversationId);
-                Context.Set("OriginalMessageId", messageId);
-                Context.Set("RequestSender", senderId);
+            await ActionQueueBroadcaster.PublishSnapshotAsync(Context, client, queue, "start", nextRequest);
+            PopulateContextFromEnvelope(nextRequest);
+            Context.Set("SkillRequestQueueLength", queue.Count);
 
-                // InputParameters sollten bereits in Context gesetzt worden sein (BaSyx oder manuell)
-                var inputParamsFromContext = Context.Get<Dictionary<string, object>>("InputParameters") ?? new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+            Logger.LogInformation(
+                "ReadMqttSkillRequest: Marked Action '{ActionTitle}' for machine '{MachineName}' (product '{ProductId}') as running.",
+                nextRequest.ActionTitle,
+                nextRequest.MachineName,
+                nextRequest.ProductId);
 
-                // Bestimme actionId
-                string actionIdShort;
-                if (actionCollection != null)
-                    actionIdShort = actionCollection.IdShort ?? "Action001";
-                else if (rawActionElement.HasValue && rawActionElement.Value.TryGetProperty("idShort", out var idShortProp))
-                    actionIdShort = idShortProp.GetString() ?? "Action001";
-                else
-                    actionIdShort = "Action001";
-
-                var existingAction = Context.Get<ActionModel>("CurrentAction");
-                if (existingAction == null)
-                {
-                    var aasAction = BuildAasAction(actionIdShort, actionTitle, status, machineName, inputParamsFromContext);
-                    Context.Set("CurrentAction", aasAction);
-                }
-                Context.Set("ActionId", actionIdShort);
-
-                return NodeStatus.Success;
-            }
-            catch (Exception ex)
-            {
-                Logger.LogError(ex, "ReadMqttSkillRequest: Failed to parse Action from JSON");
-                return NodeStatus.Failure;
-            }
+            return NodeStatus.Success;
         }
-        
-        // Keine Message verfügbar - Running State (wartet weiter)
+
         return NodeStatus.Running;
     }
     
+    private SkillRequestQueue EnsureQueue()
+    {
+        if (_skillRequestQueue != null)
+        {
+            return _skillRequestQueue;
+        }
+
+        var queue = Context.Get<SkillRequestQueue>("SkillRequestQueue");
+        if (queue == null)
+        {
+            queue = new SkillRequestQueue();
+            Context.Set("SkillRequestQueue", queue);
+            Logger.LogWarning("ReadMqttSkillRequest: SkillRequestQueue missing in context. Created new queue instance.");
+        }
+
+        _skillRequestQueue = queue;
+        return queue;
+    }
+
+    private bool IsModuleLocked(string? machineName)
+    {
+        if (string.IsNullOrWhiteSpace(machineName))
+        {
+            return false;
+        }
+
+        var server = Context.Get<RemoteServer>("RemoteServer");
+        if (server != null && server.Modules.TryGetValue(machineName, out var module))
+        {
+            return module.IsLockedByUs;
+        }
+
+        var key = $"State_{machineName}_IsLocked";
+        return Context.Get<bool?>(key) ?? false;
+    }
+
+    // Removed snapshot publishing helpers (now centralized in ActionQueueBroadcaster).
+
+    private SkillRequestEnvelope? BuildEnvelopeFromJson(string jsonPayload)
+    {
+        try
+        {
+            using var doc = JsonDocument.Parse(jsonPayload);
+            var root = doc.RootElement;
+
+            if (!root.TryGetProperty("frame", out var frameElement))
+            {
+                Logger.LogWarning("ReadMqttSkillRequest: No 'frame' found in message");
+                return null;
+            }
+
+            var conversationId = frameElement.TryGetProperty("conversationId", out var convEl) && convEl.ValueKind == JsonValueKind.String
+                ? convEl.GetString() ?? string.Empty
+                : string.Empty;
+
+            if (string.IsNullOrWhiteSpace(conversationId))
+            {
+                Logger.LogWarning("ReadMqttSkillRequest: Missing conversationId in frame (product id not provided)");
+            }
+
+            var senderId = ExtractParticipantId(frameElement, "sender");
+            var receiverId = ExtractParticipantId(frameElement, "receiver");
+
+            if (!root.TryGetProperty("interactionElements", out var interactionElements))
+            {
+                Logger.LogWarning("ReadMqttSkillRequest: No 'interactionElements' found in message");
+                return null;
+            }
+
+            SubmodelElementCollection? actionCollection = null;
+            JsonElement? rawActionElement = null;
+
+            foreach (var element in interactionElements.EnumerateArray())
+            {
+                var raw = element.GetRawText();
+                //Logger.LogInformation("ReadMqttSkillRequest: Attempting BaSyx parse of interaction element JSON: {Json}", raw);
+                try
+                {
+                    var collection = BuildCollectionFromElement(element);
+                    if (!string.IsNullOrEmpty(collection.IdShort) && collection.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
+                    {
+                        actionCollection = collection;
+                        rawActionElement = element;
+                        break;
+                    }
+
+                    var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(raw, BasyxOptions);
+                    if (sme is SubmodelElementCollection col && !string.IsNullOrEmpty(col.IdShort) && col.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
+                    {
+                        actionCollection = col;
+                        rawActionElement = element;
+                        break;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogInformation(
+                        "ReadMqttSkillRequest: BaSyx deserialization failed for interaction element; raw JSON: {Json}. Exception: {Ex}",
+                        raw,
+                        ex.Message);
+                    if (element.TryGetProperty("idShort", out var idShort) && idShort.GetString()?.StartsWith("Action") == true)
+                    {
+                        rawActionElement = element;
+                        break;
+                    }
+                }
+            }
+
+            if (actionCollection == null && rawActionElement == null)
+            {
+                Logger.LogWarning("ReadMqttSkillRequest: No Action found in interactionElements");
+                return null;
+            }
+
+            Dictionary<string, object> inputParams;
+            ActionModel actionModel;
+            string actionTitle;
+            string status;
+            string machineName;
+            string actionIdShort;
+
+            if (actionCollection != null)
+            {
+                actionModel = CreateActionFromCollection(actionCollection);
+                actionTitle = actionModel.ActionTitle.Value.Value?.ToString() ?? string.Empty;
+                status = actionModel.State.ToString();
+                machineName = actionModel.MachineName.Value.Value?.ToString() ?? string.Empty;
+                actionIdShort = actionCollection.IdShort ?? "Action001";
+                inputParams = ExtractInputParametersDictionary(actionModel);
+            }
+            else
+            {
+                var actionValue = rawActionElement!.Value.GetProperty("value");
+                actionTitle = ExtractPropertyValue(actionValue, "ActionTitle");
+                status = ExtractPropertyValue(actionValue, "Status");
+                machineName = ExtractPropertyValue(actionValue, "MachineName");
+                actionIdShort = rawActionElement.Value.TryGetProperty("idShort", out var idShortProp)
+                    ? idShortProp.GetString() ?? "Action001"
+                    : "Action001";
+                inputParams = ExtractInputParametersFromRaw(actionValue);
+                actionModel = BuildAasAction(actionIdShort, actionTitle, status, machineName, inputParams);
+            }
+
+            PopulatePreconditions(actionModel, actionCollection, rawActionElement);
+
+            return new SkillRequestEnvelope(
+                jsonPayload,
+                conversationId,
+                senderId,
+                receiverId,
+                actionIdShort,
+                actionTitle,
+                machineName,
+                status,
+                inputParams,
+                actionModel);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "ReadMqttSkillRequest: Failed to parse SkillRequest payload");
+            return null;
+        }
+    }
+
+    private static string ExtractParticipantId(JsonElement frameElement, string propertyName)
+    {
+        if (!frameElement.TryGetProperty(propertyName, out var participant) || participant.ValueKind != JsonValueKind.Object)
+        {
+            return string.Empty;
+        }
+
+        if (participant.TryGetProperty("identification", out var identification) && identification.ValueKind == JsonValueKind.Object)
+        {
+            if (identification.TryGetProperty("id", out var idValue) && idValue.ValueKind == JsonValueKind.String)
+            {
+                return idValue.GetString() ?? string.Empty;
+            }
+        }
+
+        return string.Empty;
+    }
+
+    private Dictionary<string, object> ExtractInputParametersFromRaw(JsonElement actionValue)
+    {
+        var inputParams = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var prop in actionValue.EnumerateArray())
+        {
+            if (!prop.TryGetProperty("idShort", out var propIdShort))
+            {
+                continue;
+            }
+
+            if (!string.Equals(propIdShort.GetString(), "InputParameters", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            if (!prop.TryGetProperty("value", out var paramsArray) || paramsArray.ValueKind != JsonValueKind.Array)
+            {
+                break;
+            }
+
+            foreach (var param in paramsArray.EnumerateArray())
+            {
+                if (!param.TryGetProperty("idShort", out var paramNameElement))
+                {
+                    continue;
+                }
+
+                var paramName = paramNameElement.GetString();
+                if (string.IsNullOrEmpty(paramName))
+                {
+                    continue;
+                }
+
+                string? valueType = null;
+                if (param.TryGetProperty("valueType", out var valueTypeElement))
+                {
+                    valueType = valueTypeElement.GetString();
+                }
+
+                if (param.TryGetProperty("value", out var paramValue))
+                {
+                    var typedValue = ExtractTypedValue(paramValue, valueType);
+                    inputParams[paramName] = typedValue;
+                }
+            }
+
+            break;
+        }
+
+        return inputParams;
+    }
+
+    private void PopulateContextFromEnvelope(SkillRequestEnvelope envelope)
+    {
+        var parameterCopy = new Dictionary<string, object>(envelope.InputParameters, StringComparer.OrdinalIgnoreCase);
+
+        Context.Set("CurrentSkillRequest", envelope);
+        Context.Set("CurrentSkillRequestRawMessage", envelope.RawMessage);
+        Context.Set("ConversationId", envelope.ConversationId);
+        Context.Set("ProductId", envelope.ProductId);
+        Context.Set("RequestSender", envelope.SenderId);
+        Context.Set("RequestReceiver", envelope.ReceiverId);
+        Context.Set("ActionTitle", envelope.ActionTitle);
+        Context.Set("ActionStatus", envelope.ActionStatus);
+        Context.Set("MachineName", envelope.MachineName);
+        Context.Set("InputParameters", parameterCopy);
+        Context.Set("CurrentAction", envelope.ActionModel);
+        Context.Set("ActionId", envelope.ActionId);
+        if (!string.IsNullOrWhiteSpace(envelope.ConversationId))
+        {
+            const string ErrorMapKey = "ActionErrorSentMap";
+            var errorMap = Context.Get<Dictionary<string, bool>>(ErrorMapKey);
+            if (errorMap == null)
+            {
+                errorMap = new Dictionary<string, bool>(StringComparer.OrdinalIgnoreCase);
+                Context.Set(ErrorMapKey, errorMap);
+            }
+            errorMap[envelope.ConversationId] = false;
+        }
+    }
+
     private string ExtractPropertyValue(JsonElement valueArray, string propertyName)
     {
         foreach (var element in valueArray.EnumerateArray())
@@ -399,11 +564,18 @@ public class ReadMqttSkillRequestNode : BTNode
         {
             foreach (var child in val.EnumerateArray())
             {
-                var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(child.GetRawText(), BasyxOptions);
-                if (sme != null)
+                try
                 {
-                    collection.Add(sme);
-                    continue;
+                    var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(child.GetRawText(), BasyxOptions);
+                    if (sme != null)
+                    {
+                        collection.Add(sme);
+                        continue;
+                    }
+                }
+                catch (Exception)
+                {
+                    // deserialization may fail for abstract/interface types (IReference etc.) - fall back to manual parsing
                 }
 
                 var fallback = CreateFallbackElement(child);
@@ -436,6 +608,43 @@ public class ReadMqttSkillRequestNode : BTNode
         {
             var value = element.TryGetProperty("value", out var valueNode) ? valueNode.GetString() ?? string.Empty : string.Empty;
             return new Property<string>(idShort, value);
+        }
+
+        if (string.Equals(modelType, "ReferenceElement", StringComparison.OrdinalIgnoreCase))
+        {
+            try
+            {
+                if (element.TryGetProperty("value", out var valueEl) && valueEl.ValueKind == JsonValueKind.Object)
+                {
+                    var refType = valueEl.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? string.Empty : string.Empty;
+                    var keyTuples = new List<(KeyType, string)>();
+                    if (valueEl.TryGetProperty("keys", out var keysEl) && keysEl.ValueKind == JsonValueKind.Array)
+                    {
+                        foreach (var k in keysEl.EnumerateArray())
+                        {
+                            var kt = k.TryGetProperty("type", out var ktEl) ? ktEl.GetString() ?? string.Empty : string.Empty;
+                            var kv = k.TryGetProperty("value", out var kvEl) ? kvEl.GetString() ?? string.Empty : string.Empty;
+                            var mapped = MapKeyType(kt);
+                            keyTuples.Add((mapped, kv));
+                        }
+                    }
+
+                    Reference reference = string.Equals(refType, "ModelReference", StringComparison.OrdinalIgnoreCase)
+                        ? ReferenceFactory.Model(keyTuples.Select(t => (t.Item1, t.Item2)).ToArray())
+                        : ReferenceFactory.External(keyTuples.Select(t => (t.Item1, t.Item2)).ToArray());
+
+                    var refElem = new ReferenceElement(idShort)
+                    {
+                        Value = new ReferenceElementValue(reference)
+                    };
+
+                    return refElem;
+                }
+            }
+            catch
+            {
+                // ignore and fall through to null
+            }
         }
 
         return null;
@@ -486,6 +695,86 @@ public class ReadMqttSkillRequestNode : BTNode
             .FirstOrDefault(e => string.Equals(e.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
     }
 
+    private static void PopulatePreconditions(
+        ActionModel actionModel,
+        SubmodelElementCollection? actionCollection,
+        JsonElement? rawActionElement)
+    {
+        if (actionModel == null)
+        {
+            return;
+        }
+
+        if (actionCollection != null)
+        {
+            var preconditions = GetCollection(actionCollection, "Preconditions");
+            if (preconditions != null)
+            {
+                CopyPreconditions(preconditions, actionModel.Preconditions);
+                return;
+            }
+        }
+
+        if (rawActionElement.HasValue)
+        {
+            var rawPreconditions = ExtractPreconditionsFromRaw(rawActionElement.Value);
+            if (rawPreconditions != null)
+            {
+                CopyPreconditions(rawPreconditions, actionModel.Preconditions);
+            }
+        }
+    }
+
+    private static void CopyPreconditions(SubmodelElementCollection source, SubmodelElementCollection target)
+    {
+        if (source == null || target == null)
+        {
+            return;
+        }
+
+        foreach (var element in Elements(source))
+        {
+            target.Add(element);
+        }
+    }
+
+    private static SubmodelElementCollection? ExtractPreconditionsFromRaw(JsonElement actionElement)
+    {
+        if (!actionElement.TryGetProperty("value", out var valueArray) || valueArray.ValueKind != JsonValueKind.Array)
+        {
+            return null;
+        }
+
+        foreach (var element in valueArray.EnumerateArray())
+        {
+            if (!element.TryGetProperty("idShort", out var idShortNode))
+            {
+                continue;
+            }
+
+            var idShort = idShortNode.GetString();
+            if (!string.Equals(idShort, "Preconditions", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            if (!element.TryGetProperty("modelType", out var modelTypeNode))
+            {
+                continue;
+            }
+
+            var modelType = modelTypeNode.GetString();
+            if (!string.Equals(modelType, "SubmodelElementCollection", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            return BuildNestedCollection(element, idShort ?? "Preconditions");
+        }
+
+        return null;
+    }
+
     private static string GetStringProperty(SubmodelElementCollection coll, string idShort, string fallback)
     {
         var property = Elements(coll)
@@ -534,7 +823,17 @@ public class ReadMqttSkillRequestNode : BTNode
         var mappedStatus = MapActionStatus(status);
         var inputModel = InputParameters.FromTypedValues(inputParameters);
         var finalResult = new FinalResultData();
-        return new AasSharpClient.Models.Action(actionId, actionTitle, mappedStatus, inputModel, finalResult, null, machineName);
+        var preconditions = new AasSharpClient.Models.Preconditions();
+        var skillReference = new SkillReference(Array.Empty<(object Key, string Value)>());
+        return new AasSharpClient.Models.Action(
+            actionId,
+            actionTitle,
+            mappedStatus,
+            inputModel,
+            finalResult,
+            preconditions,
+            skillReference,
+            machineName);
     }
 
     private static ActionModel CreateActionFromCollection(SubmodelElementCollection coll)
@@ -550,6 +849,15 @@ public class ReadMqttSkillRequestNode : BTNode
         var inputParams = InputParameters.FromTypedValues(BuildInputParameterDictionary(GetCollection(coll, "InputParameters")));
         var finalResultData = new FinalResultData(BuildInputParameterDictionary(GetCollection(coll, "FinalResultData")));
         var skillReference = new SkillReference(Array.Empty<(object Key, string Value)>());
+        var preconditions = new Preconditions();
+        var preconditionsSource = GetCollection(coll, "Preconditions");
+        if (preconditionsSource != null)
+        {
+            foreach (var element in Elements(preconditionsSource))
+            {
+                preconditions.Add(element);
+            }
+        }
 
         return new ActionModel(
             idShort: coll.IdShort ?? "Action001",
@@ -557,6 +865,7 @@ public class ReadMqttSkillRequestNode : BTNode
             status: status,
             inputParameters: inputParams,
             finalResultData: finalResultData,
+            preconditions: preconditions,
             skillReference: skillReference,
             machineName: machineName
         );

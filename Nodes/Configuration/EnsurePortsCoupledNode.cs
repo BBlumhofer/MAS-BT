@@ -193,7 +193,6 @@ public class EnsurePortsCoupledNode : BTNode
                 .To("broadcast", string.Empty)
                 .WithType(I40MessageTypes.INFORM)
                 .WithConversationId(Guid.NewGuid().ToString())
-                .WithMessageId(Guid.NewGuid().ToString())
                 .AddElement(logElement);
 
             await messagingClient.PublishAsync(builder.Build(), $"{agentId}/logs");

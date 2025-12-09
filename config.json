@@ -1,7 +1,7 @@
 {
   "Agent": {
     "ModuleId": "CA-Module",
-    "AgentId": "TestAgent",
+    "AgentId": "CA-Module",
     "Role": "ResourceHolon",
     "AgentType": "ResourceHolon",
     "LogLevel": "Information"
@@ -64,5 +64,10 @@
     "StateRefreshIntervalMs": 1000,
     "HealthCheckIntervalMs": 5000,
     "AlarmHistoryDuration": 3600000
+  },
+  "Execution": {
+    "MaxPreconditionRetries":20,
+    "PreconditionBackoffStartMs": 10000
   }
+
 }

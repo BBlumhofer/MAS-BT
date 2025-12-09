@@ -1,6 +1,7 @@
 using MAS_BT.Core;
 using MAS_BT.Nodes.Configuration;
 using MAS_BT.Nodes.Messaging;
+using MAS_BT.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
 
@@ -33,6 +34,11 @@ public class ResourceHolonInitialization
             AgentId = "ResourceHolon_RH2",
             AgentRole = "ResourceHolon"
         };
+
+        context.Set("SkillRequestQueue", new SkillRequestQueue());
+        // Precondition retry configuration: default to 10 retries and 5 minutes start timeout
+        context.Set("MaxPreconditionRetries", 10);
+        context.Set("PreconditionBackoffStartMs", 5 * 60 * 1000); // 5 minutes in ms
         
         Console.WriteLine($"🤖 Agent ID: {context.AgentId}");
         Console.WriteLine($"🏷️  Agent Role: {context.AgentRole}");
@@ -217,6 +223,9 @@ public class ResourceHolonInitialization
             
             // Cleanup
             Console.WriteLine("🧹 Cleanup...");
+            // Graceful shutdown: flush pending Inventory MQTT publishes if notifier is present
+            await MAS_BT.Services.ShutdownHelper.ShutdownStorageNotifierAsync(context, logger);
+
             await connectToBrokerNode.OnAbort();
             Console.WriteLine("✓ Verbindungen geschlossen");
         }

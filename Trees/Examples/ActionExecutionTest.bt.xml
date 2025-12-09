@@ -89,7 +89,6 @@
 
       <UpdateInventory name="PublishInventoryAfterInit" 
                ModuleId="{config.Agent.ModuleId}" 
-               ModuleName="{config.Agent.ModuleId}"
                PublishToMqtt="true"
                ForcePublish="true"/>
     </Sequence>
@@ -123,26 +122,7 @@
                 </ForceFailure>
               </Fallback>
               
-              <Fallback name="ValidatePreconditions">
-                <Sequence name="CheckPreconditions">
-                  <CheckReadyState name="CheckReady" 
-                                  ModuleName="{MachineName}" 
-                                  ExpectedState="true"/>
-                  
-                  <CheckErrorState name="CheckNoError" 
-                                  ModuleName="{MachineName}" 
-                                  ExpectedHasError="false"/>
-                </Sequence>
-                
-                <ForceFailure name="StopAfterRefusalPreconditions">
-                  <Sequence name="SendRefusalNotReady">
-                    <SendSkillResponse name="SendRefusal" 
-                                      ModuleId="{config.Agent.ModuleId}" 
-                                      ActionState="ERROR" 
-                                      FrameType="refusal"/>
-                  </Sequence>
-                </ForceFailure>
-              </Fallback>
+              <CheckSkillPreconditions name="CheckSkillPreconditions" ModuleName="{MachineName}" />
               
               <SendSkillResponse name="SendConsent" 
                                 ModuleId="{config.Agent.ModuleId}" 
@@ -230,6 +210,10 @@
   
   <!-- TreeNodesModel for Groot2 Editor -->
   <TreeNodesModel>
+    <Decorator ID="RetryUntilSuccess">
+      <input_port name="numAttempts" default="-1"/>
+      <input_port name="delayMs" default="1000"/>
+    </Decorator>
     <Action ID="ConnectToMessagingBroker">
       <input_port name="BrokerHost"/>
       <input_port name="BrokerPort"/>
@@ -274,6 +258,9 @@
       <input_port name="ModuleId"/>
       <input_port name="TimeoutMs" default="100"/>
     </Action>
+    <Action ID="CheckSkillPreconditions">
+      <input_port name="ModuleName"/>
+    </Action>
     <Action ID="SendSkillResponse">
       <input_port name="ModuleId"/>
       <input_port name="ActionState"/>
@@ -293,6 +280,7 @@
     </Action>
     <Action ID="UpdateInventory">
       <input_port name="ModuleId"/>
+      <input_port name="ModuleName"/>
       <input_port name="PublishToMqtt" default="true"/>
       <input_port name="ForcePublish" default="false"/>
     </Action>

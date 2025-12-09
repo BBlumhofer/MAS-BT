@@ -56,7 +56,6 @@ namespace MAS_BT.Services
                     .To("broadcast", string.Empty)
                     .WithType(I40MessageTypes.INFORM)
                     .WithConversationId(Guid.NewGuid().ToString())
-                    .WithMessageId(Guid.NewGuid().ToString())
                     .AddElement(logElement);
 
                 // publish on agent-specific logs topic

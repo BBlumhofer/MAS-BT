@@ -1,3 +1,4 @@
+using System;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
@@ -15,6 +16,7 @@ public class ConnectToMessagingBrokerNode : BTNode
     public int BrokerPort { get; set; } = 1883;
     public string DefaultTopic { get; set; } = "factory/agents/messages";
     public int TimeoutMs { get; set; } = 10000;
+    public string ClientId { get; set; } = string.Empty;
 
     public ConnectToMessagingBrokerNode() : base("ConnectToMessagingBroker")
     {
@@ -27,16 +29,40 @@ public class ConnectToMessagingBrokerNode : BTNode
         try
         {
             // Prüfe ob bereits verbunden
+            // Ermittel die gewünschte ClientId (aus BT-Input oder Fallback aus Context.AgentId/AgentRole)
+            var desiredClientId = string.IsNullOrWhiteSpace(ClientId)
+                ? $"{Context.AgentId}_{Context.AgentRole}"
+                : ResolvePlaceholders(ClientId);
+
             var existingClient = Context.Get<MessagingClient>("MessagingClient");
+            var existingClientId = Context.Get<string>("MQTTClientId");
+
             if (existingClient != null && existingClient.IsConnected)
             {
-                Logger.LogDebug("ConnectToMessagingBroker: Already connected, reusing existing client");
-                Set("messagingConnected", true);
-                return NodeStatus.Success;
+                // Wenn vorhandener Client-ID bekannt und gleich der gewünschten, wiederverwenden
+                if (!string.IsNullOrWhiteSpace(existingClientId) && string.Equals(existingClientId, desiredClientId, StringComparison.Ordinal))
+                {
+                    Logger.LogInformation("ConnectToMessagingBroker: Already connected, reusing existing client (ClientId={ClientId})", existingClientId);
+                    Set("messagingConnected", true);
+                    Context.Set("MQTTClientId", existingClientId);
+                    return NodeStatus.Success;
+                }
+
+                // Andernfalls erstellen wir einen neuen MessagingClient mit der gewünschten ClientId
+                Logger.LogInformation("ConnectToMessagingBroker: Existing client present (ClientId={Existing}), desired ClientId={Desired} - creating separate client instance.", existingClientId ?? "<unknown>", desiredClientId);
             }
 
-            // Erstelle Transport und Client
-            var clientId = $"{Context.AgentId}_{Context.AgentRole}";
+            // Erstelle Transport und Client (unique ClientId per agent/role unless overridden)
+            // Verwende die zuvor ermittelte gewünschte ClientId
+            var clientId = desiredClientId;
+
+            if (string.IsNullOrWhiteSpace(clientId))
+            {
+                clientId = $"MASBT_{Guid.NewGuid():N}";
+            }
+
+            Logger.LogInformation("ConnectToMessagingBroker: Using MQTT ClientId {ClientId}", clientId);
+
             var transport = new MqttTransport(BrokerHost, BrokerPort, clientId);
             var client = new MessagingClient(transport, DefaultTopic);
 
@@ -57,6 +83,50 @@ public class ConnectToMessagingBrokerNode : BTNode
                 Logger.LogDebug("MessagingClient: Received message type {Type} from {Sender}",
                     msg.Frame.Type, msg.Frame.Sender.Identification.Id);
             });
+
+            // Zusätzlich: Direkt am Transport die rohe Payload loggen (INFO),
+            // damit wir alle eingehenden MQTT-Nachrichten im Agent-Log sehen.
+            try
+            {
+                var transportObj = client.GetType().GetField("_transport",
+                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?
+                    .GetValue(client);
+
+                if (transportObj != null)
+                {
+                    var messageReceivedEvent = transportObj.GetType().GetEvent("MessageReceived");
+                    if (messageReceivedEvent != null)
+                    {
+                        EventHandler? transportHandler = null;
+                        transportHandler = (sender, e) =>
+                        {
+                            try
+                            {
+                                // Use reflection to obtain Topic and Payload properties from the event args
+                                var topicProp = e?.GetType().GetProperty("Topic");
+                                var payloadProp = e?.GetType().GetProperty("Payload");
+                                var topic = topicProp?.GetValue(e)?.ToString() ?? string.Empty;
+                                var payload = payloadProp?.GetValue(e)?.ToString() ?? string.Empty;
+
+                                if (!string.IsNullOrEmpty(topic))
+                                {
+                                    Logger.LogInformation("TransportMessage: Topic={Topic} Payload={Payload}", topic, payload);
+                                }
+                            }
+                            catch (Exception ex)
+                            {
+                                Logger.LogDebug(ex, "TransportMessage: failed to log raw payload");
+                            }
+                        };
+
+                        messageReceivedEvent.AddEventHandler(transportObj, transportHandler);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "ConnectToMessagingBroker: Failed to attach transport-level payload logger");
+            }
 
             // Verbinde mit Timeout
             var connectTask = client.ConnectAsync();
@@ -84,6 +154,8 @@ public class ConnectToMessagingBrokerNode : BTNode
 
             // Speichere Client im Context
             Context.Set("MessagingClient", client);
+            // Expose the actual client id used for debugging across the tree
+            Context.Set("MQTTClientId", clientId);
             Set("messagingConnected", true);
             Set("messagingBroker", $"{BrokerHost}:{BrokerPort}");
 

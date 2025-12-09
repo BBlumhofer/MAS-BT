@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace MAS_BT.Core;
 
@@ -41,7 +42,7 @@ public abstract class BTNode
     /// <summary>
     /// Logger für diesen Node
     /// </summary>
-    protected ILogger Logger { get; set; } = null!;
+    protected ILogger Logger { get; set; } = NullLogger.Instance;
     
     #region Blackboard Convenience Methods
     
@@ -117,7 +118,7 @@ public abstract class BTNode
     /// </summary>
     public void SetLogger(ILogger logger)
     {
-        Logger = logger;
+        Logger = logger ?? NullLogger.Instance;
     }
     
     /// <summary>
@@ -126,7 +127,7 @@ public abstract class BTNode
     public virtual void Initialize(BTContext context, ILogger logger)
     {
         Context = context;
-        Logger = logger;
+        Logger = logger ?? NullLogger.Instance;
     }
     
     /// <summary>
