@@ -107,6 +107,66 @@ namespace MAS_BT.Services
             }
         }
 
+        /// <summary>
+        /// Graceful shutdown: cancel pending scheduled publishes and optionally flush coalesced events immediately.
+        /// </summary>
+        public async Task ShutdownAsync(bool flushPending = true)
+        {
+            List<(string key, string module, string storage, System.Threading.CancellationTokenSource cts)> toCancel = new();
+            lock (_publishLock)
+            {
+                foreach (var kv in _pendingPublishes)
+                {
+                    var key = kv.Key;
+                    var cts = kv.Value;
+                    // parse module/storage from key
+                    var parts = key.Split('/');
+                    var module = parts.Length > 0 ? parts[0] : string.Empty;
+                    var storage = parts.Length > 1 ? parts[1] : string.Empty;
+                    toCancel.Add((key, module, storage, cts));
+                }
+                _pendingPublishes.Clear();
+            }
+
+            if (toCancel.Count == 0) return;
+
+            if (!flushPending)
+            {
+                // just cancel and dispose
+                foreach (var t in toCancel)
+                {
+                    try { t.cts.Cancel(); } catch { }
+                    try { t.cts.Dispose(); } catch { }
+                }
+                return;
+            }
+
+            // Attempt flush: publish coalesced changes synchronously
+            foreach (var t in toCancel)
+            {
+                try
+                {
+                    // get last event message if present
+                    string last = string.Empty;
+                    lock (_publishLock)
+                    {
+                        _lastEventMessages.TryGetValue(t.key, out last);
+                        _lastEventMessages.Remove(t.key);
+                    }
+
+                    await PublishCoalescedChangeAsync(t.key, t.module, t.storage, last ?? string.Empty);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"StorageMqttNotifier: Shutdown publish failed for {t.key}: {ex.Message}");
+                }
+                finally
+                {
+                    try { t.cts.Dispose(); } catch { }
+                }
+            }
+        }
+
         private async Task<bool> RegisterMonitoredItemAsync(SubscriptionManager subMgr, Opc.Ua.NodeId nodeId, string moduleName, string storageName, string? slotName, string variableName)
         {
             var key = nodeId.ToString();

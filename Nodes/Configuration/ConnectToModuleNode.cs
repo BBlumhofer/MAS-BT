@@ -145,6 +145,8 @@ public class ConnectToModuleNode : BTNode
                 {
                     var storageNotifier = new MAS_BT.Services.StorageMqttNotifier(Context, server, messagingClient);
                     await storageNotifier.RegisterAsync();
+                    // store notifier in context for graceful shutdown
+                    Context.Set("StorageMqttNotifier", storageNotifier);
                     Logger.LogInformation("ConnectToModule: Registered StorageMqttNotifier (on-change storage updates)");
                 }
                 else
