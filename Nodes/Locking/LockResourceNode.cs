@@ -76,9 +76,12 @@ public class LockResourceNode : BTNode
             var deadline = enableRetry ? DateTime.UtcNow + timeoutWindow : DateTime.UtcNow;
             var attempt = 0;
 
+            Logger.LogDebug("LockResource: timeoutSeconds={TimeoutSeconds}, enableRetry={EnableRetry}, retryDelaySeconds={RetryDelaySeconds}", TimeoutSeconds, enableRetry, RetryDelaySeconds);
+
             while (true)
             {
                 attempt++;
+                Logger.LogDebug("LockResource: attempt={Attempt}, now={Now:O}, deadline={Deadline:O}", attempt, DateTime.UtcNow, deadline);
                 Logger.LogInformation("LockResource: Calling module.LockAsync() for {ModuleName} (attempt {Attempt})", module.Name, attempt);
 
                 var lockResult = await module.LockAsync(client.Session);

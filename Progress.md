@@ -53,6 +53,26 @@ mosquitto_sub -t "/Modules/TestAgent/Inventory/#" -v
 	- `EnableStorageChangeMqttNode` ist ein No-Op; Registrierung erfolgt in `ConnectToModule`.
 	- Topic wurde von früheren Testwerten zurück auf `/Modules/{ModuleId}/Inventory/` korrigiert.
 
+- **Update (Debounce & Logs):**
+	- **Coalescing / Debounce:** Storage-Änderungen werden jetzt kohärent gebündelt (Debounce ~150 ms) in `StorageMqttNotifier`. Das verhindert schnelle Mehrfach-Publishes bei sequenziellen OPC UA-Ävents — nur eine zusammengefasste `InventoryMessage` pro Storage-Burst wird gesendet.
+	- **Separates Log-Topic:** Diagnose-/Kurztexte (~LogMessage) werden nicht mehr als Inventory-Payload gesendet, sondern separat an `/Modules/{ModuleId}/Logs/` publiziert.
+	- **Tuning:** Debounce-Wert (`_debounceMs`) ist in `StorageMqttNotifier` gesetzt (Default 150 ms). Erhöhung auf 300–500 ms reduziert Publishes bei hochfrequenten Updates; erniedrigen wenn Latenz wichtiger ist.
+
+- **Lock-Retry Diagnose:**
+	- `LockResourceNode` enthält nun zusätzliche Debug-Logs (enableRetry, TimeoutSeconds, RetryDelaySeconds, deadline, attempt). Diese helfen zu erkennen, warum beim Initialisieren kein Retry ausgelöst wurde (z. B. Modul bereits durch Dritten gelockt).
+	- Aktuelles Verhalten: `RemoteModule.LockAsync()` bleibt eine einzelne (immediate) Lock-Attempt; Retry/Backoff liegt in `LockResourceNode` (Tree-Node). Falls erwünscht, können wir `LockResourceNode` so anpassen, dass bei `null` als Ergebnis (transiente Fehler) ebenfalls Retry-Verhalten ausgeführt wird.
+
+- **Verifikation (aktualisiert):**
+	- Starte den Agenten mit dem Beispiel-Tree:
+
+```bash
+dotnet run -- Examples/ActionExecutionTest.bt.xml
+```
+
+	- Achte auf je Storage-Burst genau eine `published inventory to topic /Modules/<Module>/Inventory/`-Zeile und eine `published log to topic /Modules/<Module>/Logs/`.
+	- Prüfe Lock-Diagnose-Logs bei Initialisierung, z. B. `LockResource: timeoutSeconds=...` und `LockResource: attempt=...`.
+
+
 - **Nächste Schritte:**
 	1. Falls Logs zeigen, dass Publish-Versuche fehlschlagen: Broker-Zugangsdaten, Topic-ACLs und `MessagingClient`-Verbindung prüfen.
 	2. Optional: MQTT-Integrationstests hinzufügen, die Broker (lokal/CI) emulieren und auf `Inventory`-Nachrichten prüfen.
