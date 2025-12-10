@@ -3,6 +3,7 @@ using MAS_BT.Core;
 using MAS_BT.Serialization;
 using MAS_BT.Services;
 using System.Text.Json;
+using System.Linq;
 using UAClient.Client;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Transport;
@@ -18,8 +19,15 @@ public class ModuleInitializationTestRunner
         Console.WriteLine("╚══════════════════════════════════════════════════════════════╝");
         Console.WriteLine();
         
-        // Lade Config
-        var config = LoadConfig();
+        // Lade Config: wenn ein JSON-Pfad als erstes Argument übergeben wurde, verwende diesen
+        string? providedConfigPath = null;
+        if (args != null && args.Length > 0)
+        {
+            // akzeptiere z.B. `dotnet run -- configs/planning_agent.json`
+            providedConfigPath = args.Select(a => a?.Trim()).FirstOrDefault(a => !string.IsNullOrEmpty(a) && (a.EndsWith(".json", StringComparison.OrdinalIgnoreCase) || a.Contains("configs")) && File.Exists(a));
+        }
+
+        var config = LoadConfig(providedConfigPath);
         var opcuaEndpoint = GetConfigValue(config, "OPCUA.Endpoint", "opc.tcp://192.168.178.30:4849");
         var opcuaUsername = GetConfigValue(config, "OPCUA.Username", "orchestrator");
         var opcuaPassword = GetConfigValue(config, "OPCUA.Password", "orchestrator");
@@ -110,8 +118,28 @@ public class ModuleInitializationTestRunner
         
         try
         {
-            // Standardpfad oder Command-Line-Argument
-            var btFilePath = ResolveBehaviorTreePath(args) ?? "Trees/Init_and_ExecuteSkill.bt.xml";
+            // Bestimme Behavior-Tree-Pfad:
+            // 1. aus der geladenen Config (z.B. top-level "InitializationTree" oder unter "ProductAgent.InitializationTree")
+            // 2. falls keine Angabe in der Config vorhanden ist, versuche Pfad aus CLI-Argumenten (z.B. direkte BT-Datei)
+            // 3. Fallback: wähle eine tree-Datei basierend auf dem Config-Dateinamen (planning/execution/product)
+            string? btFilePath = null;
+
+            btFilePath = GetInitializationTreeFromConfig(config);
+
+            if (string.IsNullOrWhiteSpace(btFilePath))
+            {
+                btFilePath = ResolveBehaviorTreePath(args);
+            }
+
+            if (string.IsNullOrWhiteSpace(btFilePath) && !string.IsNullOrWhiteSpace(providedConfigPath))
+            {
+                var lower = Path.GetFileName(providedConfigPath).ToLowerInvariant();
+                if (lower.Contains("planning")) btFilePath = "Trees/PlanningAgent.bt.xml";
+                else if (lower.Contains("execution") || lower.Contains("agent_execution") || lower.Contains("execution_agent")) btFilePath = "Trees/ExecutionAgent.bt.xml";
+                else if (lower.Contains("product")) btFilePath = "Trees/ProductAgentInitialization.bt.xml";
+            }
+
+            btFilePath ??= "Trees/Init_and_ExecuteSkill.bt.xml";
             
             if (!File.Exists(btFilePath))
             {
@@ -296,19 +324,24 @@ public class ModuleInitializationTestRunner
     
     private static Dictionary<string, object> LoadConfig()
     {
-        var configPath = "config.json";
-        
-        if (!File.Exists(configPath))
+        return LoadConfig(null);
+    }
+
+    private static Dictionary<string, object> LoadConfig(string? configPath)
+    {
+        var path = string.IsNullOrWhiteSpace(configPath) ? "config.json" : configPath;
+
+        if (!File.Exists(path))
         {
-            Console.WriteLine("⚠️  config.json nicht gefunden, verwende Defaults");
+            Console.WriteLine($"⚠️  Config nicht gefunden: {path}, verwende Defaults");
             return new Dictionary<string, object>();
         }
-        
+
         try
         {
-            var json = File.ReadAllText(configPath);
+            var json = File.ReadAllText(path);
             var config = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
-            
+
             var result = new Dictionary<string, object>();
             if (config != null)
             {
@@ -317,14 +350,44 @@ public class ModuleInitializationTestRunner
                     result[kvp.Key] = kvp.Value;
                 }
             }
-            
+
             return result;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"⚠️  Fehler beim Laden von config.json: {ex.Message}");
+            Console.WriteLine($"⚠️  Fehler beim Laden von {path}: {ex.Message}");
             return new Dictionary<string, object>();
         }
+    }
+
+    private static string? GetInitializationTreeFromConfig(Dictionary<string, object> config)
+    {
+        if (config == null || config.Count == 0)
+            return null;
+
+        // Top-level InitializationTree
+        if (config.TryGetValue("InitializationTree", out var top))
+        {
+            if (top is JsonElement je && je.ValueKind == JsonValueKind.String)
+                return je.GetString();
+            return top?.ToString();
+        }
+
+        // Nested common keys
+        if (config.TryGetValue("ProductAgent", out var productObj) && productObj is JsonElement prodElem && prodElem.ValueKind == JsonValueKind.Object)
+        {
+            if (prodElem.TryGetProperty("InitializationTree", out var initElem) && initElem.ValueKind == JsonValueKind.String)
+                return initElem.GetString();
+        }
+
+        // Try Agent.* keys - e.g., some configs may provide a preferred Tree entry
+        if (config.TryGetValue("Agent", out var agentObj) && agentObj is JsonElement agentElem && agentElem.ValueKind == JsonValueKind.Object)
+        {
+            if (agentElem.TryGetProperty("InitializationTree", out var initAgent) && initAgent.ValueKind == JsonValueKind.String)
+                return initAgent.GetString();
+        }
+
+        return null;
     }
     
     private static string? ResolveBehaviorTreePath(string[] args)

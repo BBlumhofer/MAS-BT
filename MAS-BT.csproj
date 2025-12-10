@@ -10,6 +10,7 @@
     <IsTestProject>true</IsTestProject>
     <EnableDefaultCompileItems>true</EnableDefaultCompileItems>
     <GenerateProgramFile>false</GenerateProgramFile>
+    <StartupObject>MAS_BT.RunAgent</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>

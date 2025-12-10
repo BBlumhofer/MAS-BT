@@ -52,6 +52,49 @@ public class WaitForMessageNode : BTNode
             }
             if (!string.IsNullOrWhiteSpace(convToUse))
             {
+                // Resolve simple placeholder patterns like {ConversationId} using Context
+                try
+                {
+                    if (convToUse.Contains('{') && convToUse.Contains('}'))
+                    {
+                        var start = convToUse.IndexOf('{');
+                        var end = convToUse.IndexOf('}', start + 1);
+                        if (start >= 0 && end > start)
+                        {
+                            var token = convToUse.Substring(start + 1, end - start - 1);
+                            // Try various ways to resolve the token from Context (string or object)
+                            try
+                            {
+                                if (Context.Has(token))
+                                {
+                                    var obj = Context.Get<object>(token);
+                                    if (obj != null)
+                                    {
+                                        var s = obj.ToString();
+                                        if (!string.IsNullOrWhiteSpace(s))
+                                            convToUse = s;
+                                    }
+                                }
+                                else
+                                {
+                                    // Fallback to string-get (older code paths)
+                                    var resolved = Context.Get<string>(token);
+                                    if (!string.IsNullOrWhiteSpace(resolved))
+                                        convToUse = resolved;
+                                }
+                            }
+                            catch
+                            {
+                                // ignore resolution failures and keep original convToUse
+                            }
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogDebug(ex, "WaitForMessage: Placeholder resolution failed for '{ConvRaw}'", convToUse);
+                }
+
                 _usedConversationId = convToUse;
                 client.OnConversation(convToUse, msg => _messageQueue.Enqueue(msg));
                 Logger.LogInformation("WaitForMessage: Subscribed to conversation {Conv}", convToUse);
@@ -94,8 +137,33 @@ public class WaitForMessageNode : BTNode
         if (_messageQueue.TryDequeue(out var message))
         {
             Context.Set("LastReceivedMessage", message);
-            Logger.LogInformation("WaitForMessage: Received message from '{Sender}'", 
-                message.Frame.Sender.Identification.Id);
+            var receivedConv = message.Frame.ConversationId ?? string.Empty;
+            var expectedConv = _usedConversationId ?? ExpectedConversationId ?? Context.Get<string>("ConversationId") ?? string.Empty;
+            if (!string.IsNullOrEmpty(expectedConv))
+            {
+                if (string.Equals(expectedConv, receivedConv, StringComparison.Ordinal))
+                {
+                    Logger.LogInformation("WaitForMessage: Received matching message for conversation '{Conv}' from '{Sender}'", receivedConv, message.Frame.Sender.Identification.Id);
+                }
+                else
+                {
+                    Logger.LogWarning("WaitForMessage: Received message for conversation '{ReceivedConv}' but expected '{ExpectedConv}' — ignoring", receivedConv, expectedConv);
+                }
+            }
+            else
+            {
+                Logger.LogInformation("WaitForMessage: Received message from '{Sender}' (no expected conversation)", message.Frame.Sender.Identification.Id);
+            }
+                // Additional semantic logs for negotiation responses
+                var msgType = message.Frame.Type ?? string.Empty;
+                if (string.Equals(msgType, "proposal", StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.LogInformation("WaitForMessage: Proposal received for conversation '{Conv}'", receivedConv);
+                }
+                else if (string.Equals(msgType, "refuseProposal", StringComparison.OrdinalIgnoreCase) || string.Equals(msgType, "refusal", StringComparison.OrdinalIgnoreCase))
+                {
+                    Logger.LogInformation("WaitForMessage: Refusal received for conversation '{Conv}'", receivedConv);
+                }
             return NodeStatus.Success;
         }
         

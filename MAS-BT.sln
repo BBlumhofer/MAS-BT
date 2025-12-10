@@ -1,0 +1,24 @@
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.5.2.0
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MAS-BT", "MAS-BT.csproj", "{58E0A41F-B071-6AE6-EE8E-94B313B4CDEF}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{58E0A41F-B071-6AE6-EE8E-94B313B4CDEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{58E0A41F-B071-6AE6-EE8E-94B313B4CDEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{58E0A41F-B071-6AE6-EE8E-94B313B4CDEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{58E0A41F-B071-6AE6-EE8E-94B313B4CDEF}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {3B260045-A70D-4E3E-95A0-A38D4535B906}
+	EndGlobalSection
+EndGlobal

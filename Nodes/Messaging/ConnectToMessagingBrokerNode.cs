@@ -131,6 +131,19 @@ public class ConnectToMessagingBrokerNode : BTNode
                 return NodeStatus.Failure;
             }
 
+            // Zusätzliches Subscription: subscribe auf Antwort-Topic für ProcessChain
+            try
+            {
+                var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
+                var responseTopic = $"/{ns}/response/ProcessChain";
+                Logger.LogInformation("ConnectToMessagingBroker: Subscribing to response topic {Topic}", responseTopic);
+                await client.SubscribeAsync(responseTopic);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "ConnectToMessagingBroker: Failed to subscribe to response topic");
+            }
+
             // Speichere Client im Context
             Context.Set("MessagingClient", client);
             // Expose the actual client id used for debugging across the tree

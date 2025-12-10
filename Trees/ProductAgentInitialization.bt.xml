@@ -27,7 +27,8 @@
 
       <Sequence name="PlanningPhase">
         <SendProcessChainRequest name="SendProcessChainRequest" />
-        <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="informConfirm,refusal" ExpectedConversationId="{ConversationId}" TimeoutSeconds="30000" />
+        <!-- Expect negotiation reply: 'proposal' or 'refuseProposal' for the callForProposal pattern -->
+        <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="proposal,refuseProposal" ExpectedConversationId="{ConversationId}" TimeoutSeconds="30000" />
       </Sequence>
     </Sequence>
   </BehaviorTree>

@@ -11,16 +11,6 @@
     "ShellId": "https://smartfactory.de/shells/mio_fDp69z",
     "SummaryTopic": "i40/production/products/logs"
   },
-  "OPCUA": {
-    "Endpoint": "opc.tcp://localhost:4892",
-    "UseAuth": true,
-    "Username": "orchestrator",
-    "Password": "orchestrator",
-    "SecurityMode": "None",
-    "SecurityPolicy": "None",
-    "Timeout": 30000,
-    "ReconnectInterval": 3000
-  },
   "AAS": {
     "SubmodelRepositoryEndpoint": "http://localhost:8080/submodels",
     "ShellRepositoryEndpoint": "http://localhost:8080/shells",
@@ -64,10 +54,5 @@
     "StateRefreshIntervalMs": 1000,
     "HealthCheckIntervalMs": 5000,
     "AlarmHistoryDuration": 3600000
-  },
-  "Execution": {
-    "MaxPreconditionRetries":20,
-    "PreconditionBackoffStartMs": 10000
   }
-
 }
