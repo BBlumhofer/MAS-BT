@@ -2,17 +2,16 @@
 <root BTCPP_format="4" main_tree_to_execute="ActionExecutionTest">
   <BehaviorTree ID="ActionExecutionTest">
     <Sequence name="ExecutionAgent">
-      <SubTree name="PreModuleInit" ID="PreModuleInit"/>
-      <SubTree name="ModuleInitialization" ID="ModuleInitialization"/>
-      <SubTree name="SkillExecution" ID="SkillExecution"/>
+      <SubTree ID="PreModuleInit"/>
+      <SubTree ID="ModuleInitialization"/>
+      <SubTree ID="SkillExecution"/>
     </Sequence>
   </BehaviorTree>
 
-  <!-- PreModuleInit: Verbindet MQTT und stellt Basis-Kommunikation sicher -->
   <BehaviorTree ID="PreModuleInit">
     <Sequence name="PreModuleInitSequence">
       <RetryUntilSuccess name="MqttConnectRetry" numAttempts="5" delayMs="2000">
-        <ConnectToMessagingBroker 
+        <ConnectToMessagingBroker
           name="ConnectMqtt"
           BrokerHost="{config.MQTT.Broker}"
           BrokerPort="{config.MQTT.Port}"
@@ -26,11 +25,10 @@
     </Sequence>
   </BehaviorTree>
 
-  <!-- ModuleInitialization: OPC UA, Locking, Startup -->
   <BehaviorTree ID="ModuleInitialization">
     <Sequence name="ModuleInitializationSequence">
       <RetryUntilSuccess name="OpcUaConnectRetry" numAttempts="5" delayMs="3000">
-        <ConnectToModule 
+        <ConnectToModule
           name="ConnectOPC"
           Endpoint="{config.OPCUA.Endpoint}"
           TimeoutMs="30000" />
@@ -39,12 +37,12 @@
       <EnableStorageChangeMqtt name="EnableStorageOnChange" />
 
       <Sequence name="LockSequence">
-        <LockResource 
+        <LockResource
           name="LockModule"
           ModuleName="{config.Agent.ModuleName}"
           ResourceId="{config.Agent.ModuleName}"
           TimeoutSeconds="30" />
-        
+
         <CheckLockedState
           name="VerifyLocked"
           ModuleName="{config.Agent.ModuleName}"
@@ -59,14 +57,14 @@
       </RetryUntilSuccess>
 
       <Sequence name="StartupSequence">
-        <ExecuteSkill 
+        <ExecuteSkill
           name="ExecuteStartup"
           ModuleName="{config.Agent.ModuleName}"
           SkillName="StartupSkill"
           WaitForCompletion="false"
           TimeoutSeconds="60"
           ResetBeforeIfHalted="true" />
-        
+
         <WaitForSkillState
           name="WaitForStartupRunning"
           ModuleName="{config.Agent.ModuleName}"
@@ -75,15 +73,15 @@
           TimeoutSeconds="30"
           PollIntervalMs="500"
           SendErrorOnTimeout="true" />
-        
+
         <Fallback name="EnsureCoupledWhileRunning">
           <EnsurePortsCoupled
-            name="EnsurePortsCoupledWhileRunning"
+            name="EnsureCoupledWhileRunning"
             ModuleName="{config.Agent.ModuleName}"
             TimeoutSeconds="45" />
           <AlwaysSuccess name="SkipCoupleRetry" />
         </Fallback>
-        
+
         <SendLogMessage
           name="SendInitComplete"
           LogLevel="INFO"
@@ -91,128 +89,142 @@
           ModuleId="{config.Agent.ModuleName}"/>
       </Sequence>
 
-      <UpdateInventory name="PublishInventoryAfterInit" 
-               ModuleId="{config.Agent.ModuleName}" 
+      <UpdateInventory name="PublishInventoryAfterInit"
+               ModuleId="{config.Agent.ModuleName}"
+               ModuleName="{config.Agent.ModuleName}"
                PublishToMqtt="true"
                ForcePublish="true"/>
     </Sequence>
   </BehaviorTree>
 
-  <!-- SkillExecution: Wartet auf Requests und führt Actions aus -->
   <BehaviorTree ID="SkillExecution">
-    <Sequence name="SkillExecutionSequence">
+    <Parallel name="SkillExecutionParallel">
+      <Repeat name="RegistrationHeartbeat" num_cycles="-1">
+        <Sequence name="RegistrationBeat">
+          <RegisterSubHolon name="RegisterExecutionHeartbeat" />
+          <UpdateInventory name="HeartbeatInventory"
+                           ModuleId="{config.Agent.ModuleName}"
+                           ModuleName="{config.Agent.ModuleName}"
+                           PublishToMqtt="true"
+                           ForcePublish="true" />
+          <PublishNeighbors name="HeartbeatNeighbors"
+                            ModuleId="{config.Agent.ModuleName}"
+                            ModuleName="{config.Agent.ModuleName}" />
+          <Wait name="RegistrationWait" DelayMs="5000" />
+        </Sequence>
+      </Repeat>
+
       <Repeat name="SkillRequestLoop" num_cycles="-1">
-        
         <Sequence name="ProcessOneAction">
-          <ReadMqttSkillRequest name="WaitForSkillRequest" 
-                                ModuleId="{config.Agent.ModuleName}" 
+          <ReadMqttSkillRequest name="WaitForSkillRequest"
+                                ModuleId="{config.Agent.ModuleName}"
                                 TimeoutMs="100"/>
-          
+
           <Fallback name="ActionExecution">
             <Sequence name="ExecuteValidAction">
               <Fallback name="CheckModuleAvailability">
                 <CheckModuleState name="CheckNotExecuting"
-                                 ModuleName="{MachineName}"
-                                 ExpectedState="EXECUTING"
-                                 InvertCheck="true"/>
-                
+                                  ModuleName="{MachineName}"
+                                  ExpectedState="EXECUTING"
+                                  InvertCheck="true"/>
+
                 <ForceFailure name="StopAfterRefusalModuleBusy">
                   <Sequence name="SendRefusalModuleBusy">
-                    <SendSkillResponse name="SendRefusal" 
-                                      ModuleId="{config.Agent.ModuleName}" 
-                                      ActionState="ERROR" 
-                                      FrameType="refusal"/>
+                    <SendSkillResponse name="SendRefusal"
+                                       ModuleId="{config.Agent.ModuleName}"
+                                       ActionState="ERROR"
+                                       FrameType="refusal"/>
                   </Sequence>
                 </ForceFailure>
               </Fallback>
-              
+
               <CheckSkillPreconditions name="CheckSkillPreconditions" ModuleName="{MachineName}" />
-              
-              <SendSkillResponse name="SendConsent" 
-                                ModuleId="{config.Agent.ModuleName}" 
-                                ActionState="PLANNED" 
+
+              <SendSkillResponse name="SendConsent"
+                                ModuleId="{config.Agent.ModuleName}"
+                                ActionState="PLANNED"
                                 FrameType="consent"/>
-              
+
               <SetModuleState name="SetExecuting"
-                             ModuleName="{MachineName}"
-                             State="EXECUTING"/>
-              
-              <SendSkillResponse name="SendRunning" 
-                                ModuleId="{config.Agent.ModuleName}" 
-                                ActionState="EXECUTING" 
+                              ModuleName="{MachineName}"
+                              State="EXECUTING"/>
+
+              <SendSkillResponse name="SendRunning"
+                                ModuleId="{config.Agent.ModuleName}"
+                                ActionState="EXECUTING"
                                 FrameType="inform"/>
-              
+
               <Fallback name="ExecuteWithFailureHandling">
                 <Sequence name="ExecuteActionSkill">
-                  <ExecuteSkill name="ExecuteMainSkill" 
-                               ModuleName="{MachineName}" 
-                               SkillName="{ActionTitle}" 
-                               Parameters="{InputParameters}"
-                               WaitForCompletion="true"
-                               ResetAfterCompletion="false"
-                               TimeoutSeconds="60"/>
-                  
-                  <MonitoringSkill name="MonitorFinalState" 
-                                  ModuleName="{MachineName}" 
-                                  SkillName="{ActionTitle}"/>
-                  
+                  <ExecuteSkill name="ExecuteMainSkill"
+                                ModuleName="{MachineName}"
+                                SkillName="{ActionTitle}"
+                                Parameters="{InputParameters}"
+                                WaitForCompletion="true"
+                                ResetAfterCompletion="false"
+                                TimeoutSeconds="60"/>
+
+                  <MonitoringSkill name="MonitorFinalState"
+                                   ModuleName="{MachineName}"
+                                   SkillName="{ActionTitle}"/>
+
                   <ResetSkill name="ResetAfterCompletion"
-                             ModuleName="{MachineName}"
-                             SkillName="{ActionTitle}"
-                             TimeoutSeconds="10"/>
+                              ModuleName="{MachineName}"
+                              SkillName="{ActionTitle}"
+                              TimeoutSeconds="10"/>
                 </Sequence>
-                
+
                 <ForceFailure name="StopAfterFailure">
                   <Sequence name="SendFailureAfterError">
                     <SetModuleState name="SetError"
-                                   ModuleName="{MachineName}"
-                                   State="ERROR"/>
-                    
-                    <SendSkillResponse name="SendFailure" 
-                                      ModuleId="{config.Agent.ModuleName}" 
-                                      ActionState="ERROR" 
+                                    ModuleName="{MachineName}"
+                                    State="ERROR"/>
+
+                    <SendSkillResponse name="SendFailure"
+                                      ModuleId="{config.Agent.ModuleName}"
+                                      ActionState="ERROR"
                                       FrameType="failure"/>
                   </Sequence>
                 </ForceFailure>
               </Fallback>
-              
-              <UpdateInventory name="UpdateInventory" 
-                               ModuleId="{config.Agent.ModuleName}" 
+
+              <UpdateInventory name="UpdateInventory"
+                               ModuleId="{config.Agent.ModuleName}"
                                ModuleName="{config.Agent.ModuleName}"
                                PublishToMqtt="true"/>
-              
+
               <SetModuleState name="SetDone"
-                             ModuleName="{MachineName}"
-                             State="DONE"/>
-              
-              <SendSkillResponse name="SendCompleted" 
-                                ModuleId="{config.Agent.ModuleName}" 
-                                ActionState="DONE" 
+                              ModuleName="{MachineName}"
+                              State="DONE"/>
+
+              <SendSkillResponse name="SendCompleted"
+                                ModuleId="{config.Agent.ModuleName}"
+                                ActionState="DONE"
                                 FrameType="inform"/>
-              
-              <SendStateMessage name="PublishState" 
-                               ModuleId="{config.Agent.ModuleName}" 
-                               IncludeModuleLocked="true" 
-                               IncludeModuleReady="true"/>
+
+              <SendStateMessage name="PublishState"
+                                ModuleId="{config.Agent.ModuleName}"
+                                IncludeModuleLocked="true"
+                                IncludeModuleReady="true"/>
             </Sequence>
-            
+
             <Sequence name="FallbackCleanup">
               <SetModuleState name="ResetModuleState"
-                             ModuleName="{MachineName}"
-                             State="DONE"/>
-              
-              <AlwaysSuccess name="ContinueLoop"/>
+                              ModuleName="{MachineName}"
+                              State="READY"/>
+
+              <SendSkillResponse name="SendCleanupRefusal"
+                                ModuleId="{config.Agent.ModuleName}"
+                                ActionState="ERROR"
+                                FrameType="failure"/>
             </Sequence>
-            
           </Fallback>
-          
+
         </Sequence>
-        
       </Repeat>
-    </Sequence>
+    </Parallel>
   </BehaviorTree>
-  
-  <!-- TreeNodesModel for Groot2 Editor -->
+
   <TreeNodesModel>
     <Decorator ID="RetryUntilSuccess">
       <input_port name="numAttempts" default="-1"/>
@@ -229,120 +241,96 @@
       <input_port name="Key" />
       <input_port name="Value" />
       <input_port name="ValueType" default="string" />
-        <Parallel name="SkillExecutionParallel">
-          <Repeat name="RegistrationHeartbeat" num_cycles="-1">
-            <Sequence name="RegistrationBeat">
-              <RegisterSubHolon name="RegisterExecutionHeartbeat" />
-              <Wait name="RegistrationWait" DelayMs="5000" />
-            </Sequence>
-          </Repeat>
-
-          <Repeat name="SkillRequestLoop" num_cycles="-1">
-        
-            <Sequence name="ProcessOneAction">
-              <ReadMqttSkillRequest name="WaitForSkillRequest" 
-                                    ModuleId="{config.Agent.ModuleName}" 
-                                    TimeoutMs="100"/>
-          
-              <Fallback name="ActionExecution">
-                <Sequence name="ExecuteValidAction">
-                  <Fallback name="CheckModuleAvailability">
-                    <CheckModuleState name="CheckNotExecuting"
-                                     ModuleName="{MachineName}"
-                                     ExpectedState="EXECUTING"
-                                     InvertCheck="true"/>
-                
-                    <ForceFailure name="StopAfterRefusalModuleBusy">
-                      <Sequence name="SendRefusalModuleBusy">
-                        <SendSkillResponse name="SendRefusal" 
-                                          ModuleId="{config.Agent.ModuleName}" 
-                                          ActionState="ERROR" 
-                                          FrameType="refusal"/>
-                      </Sequence>
-                    </ForceFailure>
-                  </Fallback>
-              
-                  <CheckSkillPreconditions name="CheckSkillPreconditions" ModuleName="{MachineName}" />
-              
-                  <SendSkillResponse name="SendConsent" 
-                                    ModuleId="{config.Agent.ModuleName}" 
-                                    ActionState="PLANNED" 
-                                    FrameType="consent"/>
-              
-                  <SetModuleState name="SetExecuting"
-                                 ModuleName="{MachineName}"
-                                 State="EXECUTING"/>
-              
-                  <SendSkillResponse name="SendRunning" 
-                                    ModuleId="{config.Agent.ModuleName}" 
-                                    ActionState="EXECUTING" 
-                                    FrameType="inform"/>
-              
-                  <Fallback name="ExecuteWithFailureHandling">
-                    <Sequence name="ExecuteActionSkill">
-                      <ExecuteSkill name="ExecuteMainSkill" 
-                                   ModuleName="{MachineName}" 
-                                   SkillName="{ActionTitle}" 
-                                   Parameters="{InputParameters}"
-                                   WaitForCompletion="true"
-                                   ResetAfterCompletion="false"
-                                   TimeoutSeconds="60"/>
-                  
-                      <MonitoringSkill name="MonitorFinalState" 
-                                      ModuleName="{MachineName}" 
-                                      SkillName="{ActionTitle}"/>
-                  
-                      <ResetSkill name="ResetAfterCompletion"
-                                 ModuleName="{MachineName}"
-                                 SkillName="{ActionTitle}"
-                                 TimeoutSeconds="10"/>
-                    </Sequence>
-                
-                    <ForceFailure name="StopAfterFailure">
-                      <Sequence name="SendFailureAfterError">
-                        <SetModuleState name="SetError"
-                                       ModuleName="{MachineName}"
-                                       State="ERROR"/>
-                    
-                        <SendSkillResponse name="SendFailure" 
-                                          ModuleId="{config.Agent.ModuleName}" 
-                                          ActionState="ERROR" 
-                                          FrameType="failure"/>
-                      </Sequence>
-                    </ForceFailure>
-                  </Fallback>
-              
-                  <UpdateInventory name="UpdateInventory" 
-                                   ModuleId="{config.Agent.ModuleName}" 
-                                   ModuleName="{config.Agent.ModuleName}"
-                                   PublishToMqtt="true"/>
-              
-                  <SetModuleState name="SetDone"
-                                 ModuleName="{MachineName}"
-                                 State="DONE"/>
-              
-                  <SendSkillResponse name="SendCompleted" 
-                                    ModuleId="{config.Agent.ModuleName}" 
-                                    ActionState="DONE" 
-                                    FrameType="inform"/>
-              
-                  <SendStateMessage name="PublishState" 
-                                   ModuleId="{config.Agent.ModuleName}" 
-                                   IncludeModuleLocked="true" 
-                                   IncludeModuleReady="true"/>
-                </Sequence>
-            
-                <Sequence name="FallbackCleanup">
-                  <SetModuleState name="ResetModuleState"
-                                 ModuleName="{MachineName}"
-                                 State="READY"/>
-              
-                  <SendSkillResponse name="SendCleanupRefusal" 
-                                    ModuleId="{config.Agent.ModuleName}" 
-                                    ActionState="ERROR" 
-                                    FrameType="failure"/>
-                </Sequence>
-              </Fallback>
-            </Sequence>
-          </Repeat>
-        </Parallel>
+    </Action>
+    <Action ID="RegisterSubHolon" />
+    <Action ID="ConnectToModule">
+      <input_port name="Endpoint" />
+      <input_port name="TimeoutMs" />
+    </Action>
+    <Action ID="EnableStorageChangeMqtt" />
+    <Action ID="LockResource">
+      <input_port name="ModuleName" />
+      <input_port name="ResourceId" />
+      <input_port name="TimeoutSeconds" />
+    </Action>
+    <Action ID="CheckLockedState">
+      <input_port name="ModuleName" />
+      <input_port name="ExpectLocked" />
+    </Action>
+    <Action ID="EnsurePortsCoupled">
+      <input_port name="ModuleName" />
+      <input_port name="TimeoutSeconds" />
+    </Action>
+    <Action ID="ExecuteSkill">
+      <input_port name="ModuleName" />
+      <input_port name="SkillName" />
+      <input_port name="Parameters" />
+      <input_port name="WaitForCompletion" />
+      <input_port name="ResetAfterCompletion" />
+      <input_port name="TimeoutSeconds" />
+    </Action>
+    <Action ID="WaitForSkillState">
+      <input_port name="ModuleName" />
+      <input_port name="SkillName" />
+      <input_port name="TargetState" />
+      <input_port name="TimeoutSeconds" />
+      <input_port name="PollIntervalMs" />
+      <input_port name="SendErrorOnTimeout" />
+    </Action>
+    <Action ID="AlwaysSuccess" />
+    <Action ID="SendLogMessage">
+      <input_port name="LogLevel" />
+      <input_port name="Message" />
+      <input_port name="ModuleId" />
+    </Action>
+    <Action ID="UpdateInventory">
+      <input_port name="ModuleId" />
+      <input_port name="ModuleName" />
+      <input_port name="PublishToMqtt" />
+      <input_port name="ForcePublish" />
+    </Action>
+    <Action ID="PublishNeighbors">
+      <input_port name="ModuleId" />
+      <input_port name="ModuleName" />
+    </Action>
+    <Action ID="Wait">
+      <input_port name="DelayMs" default="1000" />
+    </Action>
+    <Action ID="ReadMqttSkillRequest">
+      <input_port name="ModuleId" />
+      <input_port name="TimeoutMs" />
+    </Action>
+    <Action ID="CheckModuleState">
+      <input_port name="ModuleName" />
+      <input_port name="ExpectedState" />
+      <input_port name="InvertCheck" />
+    </Action>
+    <Action ID="ForceFailure" />
+    <Action ID="SendSkillResponse">
+      <input_port name="ModuleId" />
+      <input_port name="ActionState" />
+      <input_port name="FrameType" />
+    </Action>
+    <Action ID="CheckSkillPreconditions">
+      <input_port name="ModuleName" />
+    </Action>
+    <Action ID="SetModuleState">
+      <input_port name="ModuleName" />
+      <input_port name="State" />
+    </Action>
+    <Action ID="MonitoringSkill">
+      <input_port name="ModuleName" />
+      <input_port name="SkillName" />
+    </Action>
+    <Action ID="ResetSkill">
+      <input_port name="ModuleName" />
+      <input_port name="SkillName" />
+      <input_port name="TimeoutSeconds" />
+    </Action>
+    <Action ID="SendStateMessage">
+      <input_port name="ModuleId" />
+      <input_port name="IncludeModuleLocked" />
+      <input_port name="IncludeModuleReady" />
+    </Action>
+  </TreeNodesModel>
+</root>

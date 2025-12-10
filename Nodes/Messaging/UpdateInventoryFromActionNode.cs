@@ -5,6 +5,7 @@ using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
+using BaSyx.Models.AdminShell;
 using AasSharpClient.Models.Messages;
 using UAClient.Client;
 
@@ -203,11 +204,14 @@ public class UpdateInventoryNode : BTNode
             var message = new I40MessageBuilder()
                 .From($"{ModuleId}_Execution_Agent", "ExecutionAgent")
                 .To("Broadcast", "System")
-                .WithType(I40MessageTypes.INFORM)
+                .WithType("inventoryUpdate")
                 .AddElement(inventoryCollection)
+                .AddElement(new Property<string>("Inventory") { Value = new PropertyValue<string>(System.Text.Json.JsonSerializer.Serialize(storageUnits)) })
                 .Build();
-            
-            var topic = $"/Modules/{ModuleId}/Inventory/";
+
+            var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
+            var moduleName = string.IsNullOrWhiteSpace(ModuleName) ? ModuleId : ModuleName;
+            var topic = $"/{ns}/{moduleName}/Inventory";
             await client.PublishAsync(message, topic);
             
             Logger.LogInformation("UpdateInventory: Published inventory to MQTT at {topic}", topic);

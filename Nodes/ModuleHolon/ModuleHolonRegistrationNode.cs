@@ -38,11 +38,22 @@ public class ModuleHolonRegistrationNode : BTNode
                 .WithType("moduleRegistration")
                 .WithConversationId(Guid.NewGuid().ToString());
 
-            var payload = new Property<string>("ModuleId")
+            builder.AddElement(new Property<string>("ModuleId")
             {
                 Value = new PropertyValue<string>(moduleId)
-            };
-            builder.AddElement(payload);
+            });
+
+            var inventoryJson = Context.Get<string>($"Inventory_{moduleId}");
+            if (!string.IsNullOrWhiteSpace(inventoryJson))
+            {
+                builder.AddElement(new Property<string>("Inventory") { Value = new PropertyValue<string>(inventoryJson) });
+            }
+
+            var neighborsJson = Context.Get<string>($"Neighbors_{moduleId}");
+            if (!string.IsNullOrWhiteSpace(neighborsJson))
+            {
+                builder.AddElement(new Property<string>("Neighbors") { Value = new PropertyValue<string>(neighborsJson) });
+            }
 
             var msg = builder.Build();
             await client.PublishAsync(msg, topic);

@@ -160,6 +160,7 @@ public class NodeRegistry
         Register<ReadMqttSkillRequestNode>();
         Register<SendSkillResponseNode>();
         Register<UpdateInventoryNode>("UpdateInventory");
+        Register<PublishNeighborsNode>("PublishNeighbors");
         Register<SendStateMessageNode>();
         Register<EnableStorageChangeMqttNode>();
         Register<SendProcessChainRequestNode>();
