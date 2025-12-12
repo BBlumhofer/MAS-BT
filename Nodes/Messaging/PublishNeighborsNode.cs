@@ -36,7 +36,8 @@ public class PublishNeighborsNode : BTNode
         }
 
         var neighbors = Context.Get<List<string>>("Neighbors") ?? new List<string>();
-        var topic = $"/{ns}/{moduleName}/Neighbors";
+        var agentId = Context.Get<string>("config.Agent.AgentId") ?? Context.Get<string>("AgentId") ?? Context.AgentId;
+        var topic = $"/{ns}/{agentId}/Neighbors";
 
         try
         {

@@ -5,7 +5,7 @@
       <ReadConfig name="LoadConfig" configPath="{config.Path}" />
       <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
       <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
-      <SetBlackboardValue name="BindModuleId" Key="ModuleId" Value="{config.Agent.ModuleName}" />
+      <SetBlackboardValue name="BindModuleId" Key="ModuleId" Value="{config.Agent.AgentId}" />
       <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
 
       <ConnectToMessagingBroker
@@ -25,8 +25,7 @@
         <Repeat name="OfferLoop" num_cycles="-1">
           <Fallback name="OfferOrIdle">
             <Sequence name="HandleOffer">
-              <WaitForMessage name="AwaitOffer" ExpectedTypes="callForProposal,offerRequest" TimeoutSeconds="10" />
-              <ForwardToInternal name="ForwardOffer" TargetTopic="/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest" />
+              <ForwardCapabilityRequests name="ForwardOffer" TargetTopicTemplate="/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest" />
               <WaitForInternalResponse name="AwaitOfferResp" TimeoutSeconds="10" />
               <ReplyToDispatcher name="ReplyOffer" ResponseTopicTemplate="/{Namespace}/DispatchingAgent/Offers" />
               <Wait name="OfferIdle" DelayMs="150" />
@@ -38,7 +37,7 @@
         <Repeat name="ScheduleLoop" num_cycles="-1">
           <Fallback name="ScheduleOrIdle">
             <Sequence name="HandleSchedule">
-              <WaitForMessage name="AwaitSchedule" ExpectedTypes="scheduleAction" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitSchedule" ExpectedTypes="scheduleAction" ExpectedTopic="/{Namespace}/{ModuleId}/ScheduleAction" TimeoutSeconds="10" />
               <ForwardToInternal name="ForwardSchedule" TargetTopic="/{Namespace}/{ModuleId}/PlanningAgent/ScheduleAction" />
               <WaitForInternalResponse name="AwaitScheduleResp" TimeoutSeconds="10" />
               <ReplyToDispatcher name="ReplySchedule" ResponseTopicTemplate="/{Namespace}/{ModuleId}/BookingConfirmation" />
@@ -51,7 +50,7 @@
         <Repeat name="TransportLoop" num_cycles="-1">
           <Fallback name="TransportOrIdle">
             <Sequence name="HandleTransport">
-              <WaitForMessage name="AwaitTransport" ExpectedTypes="transportRequest,requestTransportPlan" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitTransport" ExpectedTypes="transportRequest,requestTransportPlan" ExpectedTopic="/{Namespace}/{ModuleId}/TransportPlan" TimeoutSeconds="10" />
               <ForwardToInternal name="ForwardTransport" TargetTopic="/{Namespace}/{ModuleId}/PlanningAgent/TransportRequest" />
               <WaitForInternalResponse name="AwaitTransportResp" TimeoutSeconds="10" />
               <ReplyToDispatcher name="ReplyTransport" ResponseTopicTemplate="/{Namespace}/{ModuleId}/TransportPlan" />
@@ -97,8 +96,13 @@
       <input_port name="ExpectedType" />
       <input_port name="ExpectedTypes" />
       <input_port name="ExpectedSender" />
+      <input_port name="ExpectedTopic" />
       <input_port name="TimeoutSeconds" />
       <input_port name="ExpectedConversationId" />
+    </Action>
+    <Action ID="ForwardCapabilityRequests">
+      <input_port name="TargetTopicTemplate" />
+      <input_port name="ExpectedSenderRole" />
     </Action>
     <Action ID="ForwardToInternal">
       <input_port name="TargetTopic" />

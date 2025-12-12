@@ -1,0 +1,38 @@
+{
+  "Agent": {
+    "AgentId": "P106",
+    "ModuleName":"AssemblyStation",
+    "Role": "ModuleHolon",
+    "LogLevel": "Information",
+    "InitializationTree": "Trees/ModuleHolon.bt.xml",
+    "RegistrationIntervalMs": 30000,
+    "InitialSnapshotTimeoutMs": 10000,
+    "SnapshotPollDelayMs": 250
+  },
+  "SubHolons": ["P106_Execution_agent","P106_Planning_agent"],
+  "AAS": {
+    "SubmodelRepositoryEndpoint": "http://localhost:8080/submodels",
+    "ShellRepositoryEndpoint": "http://localhost:8080/shells",
+    "Timeout": 10000
+  },
+  "MQTT": {
+    "Broker": "localhost",
+    "BrokerAddress": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "UseTLS": false,
+    "UseAuth": false,
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000,
+    "PublishLogs": false
+  },
+  "Namespace": "phuket",
+  "TimeSynchronization": {
+    "NTPServer": "time.google.com",
+    "MaxDriftMs": 1000,
+    "SyncIntervalMs": 300000
+  }
+}

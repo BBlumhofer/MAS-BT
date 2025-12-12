@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
+using System.Linq;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
@@ -16,6 +18,7 @@ public class ForwardToInternalNode : BTNode
 
     public override async Task<NodeStatus> Execute()
     {
+        Logger.LogInformation("ForwardToInternal: triggerred");
         var client = Context.Get<MessagingClient>("MessagingClient");
         var msg = Context.Get<I40Message>("LastReceivedMessage");
         if (client == null || msg == null)
@@ -24,25 +27,31 @@ public class ForwardToInternalNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var topic = Resolve(TargetTopic);
-        if (string.IsNullOrWhiteSpace(topic))
+        var topics = ResolveTopics(TargetTopic).ToList();
+        if (topics.Count == 0)
         {
             Logger.LogError("ForwardToInternal: TargetTopic empty");
             return NodeStatus.Failure;
         }
 
-        await client.PublishAsync(msg, topic);
-        Logger.LogInformation("ForwardToInternal: forwarded conversation {Conv} to {Topic}", msg.Frame?.ConversationId, topic);
+        foreach (var topic in topics)
+        {
+            await client.PublishAsync(msg, topic);
+        }
+
+        Logger.LogInformation("ForwardToInternal: forwarded conversation {Conv} to {Topics}", msg.Frame?.ConversationId, string.Join(", ", topics));
         Context.Set("ForwardedConversationId", msg.Frame?.ConversationId ?? string.Empty);
         return NodeStatus.Success;
     }
 
-    private string Resolve(string template)
+    private IEnumerable<string> ResolveTopics(string template)
     {
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var moduleId = Context.Get<string>("config.Agent.ModuleName") ?? Context.Get<string>("ModuleId") ?? Context.AgentId;
-        return template
-            .Replace("{Namespace}", ns)
-            .Replace("{ModuleId}", moduleId);
+        foreach (var moduleId in ModuleContextHelper.ResolveModuleIdentifiers(Context))
+        {
+            yield return template
+                .Replace("{Namespace}", ns)
+                .Replace("{ModuleId}", moduleId);
+        }
     }
 }

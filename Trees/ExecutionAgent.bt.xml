@@ -17,10 +17,10 @@
           BrokerPort="{config.MQTT.Port}"
           DefaultTopic="factory/agents/messages"
           TimeoutMs="10000"
-          ClientId="{config.Agent.ModuleName}_ExecutionAgent" />
+          ClientId="{config.Agent.AgentId}_{config.Agent.Role}" />
       </RetryUntilSuccess>
       <SetBlackboardValue name="SetExecutionRole" Key="AgentRole" Value="ExecutionAgent" />
-      <SetBlackboardValue name="SetExecutionId" Key="AgentId" Value="{config.Agent.ModuleName}_Execution" />
+      <SetBlackboardValue name="SetExecutionId" Key="AgentId" Value="{config.Agent.AgentId}_Execution" />
       <RegisterSubHolon name="RegisterExecution" />
     </Sequence>
   </BehaviorTree>

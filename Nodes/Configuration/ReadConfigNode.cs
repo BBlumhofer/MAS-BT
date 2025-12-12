@@ -3,6 +3,7 @@ using MAS_BT.Core;
 using System.Globalization;
 using System.Text.Json;
 using System.IO;
+using System.Linq;
 
 namespace MAS_BT.Nodes.Configuration;
 
@@ -32,6 +33,17 @@ public class ReadConfigNode : BTNode
 
             if (!File.Exists(resolvedPath))
             {
+                var fallback = FindConfigUnderConfigs(resolvedPath);
+                if (!string.IsNullOrWhiteSpace(fallback))
+                {
+                    Logger.LogInformation("ReadConfig: Falling back to {Fallback} for missing config {ConfigPath}", fallback, resolvedPath);
+                    resolvedPath = fallback;
+                    Context.Set("config.Path", Path.GetFullPath(resolvedPath));
+                }
+            }
+
+            if (!File.Exists(resolvedPath))
+            {
                 Logger.LogWarning("ReadConfig: Configuration file not found: {ConfigPath}", resolvedPath);
                 return NodeStatus.Failure;
             }
@@ -57,6 +69,19 @@ public class ReadConfigNode : BTNode
             Logger.LogError(ex, "ReadConfig: Error loading configuration from {ConfigPath}", ConfigPath);
             return NodeStatus.Failure;
         }
+    }
+
+    private static string? FindConfigUnderConfigs(string requestedPath)
+    {
+        var fileName = Path.GetFileName(requestedPath);
+        if (string.IsNullOrWhiteSpace(fileName))
+            return null;
+
+        var configsRoot = Path.Combine(Directory.GetCurrentDirectory(), "configs");
+        if (!Directory.Exists(configsRoot))
+            return null;
+
+        return Directory.EnumerateFiles(configsRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
     }
 
     private void FlattenObject(JsonElement element, string prefix)

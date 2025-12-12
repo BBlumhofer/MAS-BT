@@ -2,9 +2,13 @@
 <root BTCPP_format="4" main_tree_to_execute="PlanningAgent">
   <BehaviorTree ID="PlanningAgent">
     <Sequence name="PlanningAgentRoot">
-      <ConnectToMessagingBroker name="ConnectMqtt" BrokerHost="{config.MQTT.Broker}" BrokerPort="{config.MQTT.Port}" DefaultTopic="factory/agents/messages" TimeoutMs="10000" ClientId="{config.Agent.ModuleName}_PlanningAgent" />
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <ConnectToMessagingBroker name="ConnectMqtt" BrokerHost="{config.MQTT.Broker}" BrokerPort="{config.MQTT.Port}" DefaultTopic="factory/agents/messages" TimeoutMs="10000" ClientId="{config.Agent.AgentId}_{config.Agent.Role}" />
       <SetBlackboardValue name="SetPlanningRole" Key="AgentRole" Value="PlanningAgent" />
-      <SetBlackboardValue name="SetPlanningId" Key="AgentId" Value="{config.Agent.ModuleName}_Planning" />
+      <SetBlackboardValue name="SetPlanningId" Key="AgentId" Value="{config.Agent.AgentId}_Planning" />
+      <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
+      <SetBlackboardValue name="BindModuleId" Key="ModuleId" Value="{config.Agent.AgentId}" />
+      <SubscribePlanningTopics name="SubscribePlanningTopics" />
       <RegisterSubHolon name="RegisterPlanning" />
       
       <Parallel name="PlanningParallel">
@@ -14,25 +18,16 @@
             <Wait name="RegistrationWait" DelayMs="5000" />
           </Sequence>
         </Repeat>
-        <Repeat name="PlanOfferLoop" num_cycles="-1">
-          <Fallback name="PlanOrRefusal">
-            <Sequence name="PlanSequence">
-              <ReceiverRequestForOffer name="ReceiveOfferReq" RequiredCapability="{ActionTitle}" />
-              <CapabilityMatchmaking name="MatchCapability" RequiredCapability="{RequiredCapability}" />
-              <FeedbackCapabilityMatchmaking name="MatchFeedback" />
-              <DeriveStepFromCapability name="DeriveStep" />
-              <CheckConstraints name="CheckConstraints" />
-              <RequestTransport name="RequestTransport" FromStation="{config.Agent.ModuleName}" ToStation="{TransportTarget}" />
-              <EvaluateRequestTransportResponse name="EvalTransport" />
-              <FeasibilityCheck name="FeasibilityCheck" />
-              <SchedulingExecute name="RunScheduling" Capability="{MatchedCapability}" />
-              <SchedulingFeedback name="SchedulingFeedback" />
-              <CheckScheduleFeasibility name="CheckScheduleFeasibility" />
-              <CalculateOffer name="CalculateOffer" />
-              <SendOffer name="SendOffer" ReceiverId="ProductAgent" />
-              <UpdateMachineSchedule name="UpdateSchedule" ModuleId="{config.Agent.ModuleName}" />
+        <Repeat name="CapabilityOfferLoop" num_cycles="-1">
+          <Fallback name="OfferOrIdle">
+            <Sequence name="RespondToCapabilityRequest">
+              <WaitForMessage name="AwaitCapabilityRequest" ExpectedTypes="callForProposal" ExpectedTopic="/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest" TimeoutSeconds="10" />
+              <ParseCapabilityRequest name="ParseCapabilityRequest" />
+              <PlanCapabilityOffer name="PlanCapabilityOffer" />
+              <SendCapabilityOffer name="SendCapabilityOffer" />
+              <Wait name="OfferCooldown" DelayMs="200" />
             </Sequence>
-            <SendPlanningRefusal name="SendRefusal" Reason="{RefusalReason}" ReceiverId="ProductAgent" />
+            <Wait name="CapabilityIdle" DelayMs="200" />
           </Fallback>
         </Repeat>
 
@@ -65,6 +60,9 @@
       <input_port name="numAttempts" default="-1"/>
       <input_port name="delayMs" default="1000"/>
     </Decorator>
+    <Action ID="ReadConfig">
+      <input_port name="configPath" />
+    </Action>
     <Action ID="ConnectToMessagingBroker">
       <input_port name="BrokerHost"/>
       <input_port name="BrokerPort"/>
@@ -72,6 +70,7 @@
       <input_port name="TimeoutMs"/>
       <input_port name="ClientId"/>
     </Action>
+    <Action ID="SubscribePlanningTopics" />
     <Action ID="SetBlackboardValue">
       <input_port name="Key" />
       <input_port name="Value" />
@@ -86,29 +85,10 @@
     <Action ID="CapabilityMatchmaking">
       <input_port name="RequiredCapability"/>
     </Action>
-    <Action ID="ReceiverRequestForOffer">
-      <input_port name="RequiredCapability"/>
-    </Action>
-    <Action ID="FeedbackCapabilityMatchmaking"/>
-    <Action ID="DeriveStepFromCapability"/>
-    <Action ID="CheckConstraints"/>
-    <Action ID="FeasibilityCheck"/>
-    <Action ID="SchedulingExecute">
-      <input_port name="Capability"/>
-    </Action>
-    <Action ID="SchedulingFeedback"/>
-    <Action ID="CalculateOffer"/>
-    <Action ID="SendOffer">
-      <input_port name="ReceiverId"/>
-    </Action>
+    <Action ID="ParseCapabilityRequest" />
+    <Action ID="PlanCapabilityOffer" />
+    <Action ID="SendCapabilityOffer" />
     <Action ID="ReceiveOfferMessage"/>
-    <Action ID="SendPlanningRefusal">
-      <input_port name="ReceiverId"/>
-      <input_port name="Reason"/>
-    </Action>
-    <Action ID="UpdateMachineSchedule">
-      <input_port name="ModuleId"/>
-    </Action>
     <Action ID="RequestTransport">
       <input_port name="FromStation"/>
       <input_port name="ToStation"/>
@@ -125,6 +105,14 @@
     </Action>
     <Action ID="Wait">
       <input_port name="DelayMs" default="1000"/>
+    </Action>
+    <Action ID="WaitForMessage">
+      <input_port name="ExpectedType" />
+      <input_port name="ExpectedTypes" />
+      <input_port name="ExpectedSender" />
+      <input_port name="ExpectedTopic" />
+      <input_port name="TimeoutSeconds" />
+      <input_port name="ExpectedConversationId" />
     </Action>
     <Action ID="AwaitSkillResponse">
       <input_port name="ModuleId"/>

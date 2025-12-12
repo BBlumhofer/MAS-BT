@@ -24,11 +24,11 @@ public class ModuleHolonSpawnTests
         var loggerFactory = NullLoggerFactory.Instance;
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
-            AgentId = "P17_ModuleHolon",
+            AgentId = "P102",
             AgentRole = "ModuleHolon"
         };
 
-        var configPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../configs/specific_configs/Module_configs/P17.json"));
+        var configPath = Path.GetFullPath(Path.Combine(AppContext.BaseDirectory, "../../../configs/specific_configs/Module_configs/P102/P102.json"));
         var readConfig = new ReadConfigNode { ConfigPath = configPath };
         readConfig.Context = context;
         readConfig.SetLogger(loggerFactory.CreateLogger("ReadConfig"));
@@ -56,7 +56,7 @@ public class ModuleHolonSpawnTests
 
         Assert.Equal(NodeStatus.Success, spawnStatus);
         Assert.Equal(NodeStatus.Success, waitStatus);
-        Assert.Equal(2, launcher.LaunchedSpecs.Count);
+        Assert.Equal(1, launcher.LaunchedSpecs.Count);
     }
 }
 

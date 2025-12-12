@@ -10,7 +10,7 @@ public class LoadCapabilityDescriptionSubmodelNode : LoadSubmodelNodeBase<Capabi
 {
     public LoadCapabilityDescriptionSubmodelNode() : base("LoadCapabilityDescriptionSubmodel")
     {
-        SemanticIdFilter = "https://smartfactory.de/semantics/submodel/CapabilityDescription#1/0";
+        SemanticIdFilter = "https://smartfactory.de/semantics/submodel/CapabilityDescription#1/0|https://admin-shell.io/idta/CapabilityDescription/1/0/Submodel";
     }
 
     protected override string DefaultIdShort => "CapabilityDescription";

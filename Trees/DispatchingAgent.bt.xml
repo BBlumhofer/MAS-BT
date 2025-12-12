@@ -33,8 +33,12 @@
         <Repeat name="ProcessChainLoop" num_cycles="-1">
           <Fallback name="ProcessChainOrIdle">
             <Sequence name="HandleProcessChain">
-              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal" TimeoutSeconds="10" />
-              <HandleProcessChainRequest name="BuildProcessChain" />
+              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="10" />
+              <ParseProcessChainRequest name="ParseProcessChainRequest" />
+              <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
+              <CollectCapabilityOffers name="CollectCapabilityOffers" />
+              <BuildProcessChainResponse name="BuildProcessChainResponse" />
+              <SendProcessChainResponse name="SendProcessChainResponse" />
               <Wait name="ProcessChainIdle" DelayMs="200" />
             </Sequence>
             <Wait name="ProcessChainBackoff" DelayMs="200" />
@@ -99,11 +103,16 @@
       <input_port name="ExpectedType" />
       <input_port name="ExpectedTypes" />
       <input_port name="ExpectedSender" />
+      <input_port name="ExpectedTopic" />
       <input_port name="TimeoutSeconds" />
       <input_port name="ExpectedConversationId" />
     </Action>
     <Action ID="HandleModuleRegistration" />
-    <Action ID="HandleProcessChainRequest" />
+    <Action ID="ParseProcessChainRequest" />
+    <Action ID="DispatchCapabilityRequests" />
+    <Action ID="CollectCapabilityOffers" />
+    <Action ID="BuildProcessChainResponse" />
+    <Action ID="SendProcessChainResponse" />
     <Action ID="HandleManufacturingSequenceRequest" />
     <Action ID="HandleBookStepRequest" />
     <Action ID="HandleTransportPlanRequest" />

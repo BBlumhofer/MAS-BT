@@ -1,3 +1,6 @@
+using System.Linq;
+using System.Text.Json;
+
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 
@@ -72,38 +75,113 @@ public abstract class BTNode
     /// </summary>
     protected string ResolvePlaceholders(string input)
     {
-        if (string.IsNullOrEmpty(input) || !input.Contains("{"))
-            return input;
-        
-        var result = input;
-        var startIndex = 0;
-        
-        while (startIndex < result.Length)
+        if (string.IsNullOrWhiteSpace(input) || !input.Contains('{'))
         {
-            var openBrace = result.IndexOf('{', startIndex);
-            if (openBrace == -1)
+            return input;
+        }
+
+        var result = input;
+        var searchStart = 0;
+
+        while (true)
+        {
+            var openBrace = result.IndexOf('{', searchStart);
+            if (openBrace < 0)
+            {
                 break;
-            
-            var closeBrace = result.IndexOf('}', openBrace);
-            if (closeBrace == -1)
+            }
+
+            var closeBrace = result.IndexOf('}', openBrace + 1);
+            if (closeBrace <= openBrace)
+            {
                 break;
-            
-            var placeholder = result.Substring(openBrace + 1, closeBrace - openBrace - 1);
-            var replacement = Context.Get<string>(placeholder);
-            
-            if (replacement != null)
+            }
+
+            var token = result.Substring(openBrace + 1, closeBrace - openBrace - 1);
+            if (TryResolvePlaceholder(token, out var replacement))
             {
                 result = result.Substring(0, openBrace) + replacement + result.Substring(closeBrace + 1);
-                startIndex = openBrace + replacement.Length;
+                searchStart = openBrace + replacement.Length;
             }
             else
             {
-                // Placeholder nicht gefunden - behalte Original
-                startIndex = closeBrace + 1;
+                searchStart = closeBrace + 1;
             }
         }
-        
+
         return result;
+    }
+
+    private bool TryResolvePlaceholder(string token, out string replacement)
+    {
+        replacement = string.Empty;
+        if (string.IsNullOrWhiteSpace(token))
+        {
+            return false;
+        }
+
+        if (Context.Has(token))
+        {
+            var value = Context.Get<object>(token)?.ToString();
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                replacement = value;
+                return true;
+            }
+        }
+
+        if (!token.Contains('.', StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        var segments = token.Split('.', StringSplitOptions.RemoveEmptyEntries);
+        if (segments.Length < 2 || !string.Equals(segments[0], "config", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        var configRoot = Context.Get<JsonElement>("config");
+        if (configRoot.ValueKind == JsonValueKind.Undefined || configRoot.ValueKind == JsonValueKind.Null)
+        {
+            return false;
+        }
+
+        var resolved = TraverseJsonElement(configRoot, segments.Skip(1));
+        if (string.IsNullOrWhiteSpace(resolved))
+        {
+            return false;
+        }
+
+        replacement = resolved;
+        return true;
+    }
+
+    private static string? TraverseJsonElement(JsonElement element, IEnumerable<string> path)
+    {
+        foreach (var segment in path)
+        {
+            if (element.ValueKind != JsonValueKind.Object)
+            {
+                return null;
+            }
+
+            if (!element.TryGetProperty(segment, out var child))
+            {
+                return null;
+            }
+
+            element = child;
+        }
+
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number => element.ToString(),
+            JsonValueKind.True => "True",
+            JsonValueKind.False => "False",
+            _ => element.ToString()
+        };
     }
     
     #endregion

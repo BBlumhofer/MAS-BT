@@ -27,12 +27,13 @@ public class SetBlackboardValueNode : BTNode
 
         try
         {
+            var resolvedValue = ResolvePlaceholders(Value);
             object typedValue = ValueType.ToLower() switch
             {
-                "bool" => bool.Parse(Value),
-                "int" => int.Parse(Value),
-                "double" => double.Parse(Value),
-                _ => Value
+                "bool" => bool.Parse(resolvedValue),
+                "int" => int.Parse(resolvedValue),
+                "double" => double.Parse(resolvedValue),
+                _ => resolvedValue
             };
 
             Context.Set(Key, typedValue);

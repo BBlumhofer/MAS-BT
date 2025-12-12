@@ -1,14 +1,14 @@
 {
   "Agent": {
-    "AgentId": "https://smartfactory.de/shells/mio_fDp69z",
+    "AgentId": "https://smartfactory.de/shells/LG3JsASu4_",
     "Role": "ProductHolon",
     "AgentType": "ProductHolon",
     "LogLevel": "Information"
   },
   "ProductAgent": {
     "Enabled": true,
-    "InitializationTree": "Trees/ProductAgentInitialization.bt.xml",
-    "ShellId": "https://smartfactory.de/shells/mio_fDp69z",
+    "InitializationTree": "Trees/ProductAgent.bt.xml",
+    "ShellId": "https://smartfactory.de/shells/LG3JsASu4_",
     "SummaryTopic": "i40/production/products/logs"
   },
   "AAS": {
@@ -22,7 +22,6 @@
     "Port": 1883,
     "Username": "mqttuser",
     "Password": "mqttpass",
-    "ClientId": "Module_Assembly_01_Client",
     "UseTLS": false,
     "UseAuth": false,
     "TopicPrefix": "i40/production",

@@ -26,18 +26,23 @@ public class SubscribeModuleHolonTopicsNode : BTNode
         }
 
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var moduleId = Context.Get<string>("config.Agent.ModuleName") ?? Context.Get<string>("ModuleId") ?? Context.AgentId;
-
-        var topics = new[]
+        var primaryModuleId = ModuleContextHelper.ResolveModuleId(Context);
+        var moduleIdentifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
+        var topics = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            $"/{ns}/DispatchingAgent/Offers",
-            $"/{ns}/{moduleId}/ScheduleAction",
-            $"/{ns}/{moduleId}/BookingConfirmation",
-            $"/{ns}/{moduleId}/TransportPlan",
-            $"/{ns}/{moduleId}/register",
-            $"/{ns}/{moduleId}/Inventory",
-            $"/{ns}/{moduleId}/Neighbors"
+            $"/{ns}/DispatchingAgent/Offer"
         };
+
+        foreach (var moduleId in moduleIdentifiers)
+        {
+            topics.Add($"/{ns}/{moduleId}/ScheduleAction");
+            topics.Add($"/{ns}/{moduleId}/BookingConfirmation");
+            topics.Add($"/{ns}/{moduleId}/TransportPlan");
+            topics.Add($"/{ns}/{moduleId}/PlanningAgent/OfferResponse");
+            topics.Add($"/{ns}/{moduleId}/register");
+            topics.Add($"/{ns}/{moduleId}/Inventory");
+            topics.Add($"/{ns}/{moduleId}/Neighbors");
+        }
 
         var ok = 0;
         foreach (var topic in topics)
@@ -64,10 +69,10 @@ public class SubscribeModuleHolonTopicsNode : BTNode
                     var cache = BuildInventoryCache(m);
                     if (cache != null)
                     {
-                        Context.Set($"InventoryCache_{moduleId}", cache);
+                        Context.Set($"InventoryCache_{primaryModuleId}", cache);
                         // Keep a current, structured snapshot in context for immediate use
                         Context.Set("ModuleInventory", cache.StorageUnits);
-                        Logger.LogInformation("SubscribeModuleHolonTopics: cached inventory for {ModuleId}", moduleId);
+                        Logger.LogInformation("SubscribeModuleHolonTopics: cached inventory for {ModuleId}", primaryModuleId);
                     }
                 }
                 else if (IsNeighborsUpdate(m))
@@ -75,10 +80,10 @@ public class SubscribeModuleHolonTopicsNode : BTNode
                     var cache = BuildNeighborsCache(m);
                     if (cache != null)
                     {
-                        Context.Set($"NeighborsCache_{moduleId}", cache);
+                        Context.Set($"NeighborsCache_{primaryModuleId}", cache);
                         // Also expose the parsed neighbors directly to the context
                         Context.Set("Neighbors", cache.Neighbors);
-                        Logger.LogInformation("SubscribeModuleHolonTopics: cached neighbors for {ModuleId}", moduleId);
+                        Logger.LogInformation("SubscribeModuleHolonTopics: cached neighbors for {ModuleId}", primaryModuleId);
                     }
                 }
             });

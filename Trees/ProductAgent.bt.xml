@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<root BTCPP_format="4" main_tree_to_execute="ProductAgentInitialization">
-  <BehaviorTree ID="ProductAgentInitialization">
+<root BTCPP_format="4" main_tree_to_execute="ProductAgent">
+  <BehaviorTree ID="ProductAgent">
     <Sequence name="ProductAgentFlow">
       <Retry name="InitRetry" maxRetries="{config.RetryInit}" backoffMs="1000">
         <Fallback name="InitWithErrorLogging">
@@ -28,7 +28,7 @@
       <Sequence name="PlanningPhase">
         <SendProcessChainRequest name="SendProcessChainRequest" />
         <!-- Expect negotiation reply: 'proposal' or 'refuseProposal' for the callForProposal pattern -->
-        <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="proposal,refuseProposal" ExpectedConversationId="{ConversationId}" TimeoutSeconds="30000" />
+        <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="proposal,refuseProposal" ExpectedConversationId="{ConversationId}" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="30000" />
       </Sequence>
     </Sequence>
   </BehaviorTree>
@@ -83,6 +83,7 @@
       <input_port name="ExpectedType" />
       <input_port name="ExpectedTypes" />
       <input_port name="ExpectedSender" />
+      <input_port name="ExpectedTopic" />
       <input_port name="TimeoutSeconds" />
       <input_port name="ExpectedConversationId" />
     </Action>

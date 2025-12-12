@@ -25,11 +25,11 @@ namespace MAS_BT.Nodes.Dispatching
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
             var topics = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                $"/{ns}/request/ProcessChain",
+                $"/{ns}/ProcessChain",
                 $"/{ns}/request/ManufacturingSequence",
                 $"/{ns}/request/BookStep",
                 $"/{ns}/request/TransportPlan",
-                $"/DispatchingAgent/{ns}/RequestProcessChain/",
+                $"/DispatchingAgent/{ns}/ProcessChain/",
                 $"/DispatchingAgent/{ns}/RequestManufacturingSequence/",
                 $"/DispatchingAgent/{ns}/BookStep/",
                 $"/DispatchingAgent/{ns}/RequestTransportPlan/",

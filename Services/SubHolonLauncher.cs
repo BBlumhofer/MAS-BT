@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Text.Json;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Services;
@@ -39,13 +40,16 @@ public class ProcessSubHolonLauncher : ISubHolonLauncher
                     ? Path.GetFullPath(Path.Combine("MAS-BT", "MAS-BT.csproj"))
                     : null;
 
+            // If this launcher was instructed to open terminals, propagate the flag
+            var spawnFlag = _launchInTerminal ? "--spawn-terminal " : string.Empty;
+
             var args = projectPath != null
                 ? treePath != null
-                    ? $"run --project \"{projectPath}\" --example module-init-test -- \"{configPath}\" \"{treePath}\""
-                    : $"run --project \"{projectPath}\" --example module-init-test -- \"{configPath}\""
+                    ? $"run --project \"{projectPath}\" --example module-init-test -- {spawnFlag}\"{configPath}\" \"{treePath}\""
+                    : $"run --project \"{projectPath}\" --example module-init-test -- {spawnFlag}\"{configPath}\""
                 : treePath != null
-                    ? $"run --example module-init-test -- \"{configPath}\" \"{treePath}\""
-                    : $"run --example module-init-test -- \"{configPath}\"";
+                    ? $"run --example module-init-test -- {spawnFlag}\"{configPath}\" \"{treePath}\""
+                    : $"run --example module-init-test -- {spawnFlag}\"{configPath}\"";
 
             var psi = BuildProcessStartInfo(args, spec);
 
@@ -110,10 +114,54 @@ public class ProcessSubHolonLauncher : ISubHolonLauncher
         var shellCmd = $"dotnet {dotnetArgs}";
         var (terminalExe, terminalArgs) = terminal.Value;
 
+        // Build a shell invocation that first sets the terminal title via an escape sequence
+        // and then executes the desired command, leaving the shell open afterwards.
+        // Try to derive role from the provided config to build title AgentId_Role
+        string? roleFromConfig = null;
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(spec.ConfigPath) && File.Exists(spec.ConfigPath))
+            {
+                var cfgText = File.ReadAllText(spec.ConfigPath);
+                using var d = JsonDocument.Parse(cfgText);
+                if (d.RootElement.TryGetProperty("Agent", out var agentElem) && agentElem.ValueKind == JsonValueKind.Object)
+                {
+                    if (agentElem.TryGetProperty("Role", out var roleElem) && roleElem.ValueKind == JsonValueKind.String)
+                    {
+                        roleFromConfig = roleElem.GetString();
+                    }
+                }
+            }
+        }
+        catch
+        {
+            // ignore parse errors
+        }
+
+        var baseAgentId = spec.AgentId ?? spec.ModuleId ?? "subholon";
+        var rolePart = !string.IsNullOrWhiteSpace(roleFromConfig) ? roleFromConfig : "unknown";
+        var title = $"{baseAgentId}_{rolePart}";
+        // sanitize title to remove problematic characters
+        var sanitizedTitle = title.Replace('"', '_').Replace('\'', '_').Replace(' ', '_').Replace('/', '_').Replace('\\', '_');
+        // Use ANSI sequence to set title: ESC ] 0 ; title BEL
+        var bashCmd = $"printf '\\033]0;{sanitizedTitle}\\007'; {shellCmd}; exec bash";
+
+        string argsWithTitle;
+        // Most terminals accept '-e bash -c "..."' or '-- bash -c "..."'
+        if (terminalExe.Contains("gnome-terminal"))
+        {
+            argsWithTitle = $"-- bash -c \"{bashCmd}\"";
+        }
+        else
+        {
+            // Default to using '-e bash -c "..."' which works for xterm/xfce4-terminal/konsole/x-terminal-emulator
+            argsWithTitle = $"-e bash -c \"{bashCmd}\"";
+        }
+
         return new ProcessStartInfo
         {
             FileName = terminalExe,
-            Arguments = string.Format(terminalArgs, shellCmd),
+            Arguments = argsWithTitle,
             UseShellExecute = false,
             RedirectStandardOutput = false,
             RedirectStandardError = false,

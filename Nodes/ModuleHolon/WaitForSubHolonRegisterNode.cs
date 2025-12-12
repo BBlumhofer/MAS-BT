@@ -18,11 +18,7 @@ public class WaitForSubHolonRegisterNode : BTNode
         if (client == null) return NodeStatus.Failure;
 
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            var moduleId = Context.Get<string>("config.Agent.ModuleName")
-                       ?? Context.Get<string>("config.Agent.ModuleId")
-                       ?? Context.Get<string>("config.OPCUA.ModuleName")
-                       ?? Context.Get<string>("ModuleId")
-                       ?? Context.AgentId;
+        var moduleId = ModuleContextHelper.ResolveModuleId(Context);
         var topic = $"/{ns}/{moduleId}/register";
 
         var queue = new ConcurrentQueue<I40Message>();

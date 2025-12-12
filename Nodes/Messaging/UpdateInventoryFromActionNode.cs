@@ -209,8 +209,8 @@ public class UpdateInventoryNode : BTNode
                 .Build();
 
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            var moduleName = string.IsNullOrWhiteSpace(ModuleName) ? ModuleId : ModuleName;
-            var topic = $"/{ns}/{moduleName}/Inventory";
+            var agentId = Context.Get<string>("config.Agent.AgentId") ?? Context.Get<string>("AgentId") ?? Context.AgentId;
+            var topic = $"/{ns}/{agentId}/Inventory";
             await client.PublishAsync(message, topic);
             
             Logger.LogInformation("UpdateInventory: Published inventory to MQTT at {topic}", topic);

@@ -33,6 +33,12 @@ public class ModuleInitializationTestRunner
         }
 
         var config = LoadConfig(providedConfigPath);
+
+        if (TryGetAgentList(config, out var agentList) && agentList.Count > 0)
+        {
+            await SpawnAgentsAsync(providedConfigPath, agentList, spawnSubHolonsInTerminal);
+            return;
+        }
         var opcuaEndpoint = GetConfigValue(config, "OPCUA.Endpoint", "opc.tcp://192.168.178.30:4849");
         var opcuaUsername = GetConfigValue(config, "OPCUA.Username", "orchestrator");
         var opcuaPassword = GetConfigValue(config, "OPCUA.Password", "orchestrator");
@@ -103,6 +109,9 @@ public class ModuleInitializationTestRunner
         context.Set("config.OPCUA.Username", opcuaUsername);
         context.Set("config.OPCUA.Password", opcuaPassword);
         context.Set("config.Agent.ModuleName", moduleId);
+        // Expose AgentId and Role in config.* keys so placeholder resolution works
+        context.Set("config.Agent.AgentId", agentId);
+        context.Set("config.Agent.Role", agentRole);
         context.Set("config.MQTT.Broker", mqttBroker);
         context.Set("config.MQTT.Port", mqttPort);
         context.Set("SpawnSubHolonsInTerminal", spawnSubHolonsInTerminal);
@@ -502,6 +511,144 @@ public class ModuleInitializationTestRunner
                         return relativeToTrees;
                 }
             }
+        }
+
+        return null;
+    }
+
+    private static async Task SpawnAgentsAsync(string aggregatorConfigPath, IReadOnlyList<string> agentEntries, bool launchInTerminal)
+    {
+        Console.WriteLine();
+        Console.WriteLine($"👥 Agents list detected ({agentEntries.Count}) – spawning each entry{(launchInTerminal ? " in its own terminal" : "")}.");
+
+        var baseDir = Path.GetDirectoryName(Path.GetFullPath(aggregatorConfigPath)) ?? Directory.GetCurrentDirectory();
+        using var loggerFactory = LoggerFactory.Create(builder =>
+        {
+            builder.SetMinimumLevel(LogLevel.Information);
+            builder.AddSimpleConsole();
+        });
+        var launcherLogger = loggerFactory.CreateLogger("MultiAgentSpawner");
+        var launcher = new ProcessSubHolonLauncher(launcherLogger, launchInTerminal);
+
+        var launchTasks = new List<Task>();
+        foreach (var agentEntryRaw in agentEntries)
+        {
+            if (string.IsNullOrWhiteSpace(agentEntryRaw))
+                continue;
+
+            var trimmedEntry = agentEntryRaw.Trim();
+            var resolvedConfigPath = ResolveAgentConfigPath(trimmedEntry, baseDir);
+            if (string.IsNullOrWhiteSpace(resolvedConfigPath))
+            {
+                launcherLogger.LogWarning("No config found for agent entry {Entry}; skipping.", trimmedEntry);
+                continue;
+            }
+
+            Dictionary<string, object> agentConfig;
+            try
+            {
+                agentConfig = LoadConfig(resolvedConfigPath);
+            }
+            catch (Exception ex)
+            {
+                launcherLogger.LogWarning(ex, "Failed to parse config for {Agent} ({Config}); skipping.", trimmedEntry, resolvedConfigPath);
+                continue;
+            }
+
+            var treePath = GetInitializationTreeFromConfig(agentConfig);
+            var agentId = GetConfigValue(agentConfig, "Agent.AgentId", trimmedEntry);
+            var moduleId = GetConfigValue(agentConfig, "Agent.ModuleId", null)
+                           ?? GetConfigValue(agentConfig, "Agent.ModuleName", agentId)
+                           ?? agentId;
+
+            var spec = new SubHolonLaunchSpec(
+                treePath,
+                resolvedConfigPath,
+                moduleId,
+                agentId);
+
+            launcherLogger.LogInformation("Launching agent {AgentId} using {Config}.", agentId, resolvedConfigPath);
+            launchTasks.Add(launcher.LaunchAsync(spec));
+        }
+
+        if (launchTasks.Count == 0)
+        {
+            launcherLogger.LogWarning("Kein Agent wurde gestartet (configs fehlen oder fehlerhaft).");
+            return;
+        }
+
+        await Task.WhenAll(launchTasks);
+        Console.WriteLine("👥 Alle angeforderten Agenten wurden gestartet.");
+    }
+
+    private static bool TryGetAgentList(Dictionary<string, object> config, out IReadOnlyList<string> agents)
+    {
+        agents = Array.Empty<string>();
+        if (config == null || !config.TryGetValue("Agents", out var value) || value == null)
+            return false;
+
+        var list = new List<string>();
+
+        if (value is JsonElement element && element.ValueKind == JsonValueKind.Array)
+        {
+            foreach (var entry in element.EnumerateArray())
+            {
+                var entryValue = entry.ValueKind == JsonValueKind.String ? entry.GetString() : entry.ToString();
+                if (!string.IsNullOrWhiteSpace(entryValue))
+                    list.Add(entryValue!);
+            }
+        }
+        else if (value is IEnumerable<object> enumerable)
+        {
+            foreach (var entry in enumerable)
+            {
+                var entryValue = entry?.ToString();
+                if (!string.IsNullOrWhiteSpace(entryValue))
+                    list.Add(entryValue!);
+            }
+        }
+        else if (value is string asString)
+        {
+            if (!string.IsNullOrWhiteSpace(asString))
+                list.Add(asString.Trim());
+        }
+
+        if (list.Count == 0)
+            return false;
+
+        agents = list;
+        return true;
+    }
+
+    private static string? ResolveAgentConfigPath(string agentEntry, string baseDir)
+    {
+        if (string.IsNullOrWhiteSpace(agentEntry))
+            return null;
+
+        var candidates = new List<string> { agentEntry };
+        if (!agentEntry.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+        {
+            candidates.Add($"{agentEntry}.json");
+        }
+
+        foreach (var candidate in candidates)
+        {
+            if (Path.IsPathRooted(candidate))
+            {
+                if (File.Exists(candidate))
+                    return Path.GetFullPath(candidate);
+                continue;
+            }
+
+            var relative = Path.Combine(baseDir, candidate);
+            if (File.Exists(relative))
+                return Path.GetFullPath(relative);
+        }
+
+        var resolved = ResolveConfigPath(new[] { agentEntry });
+        if (!string.IsNullOrWhiteSpace(resolved) && File.Exists(resolved))
+        {
+            return Path.GetFullPath(resolved);
         }
 
         return null;

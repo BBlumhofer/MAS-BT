@@ -11,7 +11,9 @@ using MAS_BT.Nodes.Constraints;
 using MAS_BT.Nodes.Recovery;
 using MAS_BT.Nodes; // Neue Monitoring Nodes
 using MAS_BT.Nodes.Planning;
+using MAS_BT.Nodes.Planning.ProcessChain;
 using MAS_BT.Nodes.Dispatching;
+using MAS_BT.Nodes.Dispatching.ProcessChain;
 using MAS_BT.Nodes.ModuleHolon;
 
 namespace MAS_BT.Serialization;
@@ -167,14 +169,23 @@ public class NodeRegistry
         Register<SendProcessChainRequestNode>();
         Register<InitializeDispatchingStateNode>("InitializeDispatchingState");
         Register<SubscribeDispatchingTopicsNode>("SubscribeDispatchingTopics");
+        Register<SubscribePlanningTopicsNode>("SubscribePlanningTopics");
         Register<HandleModuleRegistrationNode>("HandleModuleRegistration");
-        Register<HandleProcessChainRequestNode>("HandleProcessChainRequest");
+        Register<ParseProcessChainRequestNode>("ParseProcessChainRequest");
+        Register<DispatchCapabilityRequestsNode>("DispatchCapabilityRequests");
+        Register<CollectCapabilityOffersNode>("CollectCapabilityOffers");
+        Register<BuildProcessChainResponseNode>("BuildProcessChainResponse");
+        Register<SendProcessChainResponseNode>("SendProcessChainResponse");
+        Register<ParseCapabilityRequestNode>("ParseCapabilityRequest");
+        Register<PlanCapabilityOfferNode>("PlanCapabilityOffer");
+        Register<SendCapabilityOfferNode>("SendCapabilityOffer");
         Register<HandleManufacturingSequenceRequestNode>("HandleManufacturingSequenceRequest");
         Register<HandleBookStepRequestNode>("HandleBookStepRequest");
         Register<HandleTransportPlanRequestNode>("HandleTransportPlanRequest");
         Register<ModuleHolonRegistrationNode>("ModuleHolonRegistration");
         Register<SubscribeModuleHolonTopicsNode>("SubscribeModuleHolonTopics");
         Register<ReadCachedSnapshotsNode>("ReadCachedSnapshots");
+        Register<ForwardCapabilityRequestsNode>("ForwardCapabilityRequests");
         Register<ForwardToInternalNode>("ForwardToInternal");
         Register<WaitForInternalResponseNode>("WaitForInternalResponse");
         Register<ReplyToDispatcherNode>("ReplyToDispatcher");

@@ -222,16 +222,36 @@ public abstract class LoadSubmodelNodeBase<TSubmodel> : BTNode where TSubmodel :
         if (string.IsNullOrWhiteSpace(filter))
             return true;
 
+        var filters = SplitSemanticFilters(filter);
+        if (filters.Length == 0)
+            return true;
+
         var keys = semanticId?.Keys;
         if (keys == null)
             return false;
 
-        return keys.Any(k => string.Equals(k.Value, filter, StringComparison.OrdinalIgnoreCase));
+        return keys.Any(k => filters.Any(f => string.Equals(k.Value, f, StringComparison.OrdinalIgnoreCase)));
     }
 
     private static bool MatchesSemanticIdString(string value, string filter)
     {
-        return string.Equals(value, filter, StringComparison.OrdinalIgnoreCase);
+        if (string.IsNullOrWhiteSpace(filter))
+            return true;
+
+        var filters = SplitSemanticFilters(filter);
+        if (filters.Length == 0)
+            return true;
+
+        return filters.Any(f => string.Equals(value, f, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string[] SplitSemanticFilters(string filter)
+    {
+        return filter
+            .Split(new[] { '|', ';' }, StringSplitOptions.RemoveEmptyEntries)
+            .Select(f => f.Trim())
+            .Where(f => !string.IsNullOrWhiteSpace(f))
+            .ToArray();
     }
 
     private static void CopySubmodel(ISubmodel source, Submodel target)

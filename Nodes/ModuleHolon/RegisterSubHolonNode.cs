@@ -25,7 +25,7 @@ public class RegisterSubHolonNode : BTNode
             return NodeStatus.Failure;
         }
 
-            var moduleId = Context.Get<string>("config.Agent.ModuleName")
+            var moduleId = Context.Get<string>("config.Agent.AgentId")
                        ?? Context.Get<string>("config.Agent.ModuleId")
                        ?? Context.Get<string>("config.OPCUA.ModuleName")
                        ?? Context.Get<string>("ModuleId")

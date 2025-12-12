@@ -4,9 +4,9 @@
 Usage:
   python3 tools/wait_and_respond.py --respond-type proposal
 
-This script subscribes to `/{namespace}/request/ProcessChain`, waits for a message
-with type `callForProposal`, extracts the `conversationId` and publishes a response
-to `/{namespace}/response/ProcessChain` with the same conversationId.
+This script subscribes to `/{namespace}/ProcessChain`, waits for a message
+with type `callForProposal` and replies on the same `/{namespace}/ProcessChain` topic
+using the same conversationId.
 
 Dependencies: paho-mqtt
 """
@@ -60,8 +60,7 @@ def main():
     if args.respond_type == "refusal":
         args.respond_type = "refuseProposal"
 
-    req_topic = f"/{args.namespace}/request/ProcessChain"
-    resp_topic = f"/{args.namespace}/response/ProcessChain"
+    topic = f"/{args.namespace}/ProcessChain"
 
     received = None
 
@@ -69,8 +68,8 @@ def main():
 
     def on_connect(c, userdata, flags, rc):
         print(f"Connected to broker {args.broker}:{args.port} (rc={rc})")
-        c.subscribe(req_topic)
-        print(f"Subscribed to {req_topic}")
+        c.subscribe(topic)
+        print(f"Subscribed to {topic}")
 
     def on_message(c, userdata, msg):
         nonlocal received
@@ -121,11 +120,11 @@ def main():
         sys.exit(1)
 
     conv = received['conversationId']
-    print(f"Found conversationId {conv}, sending {args.respond_type} to {resp_topic}")
+    print(f"Found conversationId {conv}, sending {args.respond_type} to {topic}")
 
     # Ensure we return the exact same conversationId string
     payload = make_response(conv, args.respond_type, args.sender, receiver_id=args.receiver)
-    client.publish(resp_topic, payload, qos=1)
+    client.publish(topic, payload, qos=1)
     print("Published response payload:")
     print(payload)
 

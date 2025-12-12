@@ -368,15 +368,21 @@ namespace MAS_BT.Services
 
         private IEnumerable<string> BuildTopicVariants(string moduleName, string channel)
         {
-            var topics = new List<string> { $"/Modules/{moduleName}/{channel}/" };
+            var topics = new List<string>();
             var ns = _context.Get<string>("config.Namespace") ?? _context.Get<string>("Namespace");
+            var agentId = _context.Get<string>("config.Agent.AgentId") ?? _context.Get<string>("AgentId") ?? _agentId;
+
+            // Primary: use AgentId in topic paths to ensure uniqueness
             if (!string.IsNullOrWhiteSpace(ns))
             {
                 var normalized = channel.Equals("Inventory", StringComparison.OrdinalIgnoreCase)
-                    ? $"/{ns}/{moduleName}/Inventory"
-                    : $"/{ns}/{moduleName}/{channel}";
+                    ? $"/{ns}/{agentId}/Inventory"
+                    : $"/{ns}/{agentId}/{channel}";
                 topics.Add(normalized);
             }
+
+            // Backwards-compatibility: also include a module-based topic variant
+            topics.Add($"/Modules/{moduleName}/{channel}/");
 
             return topics.Distinct(StringComparer.OrdinalIgnoreCase);
         }

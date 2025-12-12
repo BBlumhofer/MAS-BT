@@ -8,7 +8,7 @@ Der **Dispatching Agent** ist ein hierarchischer Koordinationsagent im MAS-BT-Sy
 
 ```
 Produktagent (Product Holon)
-    ↓ (RequestProcessChain, RequestManufacturingSequence, BookStep)
+  ↓ (ProcessChain, RequestManufacturingSequence, BookStep)
 Dispatching Agent (/Company/Factory/Line/)
     ↓ (RequestOffer, ScheduleAction, BookAction)
 PlanningAgent + ExecutionAgent (pro Modul)
@@ -133,9 +133,9 @@ public async Task<CapabilityDescription> FetchCapabilityDescriptionAsync(string 
 
 Der Dispatching Agent bietet **4 zentrale Services** über MQTT Topics an:
 
-### 3.1 RequestProcessChain
+### 3.1 ProcessChain
 
-**Topic:** `/DispatchingAgent/{Namespace}/RequestProcessChain/`
+**Topic:** `/{Namespace}/ProcessChain`
 
 **Zweck:** Erstellt eine **Prozesskette** ohne Terminierung – nur mögliche Modul-Kandidaten je Required Capability.
 
@@ -675,7 +675,7 @@ ProductAgent --> DispatchingAgent(/Company/)
 
 **Ablauf:**
 1. `/Company/` DispatchingAgent prüft: Kann ich die Anfrage hier beantworten?
-2. Falls nicht → **Broadcast RequestProcessChain** an Child-DispatchingAgents (`/Company/Factory1/`, `/Company/Factory2/`)
+2. Falls nicht → **Broadcast ProcessChain** an Child-DispatchingAgents (`/Company/Factory1/`, `/Company/Factory2/`)
 3. Child-DispatchingAgents antworten mit ihren ProcessChains (oder refuse)
 4. `/Company/` aggregiert Antworten und wählt beste Kombination
 5. Finale ManufacturingSequence wird an Produktagent zurückgegeben
@@ -710,7 +710,7 @@ ProductAgent --> DispatchingAgent(/Company/)
         <!-- 1. Handle ProcessChain Requests -->
         <RepeatUntilFailure name="ProcessChainHandler">
           <Sequence>
-            <WaitForMessage Topic="/DispatchingAgent/{Namespace}/RequestProcessChain/" Timeout="5000"/>
+            <WaitForMessage Topic="/{Namespace}/ProcessChain" Timeout="5000"/>
             <SubTree name="HandleProcessChainRequest"/>
             <Wait DelayMs="100"/>
           </Sequence>
@@ -787,7 +787,7 @@ ProductAgent --> DispatchingAgent(/Company/)
             <AddCandidatesToStep StepId="{CurrentStepId}" Candidates="{LocalCandidates}"/>
           </Sequence>
           <Sequence name="DelegateToChildDispatchers">
-            <BroadcastToChildDispatchers Request="RequestProcessChain" Capability="{CurrentCapability}"/>
+            <BroadcastToChildDispatchers Request="ProcessChain" Capability="{CurrentCapability}"/>
             <WaitForChildResponses Timeout="5000"/>
             <AggregateChildCandidates/>
           </Sequence>
@@ -799,12 +799,12 @@ ProductAgent --> DispatchingAgent(/Company/)
       <Sequence name="SendConsent">
         <CheckProcessChainComplete/>
         <BuildProcessChainResponse/>
-        <SendMessage Topic="/DispatchingAgent/{Namespace}/RequestProcessChain/" Type="consent"/>
+        <SendMessage Topic="/{Namespace}/ProcessChain" Type="consent"/>
         <LogProcessChain Level="INFO"/>
       </Sequence>
       <Sequence name="SendRefuse">
         <BuildRefusalResponse Reason="no-candidates-found"/>
-        <SendMessage Topic="/DispatchingAgent/{Namespace}/RequestProcessChain/" Type="refuse"/>
+        <SendMessage Topic="/{Namespace}/ProcessChain" Type="refuse"/>
         <LogProcessChain Level="WARN"/>
       </Sequence>
     </Fallback>
@@ -1083,7 +1083,7 @@ public class TopologyGraph
 
 Produktagent erhält neue Nodes:
 
-- **`RequestProcessChain`**: Sendet RequestProcessChain an DispatchingAgent
+- **`ProcessChain`**: Sendet ProcessChain an DispatchingAgent
 - **`WaitForProcessChainResponse`**: Wartet auf ProcessChain vom DispatchingAgent
 - **`SelectManufacturingOption`**: Wählt beste Option aus ProcessChain (kann mehrere geben)
 - **`RequestManufacturingSequence`**: Sendet RequestManufacturingSequence
@@ -1122,7 +1122,7 @@ Execution Agent bleibt unverändert – er empfängt weiterhin SkillRequests vom
 
 **1. Produktagent fragt ProcessChain an:**
 ```
-ProductHolon_12345 --> DispatchingAgent_Line1: RequestProcessChain
+ProductHolon_12345 --> DispatchingAgent_Line1: ProcessChain
   RequiredCapabilities: [Drilling, Screwing, Painting]
 ```
 

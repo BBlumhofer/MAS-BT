@@ -29,9 +29,7 @@ public class SpawnSubHolonsNode : BTNode
                 return NodeStatus.Success;
             }
 
-            var moduleId = Context.Get<string>("config.Agent.ModuleName")
-                           ?? Context.Get<string>("ModuleId")
-                           ?? Context.AgentId;
+            var moduleId = ModuleContextHelper.ResolveModuleId(Context);
             var parentConfigPath = Context.Get<string>("config.Path");
             if (string.IsNullOrWhiteSpace(parentConfigPath))
             {

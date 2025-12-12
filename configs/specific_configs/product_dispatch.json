@@ -1,0 +1,3 @@
+{
+    "Agents": ["product_agent", "dispatching_agent"]
+}

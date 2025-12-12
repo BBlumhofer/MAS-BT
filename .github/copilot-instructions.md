@@ -1,37 +1,34 @@
 # MAS-BT Copilot Instructions
 
-## MAS-BT Quick Facts
-- MAS-BT is a C#/.NET 10 holonic control stack: every agent (resource, module, product, transport) runs Behavior Trees defined under `Trees/*.bt.xml` and executed via `ModuleInitializationTestRunner`.
-- OPC UA (real-time machine control) + AAS (semantic process data) + MQTT/I4.0 Sharp messaging are the three integration pillars; Behavior Trees coordinate all three layers.
-- `BTContext` is the single source of shared truth; nodes must both read and write agreed keys (e.g., `module_{Name}_ready`, `skill_{SkillName}_state`, `CurrentAction`).
-- `specs.json` and the docs in `/docs/*.md` describe the canonical node library; keep them in sync with any new node behavior.
+## Quick Facts
+- MAS-BT is a holonic control stack where every Resource, Module, Product, and Transport Holon executes a Behavior Tree defined under `Trees/*.bt.xml`; `Program.cs` selects `Examples/ModuleInitializationTestRunner` by default, which ticks the tree every 100 ms (`ModuleInitTestRunner.cs`).
+- OPC UA (MachineState & skill control), AAS (ProductionPlan, ExecutionPlan, CapabilityDescription), and MQTT/I4.0 Sharp messaging form the three integration pillars; Behavior Trees orchestrate the handoff between them.
+- Shared state lives in `BTContext` and follows strict naming: `module_{ModuleName}_ready`, `skill_{SkillName}_state`, `CurrentAction`, `CapabilityDescription_{AgentId}`, etc. Nodes assume these keys exist, so upstream writers must set them before downstream consumers run.
+- Configuration is provided via `config.json` (or one of the `configs/*.json` templates). `ReadConfigNode` copies settings into context under `config.*`, which is why most BT nodes read `context.Get<config...>` rather than loading JSON themselves.
 
 ## Architecture & Data Flow
-- `Nodes/**` contains implementation by concern (Configuration, Monitoring, Locking, Messaging, SkillControl, Recovery, Constraints). Every public node derives from `BTNode` and operates on `BTContext`.
-- `BehaviorTree/Serialization/NodeRegistry.cs` is the authoritative registry: register new nodes here (names default to class name without `Node`). Missing registrations break XML loading.
-- `Services/RemoteServerMqttNotifier.cs`, `SkillSharpClientService.cs`, and friends adapt external libraries (`Skill-Sharp-Client`, `I4.0-Sharp-Messaging`, `AAS-Sharp-Client`); reuse them instead of talking to those libraries directly inside nodes.
-- `config.json` feeds runtime endpoints, credentials, and timing knobs; `ReadConfigNode` copies entries into context under `config.*` so other nodes avoid manual JSON parsing.
+- `Nodes/` groups the reusable node implementations by concern (Configuration, Monitoring, Locking, Messaging, SkillControl, Recovery, Constraints, Planning). Public nodes extend `BTNode` and operate on `BTContext`, so keep shared helper methods in `Nodes/Common` where possible.
+- `BehaviorTree/Serialization/NodeRegistry.cs` is the only place that wires node names to classes for XML deserialization; new nodes must be registered here (node names default to the class name without the `Node` suffix).
+- `Services/` hosts adapters such as `RemoteServerMqttNotifier`, `SkillSharpClientService`, `ExecutionAgentService` that bridge the BT logic to the external libraries (`Skill-Sharp-Client`, `I40Sharp.Messaging`, `AasSharpClient`). Reuse those services rather than instantiating messaging clients inside individual nodes.
+- Planning and execution agents reuse the same structural helpers: `Trees/PlanningAgent.bt.xml` polls MQTT SkillRequests, selects the next `Action` from the plan, and sends SkillRequests to Execution via `SendSkillRequestNode`; `Trees/ExecutionAgent.bt.xml` enforces preconditions, manages locking, and publishes ActionState events (see `README.md`, `docs/MachineSchedule_API.md`).
+- Node behaviors are documented in `specs.json` (canonical node library) plus `CONFIGURATION_NODES.md`, `MONITORING_AND_SKILL_NODES.md`, and `docs/*.md`. When you add or change a node, update the matching spec/documentation and add the node to `specs.json` if it is meant for reuse.
 
-## Runtime & Workflows
-- Build/test with `dotnet test MAS-BT.csproj` (the csproj is marked `IsTestProject=true`, so even example runners live inside one test project). Use `dotnet build` only when you do not want to execute tests.
-- Run BT examples via `dotnet run --example module-init-test` (loads `Trees/Init_and_ExecuteSkill.bt.xml`) or `dotnet run --example resource-init`; without `--example` the module init runner is executed.
-- `Examples/ModuleInitializationTestRunner.cs` drives a BehaviorTree.CPP-style tick loop (100 ms ticks, Ctrl+C cancels). Keep long-running nodes non-blocking and respect `NodeStatus.Running` semantics.
-- End-to-end manual testing expects the playground stack in `environment/playground-v3` (OPC UA server + Mosquitto) to be up via `docker compose up -d` before running the trees.
+## Runtime & Developer Workflows
+- Build and test with `dotnet test MAS-BT.csproj` (the project is marked as a test project, so the default run includes diagnostics). Run `dotnet build MAS-BT.csproj` only when you intentionally want to skip tests.
+- Launch agents with `dotnet run -- <config-or-tree>` from the repository root: `dotnet run -- configs/Execution_agent.json` runs `Trees/ExecutionAgent.bt.xml`, `dotnet run -- Trees/PlanningAgent.bt.xml` runs the planning tree, and `dotnet run -- Trees/ProductAgentInitialization.bt.xml` spins up the product agent (see README front section for more `cp`/`ln` recipes).
+- Manual scenarios require the sandbox stack in `environment/playground-v3` (OPC UA server + Mosquitto). Bring it up with `docker compose up -d` from that directory before running any agent trees; the trees expect MQTT topics and OPC UA endpoints to already exist.
+- `configs/specific_configs/Module_configs/<ModuleId>/` contains per-module JSON templates (e.g., `P103_Planning_agent.json`) that mirror the shared `config.json` structure; copy or symlink the desired template to `config.json` before running the runner if you prefer not to pass the config argument explicitly.
 
 ## Node Implementation Patterns
-- Always call `Initialize(context, logger)` before executing nodes; composite/decorator nodes propagate `OnAbort`/`OnReset`, so custom nodes should clean up connections in those overrides when needed.
-- Context keys follow conventions: `skill_{SkillName}_state`, `module_{ModuleName}_locked`, and `CapabilityDescription_{AgentId}`. Reuse these names so downstream nodes function without edits.
-- Messaging nodes operate on AAS `Action` objects: `ReadMqttSkillRequestNode` now populates `CurrentAction`, `ActionId`, `ConversationId`, and a case-insensitive `InputParameters` dictionary. Downstream nodes must read from these entries instead of reparsing MQTT payloads.
-- Lock management lives in `LockResourceNode` (with retry/backoff) while `RemoteModule.LockAsync` is intentionally immediate—do not add hidden retries in the client layer.
-
-## Recovery, Queueing & Messaging Rules
-- Recovery is centralized in `Nodes/Recovery/*` and wired through `RecoverySequence` + monitor branches in `Trees/Init_and_ExecuteSkill.bt.xml`. When monitoring discovers lock or startup failures, trigger `RecoverySequence` rather than inventing node-local hacks.
-- Action processing is evolving toward an execution queue (see `EXECUTION_AGENT_TODO.md`): SkillRequests enqueue, `consent/refuse` acknowledge capacity, and Preconditions failures must emit ActionUpdates (`preconditions not satisfied`) instead of failing the tree.
-- MQTT logging/state updates should go through `RemoteServerMqttNotifier` or `SendStateMessageNode`; avoid ad-hoc MQTT publishers so telemetry stays consistent.
+- Always call `Initialize(context, logger)` before running a node. Composite and decorator nodes hook `OnAbort`/`OnReset`, so override those methods when a node needs to clean up sockets, subscriptions, or resource locks.
+- MQTT skill request nodes populate `CurrentAction`, `ActionId`, `ConversationId`, and `InputParameters` (case-insensitive) in the context; downstream nodes read those values instead of reparsing the MQTT payload (`ReadMqttSkillRequestNode`, `AwaitSkillResponse`).
+- Lock handling lives in `Nodes/Locking/*` (e.g., `LockResourceNode` with retries and `RemoteModule.LockAsync` which is intentionally fast). Do not sprinkle implicit retries elsewhere—`LockResourceNode` is the single gatekeeper, and unlocking happens through the matching release nodes.
+- Recovery logic is centralized under `Nodes/Recovery/` and wired into `Trees/Init_and_ExecuteSkill.bt.xml` with the `RecoverySequence` monitor branch; follow that structure when adding new failure handling instead of scattering custom recovery logic.
+- Preconditions with queues follow the design described in `README.md` (precondition backoff, queue snapshots, `MaxPreconditionRetries`, etc.). When a precondition fails, the request is requeued with `NextRetryUtc` instead of the tree throwing, so downstream metrics and queue snapshots stay consistent.
 
 ## Testing & Documentation
-- Automated tests live in `tests/*.cs` (currently stubs) plus BT-based integration tests under `Trees/Examples/*.bt.xml`. Extend these rather than writing bespoke console apps.
-- For manual debugging, prefer `Examples/ResourceHolonInitialization.cs` to step through Configuration nodes and inspect context snapshots.
-- Authoritative specs live in `README.md`, `Konzept.md`, `CONFIGURATION_NODES.md`, `MONITORING_AND_SKILL_NODES.md`, and the backlog `EXECUTION_AGENT_TODO.md`; align new behavior with the priorities stated there before shipping.
+- Extend the tests under `tests/` or the Behavior Tree XML examples in `Trees/Examples/*.bt.xml` rather than writing independent scripts; the test project runs the same runners that `dotnet run` would.
+- Use `Examples/ResourceHolonInitialization.cs` and `Examples/ModuleInitializationTestRunner.cs` to step through configuration and monitor the context state when debugging. Those entry points already hook into BT logging and cancellation semantics.
+- Keep docs in sync when behavior changes: `README.md`, `Progress.md`, `docs/MachineSchedule_API.md`, `docs/InventoryMQTT.md`, `CONFIGURATION_NODES.md`, `MONITORING_AND_SKILL_NODES.md`, and `EXECUTION_AGENT_TODO.md` explain high-level goals and scheduling rules that the code must honor.
 
-Let me know if any section above is unclear or missing detail so I can refine it.
+Let me know if any section above needs clarification or more detail so I can iterate on the instructions.

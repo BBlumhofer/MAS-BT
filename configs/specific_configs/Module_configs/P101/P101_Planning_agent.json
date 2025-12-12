@@ -1,0 +1,40 @@
+{
+  "Agent": {
+    "AgentId": "P101",
+    "ModuleName":"DrillingStation",
+    "Role": "PlanningHolon",
+    "LogLevel": "Information",
+    "InitializationTree": "Trees/PlanningAgent.bt.xml"
+  },
+    "AAS": {
+    "SubmodelRepositoryEndpoint": "http://localhost:8080/submodels",
+    "ShellRepositoryEndpoint": "http://localhost:8080/shells",
+    "Timeout": 10000
+  },
+  "MQTT": {
+    "Broker": "localhost",
+    "BrokerAddress": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "UseTLS": false,
+    "UseAuth": false,
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000,
+    "PublishLogs": false
+  },
+  "Namespace": "phuket",
+  "TimeSynchronization": {
+    "NTPServer": "time.google.com",
+    "MaxDriftMs": 1000,
+    "SyncIntervalMs": 300000
+  },
+  "Scheduling": {
+    "MaxScheduleAgeMs": 300000,
+    "TentativeReservationTimeout": 60000,
+    "BookingConfirmationTimeout": 30000,
+    "SchedulingHorizonSteps": 3
+  }
+}

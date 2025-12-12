@@ -44,13 +44,13 @@ public class SendProcessChainRequestNode : BTNode
         }
 
         var ns = Context.Get<string>("config.Namespace") ?? "phuket";
-        var topic = $"/{ns}/request/ProcessChain";
+        var topic = $"/{ns}/ProcessChain";
 
         try
         {
             var interactionElements = new List<SubmodelElement>
             {
-                WrapSubmodel(capability, "RequiredCapability"),
+                capability.CapabilitySet,
                 WrapSubmodel(productId, "ProductIdentification")
             };
 

@@ -101,7 +101,7 @@ def main():
     parser = argparse.ArgumentParser(description="Send a proposal or refusal for testing MAS-BT agents")
     parser.add_argument("--broker", default="192.168.178.33", help="MQTT broker host (default: localhost)")
     parser.add_argument("--port", type=int, default=1883, help="MQTT broker port (default: 1883)")
-    parser.add_argument("--topic", default="/phuket/response/ProcessChain", help="MQTT topic to publish to")
+    parser.add_argument("--topic", default="/phuket/ProcessChain", help="MQTT topic to publish to")
     parser.add_argument("--type", choices=["proposal", "refuseProposal", "refusal"], default="proposal", help="Message type to send (alias: 'refusal' -> 'refuseProposal')")
     parser.add_argument("--conversation-id", required=True, help="ConversationId to use (use the one logged by the agent)")
     parser.add_argument("--sender", default="ManualTester", help="Sender id to include in the frame")
