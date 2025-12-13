@@ -8,7 +8,6 @@ using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using AasSharpClient.Models.Messages;
 using BaSyx.Models.AdminShell;
-using AasSharpClient.Models.Messages;
 
 namespace MAS_BT.Nodes.ModuleHolon;
 

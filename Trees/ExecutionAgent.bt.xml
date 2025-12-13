@@ -19,9 +19,9 @@
           TimeoutMs="10000"
           ClientId="{config.Agent.AgentId}_{config.Agent.Role}" />
       </RetryUntilSuccess>
-      <SetBlackboardValue name="SetExecutionRole" Key="AgentRole" Value="ExecutionAgent" />
-      <SetBlackboardValue name="SetExecutionId" Key="AgentId" Value="{config.Agent.AgentId}_Execution" />
-      <RegisterSubHolon name="RegisterExecution" />
+      <SetBlackboardValue name="SetExecutionRole" Key="AgentRole" Value="{config.Agent.Role}" />
+      <SetBlackboardValue name="SetExecutionId" Key="AgentId" Value="{config.Agent.AgentId}" />
+      <RegisterAgent name="RegisterExecution" ParentAgent="{config.Agent.ModuleId}" />
     </Sequence>
   </BehaviorTree>
 
@@ -101,7 +101,7 @@
     <Parallel name="SkillExecutionParallel">
       <Repeat name="RegistrationHeartbeat" num_cycles="-1">
         <Sequence name="RegistrationBeat">
-          <RegisterSubHolon name="RegisterExecutionHeartbeat" />
+          <RegisterAgent name="RegisterExecutionHeartbeat" ParentAgent="{config.Agent.ModuleId}" />
           <UpdateInventory name="HeartbeatInventory"
                            ModuleId="{config.Agent.ModuleName}"
                            ModuleName="{config.Agent.ModuleName}"
@@ -113,7 +113,7 @@
           <PublishNeighbors name="HeartbeatNeighbors"
                             ModuleId="{config.Agent.ModuleName}"
                             ModuleName="{config.Agent.ModuleName}" />
-          <Wait name="RegistrationWait" DelayMs="5000" />
+          <Wait name="RegistrationWait" DelayMs="{config.Agent.RegistrationIntervalMs}" />
         </Sequence>
       </Repeat>
 
@@ -245,7 +245,10 @@
       <input_port name="Value" />
       <input_port name="ValueType" default="string" />
     </Action>
-    <Action ID="RegisterSubHolon" />
+    <Action ID="RegisterAgent">
+      <input_port name="ParentAgent" />
+      <input_port name="Namespace" />
+    </Action>
     <Action ID="ConnectToModule">
       <input_port name="Endpoint" />
       <input_port name="TimeoutMs" />

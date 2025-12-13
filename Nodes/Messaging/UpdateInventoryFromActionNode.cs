@@ -8,6 +8,7 @@ using I40Sharp.Messaging.Models;
 using BaSyx.Models.AdminShell;
 using AasSharpClient.Models.Messages;
 using UAClient.Client;
+using MAS_BT.Nodes.ModuleHolon;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -201,16 +202,35 @@ public class UpdateInventoryNode : BTNode
             var inventoryCollection = new InventoryMessage(storageUnits);
             Logger.LogInformation("UpdateInventory: building InventoryMessage with {StorageCount} storages and {SlotCount} slots", 
                 storageUnits.Count, storageUnits.SelectMany(s => s.Slots ?? new List<Slot>()).Count());
+
+            // Summary collection: only two properties (free, occupied)
+            var (free, occupied) = CountFreeOccupied(storageUnits);
+            var summary = new SubmodelElementCollection("InventorySummary");
+            var freeProp = new Property("free", new DataType(DataObjectType.Integer));
+            freeProp.Value = new PropertyValue<int>(free);
+            var occupiedProp = new Property("occupied", new DataType(DataObjectType.Integer));
+            occupiedProp.Value = new PropertyValue<int>(occupied);
+            summary.Add(freeProp);
+            summary.Add(occupiedProp);
+
+            // Put the summary inside the StorageUnits collection to make it visible even
+            // when tooling only displays the first interaction element.
+            inventoryCollection.Add(summary);
+
+            var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
+            var moduleId = ModuleContextHelper.ResolveModuleId(Context);
+            var agentId = Context.Get<string>("config.Agent.AgentId") ?? Context.Get<string>("AgentId") ?? Context.AgentId;
+
             var message = new I40MessageBuilder()
-                .From($"{ModuleId}_Execution_Agent", "ExecutionAgent")
+                .From(agentId, "ExecutionAgent")
                 .To("Broadcast", "System")
                 .WithType("inventoryUpdate")
                 .AddElement(inventoryCollection)
                 .Build();
 
-            var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            var agentId = Context.Get<string>("config.Agent.AgentId") ?? Context.Get<string>("AgentId") ?? Context.AgentId;
-            var topic = $"/{ns}/{agentId}/Inventory";
+            // Publish on the module-holon convention so the ModuleHolon can cache it.
+            // (Subscribers typically listen on /{ns}/{moduleId}/Inventory)
+            var topic = $"/{ns}/{moduleId}/Inventory";
             await client.PublishAsync(message, topic);
             
             Logger.LogInformation("UpdateInventory: Published inventory to MQTT at {topic}", topic);
@@ -219,6 +239,28 @@ public class UpdateInventoryNode : BTNode
         {
             Logger.LogWarning(ex, "UpdateInventory: Failed to publish inventory");
         }
+    }
+
+    private static (int free, int occupied) CountFreeOccupied(IEnumerable<StorageUnit> storages)
+    {
+        var free = 0;
+        var occupied = 0;
+
+        foreach (var storage in storages ?? Enumerable.Empty<StorageUnit>())
+        {
+            foreach (var slot in storage.Slots ?? new List<Slot>())
+            {
+                var content = slot?.Content;
+                var isOccupied = content != null && (!content.IsSlotEmpty
+                    || !string.IsNullOrWhiteSpace(content.ProductID)
+                    || !string.IsNullOrWhiteSpace(content.CarrierID));
+
+                if (isOccupied) occupied++;
+                else free++;
+            }
+        }
+
+        return (free, occupied);
     }
     
     public override Task OnAbort()

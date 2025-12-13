@@ -13,6 +13,14 @@
     <StartupObject>MAS_BT.RunAgent</StartupObject>
   </PropertyGroup>
 
+  <!--
+    Prevent the main MAS-BT project from compiling the nested Tools project sources
+    (and its generated obj/** files), which otherwise leads to duplicate assembly attributes.
+  -->
+  <ItemGroup>
+    <Compile Remove="Tools/**" />
+  </ItemGroup>
+
   <ItemGroup>
 
     <ProjectReference Include="../I4.0-Sharp-Messaging/I40Sharp.Messaging/I40Sharp.Messaging.csproj" />

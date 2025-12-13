@@ -5,9 +5,10 @@
       <Retry name="InitRetry" maxRetries="{config.RetryInit}" backoffMs="1000">
         <Fallback name="InitWithErrorLogging">
           <Sequence name="ProductAgentInitializationSequence">
-            <ReadConfig name="LoadProductConfig" configPath="configs/product_agent.json" />
+            <ReadConfig name="LoadProductConfig" configPath="{config.Path}" />
             <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
             <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
+            <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
             <ConnectToMessagingBroker
               name="ConnectMqtt"
               BrokerHost="{config.MQTT.Broker}"

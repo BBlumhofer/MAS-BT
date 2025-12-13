@@ -57,9 +57,9 @@
 - Messaging Nodes
 ### Neu: StepUpdate, AwaitSkillResponse & ApplySkillResponse
 
-- `AwaitSkillResponseNode` wurde hinzugefügt: abonniert `/Modules/{ModuleId}/SkillResponse/` und legt Payloads in einer internen Queue ab; der Planning/Dispatch-Tree kann pro Tick prüfen, ob eine Antwort verfügbar ist.
+- `AwaitSkillResponseNode` wurde hinzugefügt: abonniert `/{Namespace}/{ModuleId}/SkillResponse` und legt Payloads in einer internen Queue ab; der Planning/Dispatch-Tree kann pro Tick prüfen, ob eine Antwort verfügbar ist.
 - `ApplySkillResponseNode` wurde hinzugefügt: extrahiert `ActionState` aus eingehenden SkillResponse-Nachrichten, setzt das entsprechende `Action`-Objekt und wendet Plan-Helper an (`ReturnActionToExecuting`, `ReturnActionToCompleted`, `ErrorAction` etc.).
-- `StepUpdateBroadcaster` (Service) wurde hinzugefügt: veröffentlicht die aktuelle `Step` (inkl. Actions) als I4.0 inform-Nachricht auf `/Modules/{ModuleId}/StepUpdate/` nachdem Aktionen oder der Step selbst aktualisiert wurden.
+- `StepUpdateBroadcaster` (Service) wurde hinzugefügt: veröffentlicht die aktuelle `Step` (inkl. Actions) als I4.0 inform-Nachricht auf `/{Namespace}/{ModuleId}/StepUpdate` nachdem Aktionen oder der Step selbst aktualisiert wurden.
 - Step-Synchronisation: Implementation der Regeln
   - Wenn die erste Action eines Steps `EXECUTING` wird → Step geht in `EXECUTING`.
   - Wenn alle Actions eines Steps `DONE` sind → Step wird `DONE`.
@@ -295,10 +295,13 @@ MAS-BT/
 1. 🔥 ContinuousHealthCheck/MonitorAndRecover bauen und `Init_and_ExecuteSkill.bt.xml` auf `RecoverySequence` umstellen.
 2. ✅ Dokumentation: `README.md` und `EXECUTION_AGENT_TODO.md` ergänzen mit StepUpdate/Response-Handling (erledigt).
 3. 🔎 E2E Test: Starte Planning + Execution Trees, verifiziere:
-  - SkillRequest wird veröffentlicht auf `/Modules/{ModuleId}/SkillRequest/`
-  - Execution Agent empfängt SkillRequest und sendet SkillResponse auf `/Modules/{ModuleId}/SkillResponse/`
+  - SkillRequest wird veröffentlicht auf `/{Namespace}/{ModuleId}/SkillRequest`
+  - Execution Agent empfängt SkillRequest und sendet SkillResponse auf `/{Namespace}/{ModuleId}/SkillResponse`
   - `AwaitSkillResponse` empfängt Responses, `ApplySkillResponse` aktualisiert Action- und Step-Zustände
-  - `/Modules/{ModuleId}/StepUpdate/` empfängt Step-Snapshots mit korrekten Step-Status.
+  - `/{Namespace}/{ModuleId}/StepUpdate` empfängt Step-Snapshots mit korrekten Step-Status.
+
+  Hinweis (Topic-Schema)
+  - Teile dieses Dokuments enthalten ältere Topic-Beispiele. Das aktuelle Schema ist Namespace-basiert (z. B. `/{Namespace}/{ModuleId}/SkillRequest`, `/{Namespace}/{ModuleId}/SkillResponse`, `/{Namespace}/{ModuleId}/StepUpdate`).
 2. 🔥 Recovery-Testbaum (Lock-Verlust + Startup Halted) und manuellen Runtime-Test fahren.
 3. 🔄 `SendMessageNode` auf echtes I4.0-Sharp-Messaging umbauen; MQTT-Integrationstests ergänzen.
 4. 🔄 `UpdateNeighborsFromAction`, `ReadInventoryMessage`, `ReadNeighborMessage` implementieren.

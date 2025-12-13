@@ -53,7 +53,7 @@ sudo journalctl -u mosquitto -f
 ```
 
 Suche nach:
-- korrekte ClientIds wie `P103_PlanningHolon`
+- korrekte ClientIds wie `P103_Planning_PlanningHolon` bzw. `P103_Execution_ExecutionHolon` (je nach Template)
 - KEINEN Literal-String wie `{config.Agent.AgentId}_{config.Agent.Role}`
 - Meldungen `Client <id> already connected, closing old connection` → Duplicate ClientId
 
@@ -66,6 +66,7 @@ Suche nach:
 - Duplicate ClientId / ständige Reconnects:
   - Ursache: mehrere Instanzen verwenden dieselbe ClientId.
   - Fix: `AgentId` eindeutig setzen in jeder Config; ClientId-Template nutzen.
+    - Empfehlung für Sub-Holons: `{ModuleId}_Planning` und `{ModuleId}_Execution` (z. B. `P103_Planning`, `P103_Execution`).
   - Workaround: Starte in Batches, erhöhe Broker-Logging und prüfe `max_connections`/Limits.
 
 - Broker-Ressourcen bzw. Netzwerkprobleme:
@@ -88,7 +89,8 @@ Stelle sicher, dass jede Agent-Config mindestens folgende Felder enthält:
 
 ```json
 "Agent": {
-  "AgentId": "P103",
+  "AgentId": "P103_Planning",
+  "ModuleId": "P103",
   "Role": "PlanningHolon",
   "ModuleName": "ScrewingStation"
 }

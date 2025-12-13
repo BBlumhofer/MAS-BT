@@ -12,7 +12,7 @@ public class ReadCachedSnapshotsNode : BTNode
 
     public override Task<NodeStatus> Execute()
     {
-        var moduleId = Context.Get<string>("config.Agent.ModuleName") ?? Context.Get<string>("ModuleId") ?? Context.AgentId;
+        var moduleId = ModuleContextHelper.ResolveModuleId(Context);
 
         var inventoryCache = Context.Get<CachedInventoryData>($"InventoryCache_{moduleId}");
         var neighborsCache = Context.Get<CachedNeighborsData>($"NeighborsCache_{moduleId}");

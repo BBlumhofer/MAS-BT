@@ -1,6 +1,7 @@
 {
   "Agent": {
-    "AgentId": "P104",
+    "AgentId": "P104_Planning",
+    "ModuleId": "P104",
     "ModuleName":"ScrewingStation",
     "Role": "PlanningHolon",
     "LogLevel": "Information",

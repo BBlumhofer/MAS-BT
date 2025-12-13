@@ -7,9 +7,11 @@
     "InitializationTree": "Trees/ModuleHolon.bt.xml",
     "RegistrationIntervalMs": 30000,
     "InitialSnapshotTimeoutMs": 10000,
-    "SnapshotPollDelayMs": 2500
+    "SnapshotPollDelayMs": 2500,
+    "HeartbeatIntervalSeconds": 30,
+    "StatePublishDelayMs": 1000
   },
-  "SubHolons": ["P102_Planning_agent"],
+  "SubHolons": ["P102_Planning_agent","P102_Execution_agent"],
   "AAS": {
     "SubmodelRepositoryEndpoint": "http://localhost:8080/submodels",
     "ShellRepositoryEndpoint": "http://localhost:8080/shells",

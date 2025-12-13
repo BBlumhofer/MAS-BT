@@ -1,5 +1,7 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 using MAS_BT.Core;
 using MAS_BT.Services;
@@ -50,6 +52,13 @@ public class WaitForMessageNode : BTNode
                 return NodeStatus.Failure;
             }
 
+            // Global queueing: try to consume a matching message that arrived while this node wasn't active.
+            // Do this before (re-)subscribing callbacks so we don't miss already-buffered messages.
+            if (TryConsumeFromClientInbox(client, out var bufferedMessage))
+            {
+                return HandleDequeuedMessage(bufferedMessage);
+            }
+
             // Subscribe to explicit topics if provided
             var topicsToSubscribe = ParseExpectedTopics();
             foreach (var topic in topicsToSubscribe)
@@ -60,7 +69,7 @@ public class WaitForMessageNode : BTNode
                     if (!string.IsNullOrWhiteSpace(resolvedTopic))
                     {
                         await client.SubscribeAsync(resolvedTopic);
-                        Logger.LogInformation("WaitForMessage[{Name}][{Inst}]: Subscribed to topic {Topic}", Name, _instanceId, resolvedTopic);
+                        Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Subscribed to topic {Topic}", Name, _instanceId, resolvedTopic);
                     }
                 }
                 catch (Exception ex)
@@ -74,14 +83,30 @@ public class WaitForMessageNode : BTNode
                 _usedConversationId = convToUse;
                 client.OnConversation(convToUse, msg =>
                 {
-                        try
+                    try
+                    {
+                        Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Conversation callback invoked (Type={Type}, Conv={Conv})", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId);
+
+                        // Filter by expected sender if configured
+                        if (!string.IsNullOrEmpty(ExpectedSender) && msg.Frame.Sender.Identification.Id != ExpectedSender)
                         {
-                            Logger.LogInformation("WaitForMessage[{Name}][{Inst}]: Conversation callback invoked (Type={Type}, Conv={Conv})", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId);
-                            _messageQueue.Enqueue(msg);
-                            Logger.LogInformation("WaitForMessage[{Name}][{Inst}]: Enqueued message (Type={Type}, Conv={Conv}) - QueueCount={Count}", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId, _messageQueue.Count);
-                            _readyMessage = msg;
-                            _hasReadyMessage = true;
+                            Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Conversation sender mismatch - expected {ExpectedSender}, got {Sender}", Name, _instanceId, ExpectedSender, msg.Frame.Sender.Identification.Id);
+                            return;
                         }
+
+                        // If the node configured specific expected types, only accept those (ignore the original 'callForProposal' ASK)
+                        var expectedTypes = ParseExpectedTypes();
+                        if (expectedTypes.Count > 0 && !string.IsNullOrEmpty(msg.Frame.Type) && !expectedTypes.Contains(msg.Frame.Type, StringComparer.OrdinalIgnoreCase))
+                        {
+                            Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Conversation message type '{MsgType}' not in expected types ({Types}) - ignoring", Name, _instanceId, msg.Frame.Type, string.Join(',', expectedTypes));
+                            return;
+                        }
+
+                        _messageQueue.Enqueue(msg);
+                        Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Enqueued message (Type={Type}, Conv={Conv}) - QueueCount={Count}", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId, _messageQueue.Count);
+                        _readyMessage = msg;
+                        _hasReadyMessage = true;
+                    }
                     catch (Exception ex)
                     {
                         Logger.LogError(ex, "WaitForMessage[{Name}]: Exception in conversation callback", Name);
@@ -122,15 +147,33 @@ public class WaitForMessageNode : BTNode
                         });
                         Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Subscribed to message type {Type}", Name, _instanceId, typeTrim);
                     }
+
+                    var displayTopics = ParseExpectedTopics()
+                        .Select(t => ResolvePlaceholders(t))
+                        .Where(t => !string.IsNullOrWhiteSpace(t))
+                        .Distinct(StringComparer.Ordinal)
+                        .ToList();
+
+                    var displayTopic = displayTopics.Count > 0
+                        ? string.Join(",", displayTopics)
+                        : "any";
+
+                    Logger.LogDebug(
+                        "WaitForMessage[{Name}][{Inst}]: Waiting for message (Types: {Types}, Sender: {Sender}, Topic: {Topic})",
+                        Name,
+                        _instanceId,
+                        string.Join(",", expectedTypes),
+                        string.IsNullOrWhiteSpace(ExpectedSender) ? "any" : ExpectedSender,
+                        displayTopic);
                 }
                 else
                 {
                     // Fallback: register global message callback
-                    client.OnMessage(msg =>
+                        client.OnMessage(msg =>
                     {
                         try
                         {
-                            Logger.LogInformation("WaitForMessage[{Name}][{Inst}]: Global callback invoked (Type={Type}, Conv={Conv})", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId);
+                            Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Global callback invoked (Type={Type}, Conv={Conv})", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId);
                             if (!string.IsNullOrEmpty(ExpectedSender) && msg.Frame.Sender.Identification.Id != ExpectedSender)
                             {
                                 Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Sender mismatch - expected {ExpectedSender}, got {Sender}", Name, _instanceId, ExpectedSender, msg.Frame.Sender.Identification.Id);
@@ -141,12 +184,12 @@ public class WaitForMessageNode : BTNode
                             var types = ParseExpectedTypes();
                             if (types.Count > 0 && !types.Contains(msg.Frame.Type, StringComparer.OrdinalIgnoreCase))
                             {
-                                Logger.LogInformation("WaitForMessage[{Name}]: Type {Type} not in expected list", Name, msg.Frame.Type);
+                                Logger.LogDebug("WaitForMessage[{Name}]: Type {Type} not in expected list", Name, msg.Frame.Type);
                                 return;
                             }
 
                             _messageQueue.Enqueue(msg);
-                            Logger.LogInformation("WaitForMessage[{Name}][{Inst}]: Enqueued message (Type={Type}, Conv={Conv}) - QueueCount={Count}", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId, _messageQueue.Count);
+                            Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Enqueued message (Type={Type}, Conv={Conv}) - QueueCount={Count}", Name, _instanceId, msg.Frame.Type, msg.Frame.ConversationId, _messageQueue.Count);
                             _readyMessage = msg;
                             _hasReadyMessage = true;
                         }
@@ -156,7 +199,7 @@ public class WaitForMessageNode : BTNode
                         }
                     });
 
-                    Logger.LogInformation("WaitForMessage[{Name}][{Inst}]: Waiting for message (Type: {Type}, Sender: {Sender})", Name, _instanceId, ExpectedTypes ?? "any", ExpectedSender ?? "any");
+                    Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Waiting for message (Type: {Type}, Sender: {Sender})", Name, _instanceId, ExpectedTypes ?? "any", ExpectedSender ?? "any");
                 }
             }
 
@@ -183,12 +226,77 @@ public class WaitForMessageNode : BTNode
             return HandleDequeuedMessage(ready);
         }
 
+        // Global queueing: after subscriptions are set up, check inbox again.
+        {
+            var client = Context.Get<MessagingClient>("MessagingClient");
+            if (client != null && TryConsumeFromClientInbox(client, out var bufferedMessage))
+            {
+                return HandleDequeuedMessage(bufferedMessage);
+            }
+        }
+
         if (_messageQueue.TryDequeue(out var queuedMessage))
         {
             return HandleDequeuedMessage(queuedMessage);
         }
         
         return NodeStatus.Running;
+    }
+
+    private bool TryConsumeFromClientInbox(MessagingClient client, out I40Message message)
+    {
+        message = null!;
+
+        var expectedTypes = ParseExpectedTypes();
+        var expectedTopics = ParseExpectedTopics()
+            .Select(t => ResolvePlaceholders(t))
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var expectedConv = ResolveConversationIdFromInput();
+        var expectedSender = string.IsNullOrWhiteSpace(ExpectedSender) ? null : ExpectedSender;
+
+        if (client.TryDequeueMatching((msg, topic) =>
+            {
+                // topic filter
+                if (expectedTopics.Count > 0 && !expectedTopics.Contains(topic, StringComparer.Ordinal))
+                {
+                    return false;
+                }
+
+                // sender filter
+                if (!string.IsNullOrWhiteSpace(expectedSender) && msg.Frame?.Sender?.Identification?.Id != expectedSender)
+                {
+                    return false;
+                }
+
+                // conversation filter
+                if (!string.IsNullOrWhiteSpace(expectedConv) && !string.Equals(msg.Frame?.ConversationId, expectedConv, StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                // type filter
+                if (expectedTypes.Count > 0)
+                {
+                    var msgType = msg.Frame?.Type ?? string.Empty;
+                    if (!expectedTypes.Contains(msgType, StringComparer.OrdinalIgnoreCase))
+                    {
+                        return false;
+                    }
+                }
+
+                return true;
+            }, out var dequeued, out var dequeuedTopic))
+        {
+            Context.Set("LastReceivedTopic", dequeuedTopic);
+            Context.Set("CurrentTopic", dequeuedTopic);
+            message = dequeued;
+            return true;
+        }
+
+        return false;
     }
     
     public override Task OnAbort()
@@ -237,23 +345,38 @@ public class WaitForMessageNode : BTNode
 
     private NodeStatus HandleDequeuedMessage(I40Message message)
     {
+        // Many downstream nodes (e.g., CalcEmbedding/CalcCosineSimilarity/SendResponseMessage)
+        // expect the currently handled request under "CurrentMessage".
+        // Keep "LastReceivedMessage" for backwards compatibility with other flows.
         Context.Set("LastReceivedMessage", message);
+        Context.Set("CurrentMessage", message);
         var receivedConv = message.Frame.ConversationId ?? string.Empty;
         var expectedConv = _usedConversationId ?? string.Empty;
-        if (!string.IsNullOrEmpty(expectedConv))
-        {
-            if (string.Equals(expectedConv, receivedConv, StringComparison.Ordinal))
+            if (!string.IsNullOrEmpty(expectedConv))
             {
-                Logger.LogInformation("WaitForMessage: Received matching message for conversation '{Conv}' from '{Sender}'", receivedConv, message.Frame.Sender.Identification.Id);
+                if (string.Equals(expectedConv, receivedConv, StringComparison.Ordinal))
+                {
+                    string serialized = string.Empty;
+                    try
+                    {
+                        var options = new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
+                        serialized = JsonSerializer.Serialize(message, options);
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogDebug(ex, "WaitForMessage: Failed to serialize message for logging (Conv={Conv})", receivedConv);
+                    }
+
+                    Logger.LogInformation("WaitForMessage: Received matching message for conversation '{Conv}' from '{Sender}'. Message: {Message}", receivedConv, message.Frame.Sender.Identification.Id, serialized);
+                }
+                else
+                {
+                    Logger.LogWarning("WaitForMessage: Received message for conversation '{ReceivedConv}' but expected '{ExpectedConv}' — ignoring", receivedConv, expectedConv);
+                }
             }
-            else
-            {
-                Logger.LogWarning("WaitForMessage: Received message for conversation '{ReceivedConv}' but expected '{ExpectedConv}' — ignoring", receivedConv, expectedConv);
-            }
-        }
         else
         {
-            Logger.LogInformation("WaitForMessage: Received message from '{Sender}' (no expected conversation)", message.Frame.Sender.Identification.Id);
+            Logger.LogDebug("WaitForMessage: Received message from '{Sender}' (no expected conversation)", message.Frame.Sender.Identification.Id);
         }
         var msgType = message.Frame.Type ?? string.Empty;
         if (string.Equals(msgType, "proposal", StringComparison.OrdinalIgnoreCase))

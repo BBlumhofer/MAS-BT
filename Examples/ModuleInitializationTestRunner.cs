@@ -45,8 +45,9 @@ public class ModuleInitializationTestRunner
         var agentId = GetConfigValue(config, "Agent.AgentId", "TestAgent");
         var agentRole = GetConfigValue(config, "Agent.Role", "ResourceHolon");
         var moduleId = GetConfigValue(config, "Agent.ModuleId", null)
-                       ?? GetConfigValue(config, "Agent.ModuleName", null)
-                       ?? agentId;
+                   ?? agentId;
+        var moduleName = GetConfigValue(config, "Agent.ModuleName", null)
+                 ?? moduleId;
         var mqttBroker = GetConfigValue(config, "MQTT.Broker", "localhost");
         var mqttPort = GetConfigInt(config, "MQTT.Port", 1883);
         var preconditionRetries = GetConfigInt(config, "Execution.MaxPreconditionRetries", 10);
@@ -56,6 +57,7 @@ public class ModuleInitializationTestRunner
         Console.WriteLine($"   OPC UA Endpoint: {opcuaEndpoint}");
         Console.WriteLine($"   OPC UA Username: {opcuaUsername}");
         Console.WriteLine($"   Module ID: {moduleId}");
+        Console.WriteLine($"   Module Name: {moduleName}");
         Console.WriteLine($"   Agent ID: {agentId}");
         Console.WriteLine($"   MQTT Broker: {mqttBroker}:{mqttPort}");
         Console.WriteLine();
@@ -108,7 +110,10 @@ public class ModuleInitializationTestRunner
         context.Set("config.OPCUA.Endpoint", opcuaEndpoint);
         context.Set("config.OPCUA.Username", opcuaUsername);
         context.Set("config.OPCUA.Password", opcuaPassword);
-        context.Set("config.Agent.ModuleName", moduleId);
+        // IMPORTANT: ModuleId is the holon/module identifier in our messaging domain (e.g. 'P102').
+        // ModuleName is the RemoteServer/OPC-UA module name (e.g. 'AssemblyStation').
+        context.Set("config.Agent.ModuleId", moduleId);
+        context.Set("config.Agent.ModuleName", moduleName);
         // Expose AgentId and Role in config.* keys so placeholder resolution works
         context.Set("config.Agent.AgentId", agentId);
         context.Set("config.Agent.Role", agentRole);

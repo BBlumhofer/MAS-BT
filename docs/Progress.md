@@ -4,7 +4,7 @@
 - Skill preconditions are now evaluated before ExecuteSkill runs: module must be coupled, locked, startup skill running, and custom `InStorage` conditions must resolve against current storages; unmet conditions cause the request to re-queue instead of failing.
 - Skill execution no longer refuses when the module is unlocked: ExecuteSkill, Ready-State monitoring, and MQTT dequeueing now requeue the SkillRequest until the lock is reacquired, preventing duplicate error responses.
 - Execution queue now persists full SkillRequest envelopes (raw I4.0 message + metadata) so responses always carry the correct conversation/product ID and sender/receiver pair.
-- Action queue snapshots are now published to `/Modules/{ModuleId}/ActionQueue/` whenever the queue changes; each message contains metadata for every pending action.
+- Action queue snapshots are now published to `/{Namespace}/{ModuleId}/ActionQueue` whenever the queue changes; each message contains metadata for every pending action.
 - Messaging serializer now uses BaSyx FullSubmodelElementConverter + JsonStringEnumConverter; interactionElements include `value` fields again (logs, state, inventory, neighbor, skill messages).
 - SkillRequest parsing builds a BaSyx `SubmodelElementCollection` and `AasSharpClient.Models.Action`; input parameters are auto-typed (strings like "true" become bool) to avoid OPC UA BadTypeMismatch.
 - Log messages sent via `SendLogMessageNode` now carry populated values; MQTT payload matches the AAS-Sharp-Client examples.
@@ -75,29 +75,26 @@ Wenn du möchtest, implementiere ich als nächstes die `ActionUpdate`-Publizieru
 
 ## Inventory MQTT — Status (2025-12-09)
 
-- **Kurzfassung:** Storage-Änderungen werden jetzt über den Skill-Client (RemoteServer) erfasst und über MQTT veröffentlicht. Der Publisher verwendet das Topic `/Modules/{ModuleId}/Inventory/`.
-- **Implementierung:** Die Klasse `StorageMqttNotifier` wird während der Modulverbindung in `ConnectToModule` registriert. Sie abonniert Storages/Slots über `RemoteServer.SubscriptionManager`, loggt eingehende Änderungen und veröffentlicht ein `InventoryMessage`-Payload an das oben genannte Topic.
-- **Diagnose:** Beim Eintreten einer Speicheränderung werden Logeinträge erzeugt, z. B. "detected storage change for module {ModuleId} — publishing to topic /Modules/{ModuleId}/Inventory/". Fehler beim Publish werden ebenfalls geloggt.
+- **Kurzfassung:** Storage-Änderungen werden über MQTT veröffentlicht. Das aktuelle Topic-Schema ist `/{Namespace}/{ModuleId}/Inventory`.
+- **Payload:** Inventory-Nachrichten enthalten `StorageUnits` und zusätzlich eine kompakte `InventorySummary` (free/occupied) innerhalb von `StorageUnits`.
+- **Diagnose:** Logs sollten Publishes an `/{Namespace}/{ModuleId}/Inventory` zeigen.
 - **Verifikation:**
 	- Starte das Beispiel-Tree oder den Agenten, z. B. `dotnet run -- Examples/ActionExecutionTest.bt.xml` im `MAS-BT`-Ordner.
-	- Prüfe die Agent-Logs auf Meldungen wie: `published storage change to topic /Modules/{module}/Inventory/` oder auf Warnungen über fehlende Subscriptions.
+	- Prüfe die Agent-Logs auf Meldungen wie: `published inventory to topic /<ns>/<module>/Inventory` oder auf Warnungen über fehlende Subscriptions.
 	- Prüfe deinen MQTT-Broker (z. B. mit `mosquitto_sub`):
 
 ```bash
-# Beispiel: abonniere Inventory-Topic für Modul `TestAgent`
-mosquitto_sub -t "/Modules/TestAgent/Inventory/#" -v
+# Beispiel: abonniere Inventory-Topic für Modul `P102` im Namespace `phuket`
+mosquitto_sub -t "/phuket/P102/Inventory" -v
 ```
 
 	- Wenn keine Nachrichten ankommen: prüfe die Agent-Logs auf Publish-Fehler (Connectivity/Authentication) und die Ausgabe von `StorageMqttNotifier` (Anzahl Subscriptions, Null-Guards).
 
 - **Bekannte Punkte:**
-	- `EnableStorageChangeMqttNode` ist ein No-Op; Registrierung erfolgt in `ConnectToModule`.
-	- Topic wurde von früheren Testwerten zurück auf `/Modules/{ModuleId}/Inventory/` korrigiert.
+	- Ältere Beispiele mit `/Modules/...` sind veraltet; bitte `/{Namespace}/{ModuleId}/Inventory` verwenden.
 
 - **Update (Debounce & Logs):**
-	- **Coalescing / Debounce:** Storage-Änderungen werden jetzt kohärent gebündelt (Debounce ~150 ms) in `StorageMqttNotifier`. Das verhindert schnelle Mehrfach-Publishes bei sequenziellen OPC UA-Ävents — nur eine zusammengefasste `InventoryMessage` pro Storage-Burst wird gesendet.
-	- **Separates Log-Topic:** Diagnose-/Kurztexte (~LogMessage) werden nicht mehr als Inventory-Payload gesendet, sondern separat an `/Modules/{ModuleId}/Logs/` publiziert.
-	- **Tuning:** Debounce-Wert (`_debounceMs`) ist in `StorageMqttNotifier` gesetzt (Default 150 ms). Erhöhung auf 300–500 ms reduziert Publishes bei hochfrequenten Updates; erniedrigen wenn Latenz wichtiger ist.
+	- **Coalescing / Debounce:** Storage-Änderungen sollten gebündelt werden, um schnelle Mehrfach-Publishes zu vermeiden.
 
 - **Lock-Retry Diagnose:**
 	- `LockResourceNode` enthält nun zusätzliche Debug-Logs (enableRetry, TimeoutSeconds, RetryDelaySeconds, deadline, attempt). Diese helfen zu erkennen, warum beim Initialisieren kein Retry ausgelöst wurde (z. B. Modul bereits durch Dritten gelockt).
@@ -110,7 +107,7 @@ mosquitto_sub -t "/Modules/TestAgent/Inventory/#" -v
 dotnet run -- Examples/ActionExecutionTest.bt.xml
 ```
 
-	- Achte auf je Storage-Burst genau eine `published inventory to topic /Modules/<Module>/Inventory/`-Zeile und eine `published log to topic /Modules/<Module>/Logs/`.
+	- Achte auf je Storage-Burst genau eine `published inventory to topic /<ns>/<module>/Inventory`-Zeile.
 	- Prüfe Lock-Diagnose-Logs bei Initialisierung, z. B. `LockResource: timeoutSeconds=...` und `LockResource: attempt=...`.
 
 

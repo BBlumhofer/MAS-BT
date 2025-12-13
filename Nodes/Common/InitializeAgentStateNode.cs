@@ -1,22 +1,32 @@
 using System;
 using System.Text.Json;
-using AasSharpClient.Messages;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 
-namespace MAS_BT.Nodes.Dispatching
+namespace MAS_BT.Nodes.Common
 {
     /// <summary>
-    /// Ensures a dispatching state is available in the BT context and pre-populated from config.
+    /// Generic initialization node.
+    /// - For dispatching roles: ensures DispatchingState exists and seeds it from config.DispatchingAgent.Modules.
+    /// - For all other roles: ensures DispatchingState exists (no seeding).
     /// </summary>
-    public class InitializeDispatchingStateNode : BTNode
+    public class InitializeAgentStateNode : BTNode
     {
-        public InitializeDispatchingStateNode() : base("InitializeDispatchingState") { }
+        public string Role { get; set; } = string.Empty;
+
+        public InitializeAgentStateNode() : base("InitializeAgentState") { }
 
         public override Task<NodeStatus> Execute()
         {
+            var role = !string.IsNullOrWhiteSpace(Role) ? ResolveTemplates(Role) : (Context.AgentRole ?? string.Empty);
+
             var state = Context.Get<DispatchingState>("DispatchingState") ?? new DispatchingState();
             Context.Set("DispatchingState", state);
+
+            if (!role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase))
+            {
+                return Task.FromResult(NodeStatus.Success);
+            }
 
             try
             {
@@ -33,12 +43,12 @@ namespace MAS_BT.Nodes.Dispatching
                     }
                 }
 
-                Logger.LogInformation("InitializeDispatchingState: loaded {Count} modules from config", state.Modules.Count);
+                Logger.LogInformation("InitializeAgentState: loaded {Count} modules from config", state.Modules.Count);
                 return Task.FromResult(NodeStatus.Success);
             }
             catch (Exception ex)
             {
-                Logger.LogWarning(ex, "InitializeDispatchingState: failed to load modules from config");
+                Logger.LogWarning(ex, "InitializeAgentState: failed to load modules from config");
                 return Task.FromResult(NodeStatus.Failure);
             }
         }
@@ -46,14 +56,18 @@ namespace MAS_BT.Nodes.Dispatching
         private DispatchingModuleInfo? ParseModule(JsonElement element)
         {
             if (element.ValueKind != JsonValueKind.Object)
+            {
                 return null;
+            }
 
             var moduleId = element.TryGetProperty("ModuleId", out var idElem) && idElem.ValueKind == JsonValueKind.String
                 ? idElem.GetString()
                 : null;
 
             if (string.IsNullOrWhiteSpace(moduleId))
+            {
                 return null;
+            }
 
             var info = new DispatchingModuleInfo
             {
@@ -87,6 +101,28 @@ namespace MAS_BT.Nodes.Dispatching
             }
 
             return info;
+        }
+
+        private string ResolveTemplates(string value)
+        {
+            if (string.IsNullOrEmpty(value) || !value.Contains('{')) return value;
+
+            var result = value;
+            var startIndex = 0;
+            while (startIndex < result.Length)
+            {
+                var openBrace = result.IndexOf('{', startIndex);
+                if (openBrace == -1) break;
+                var closeBrace = result.IndexOf('}', openBrace);
+                if (closeBrace == -1) break;
+
+                var placeholder = result.Substring(openBrace + 1, closeBrace - openBrace - 1);
+                var replacement = Context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+                result = result.Substring(0, openBrace) + replacement + result.Substring(closeBrace + 1);
+                startIndex = openBrace + replacement.Length;
+            }
+
+            return result;
         }
     }
 }

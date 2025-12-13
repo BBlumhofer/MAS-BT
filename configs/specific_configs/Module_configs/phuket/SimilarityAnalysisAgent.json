@@ -1,0 +1,36 @@
+{
+  "Agent": {
+    "AgentId": "SimilarityAnalysisAgent_phuket",
+    "Role": "AIAgent",
+    "AgentType": "SimilarityAnalysisAgent",
+    "ParentAgent": "DispatchingAgent_phuket",
+    "LogLevel": "Information",
+    "InitializationTree": "Trees/SimilarityAnalysisAgent.bt.xml",
+    "HeartbeatIntervalSeconds": 30,
+    "Capabilities": ["CalcSimilarity"]
+  },
+  "Namespace": "phuket",
+  "MQTT": {
+    "Broker": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "ClientId": "SimilarityAnalysisAgent_phuket",
+    "UseTLS": false,
+    "UseAuth": false,
+    "TopicPrefix": "i40/production",
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000
+  },
+  "Ollama": {
+    "Endpoint": "http://localhost:11434",
+    "Model": "nomic-embed-text",
+    "Timeout": 30000
+  },
+  "SimilarityAnalysis": {
+    "MaxInteractionElements": 2,
+    "MinSimilarityThreshold": 0.0
+  }
+}

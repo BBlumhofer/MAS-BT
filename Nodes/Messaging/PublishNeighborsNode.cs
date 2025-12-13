@@ -7,6 +7,7 @@ using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using AasSharpClient.Models.Messages;
+using MAS_BT.Nodes.ModuleHolon;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -29,21 +30,20 @@ public class PublishNeighborsNode : BTNode
         }
 
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var moduleName = !string.IsNullOrWhiteSpace(ModuleName) ? ModuleName : ModuleId;
-        if (string.IsNullOrWhiteSpace(moduleName))
-        {
-            moduleName = Context.Get<string>("config.Agent.ModuleName") ?? Context.Get<string>("ModuleId") ?? Context.AgentId;
-        }
+        var moduleId = ModuleContextHelper.ResolveModuleId(Context);
+        var moduleName = Context.Get<string>("config.Agent.ModuleName") ?? moduleId;
 
         var neighbors = Context.Get<List<string>>("Neighbors") ?? new List<string>();
         var agentId = Context.Get<string>("config.Agent.AgentId") ?? Context.Get<string>("AgentId") ?? Context.AgentId;
-        var topic = $"/{ns}/{agentId}/Neighbors";
+
+        // Publish on the module-holon convention so the ModuleHolon can cache it.
+        var topic = $"/{ns}/{moduleId}/Neighbors";
 
         try
         {
             var neighborsCollection = new NeighborMessage(neighbors);
             var msg = new I40MessageBuilder()
-                .From($"{moduleName}_Execution_Agent", "ExecutionAgent")
+                .From(agentId, "ExecutionAgent")
                 .To("Broadcast", "System")
                 .WithType("neighborsUpdate")
                 .AddElement(neighborsCollection)

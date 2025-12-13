@@ -43,58 +43,52 @@ DispatchingAgent: /Company/
 
 ### 2.1 Modul-Registrierung
 
-Untergeordnete Module (bzw. deren Planning Agents) registrieren sich beim Dispatching Agent mit folgenden Informationen:
+Untergeordnete Module (ModuleHolons) registrieren sich beim Dispatching Agent über MQTT.
 
-**Registrierungsnachricht (ModuleRegistration):**
+Topic-Konventionen (Namespace-basiert)
+- ModuleHolon → DispatchingAgent: `/{Namespace}/DispatchingAgent/register` (MessageType: `registerMessage`)
+- DispatchingAgent → Namespace (aggregierter Snapshot): `/{Namespace}/register` (MessageType: `registerMessage`)
+
+**Registrierungsnachricht (RegisterMessage, standardisiert):**
 ```json
 {
   "frame": {
     "sender": {
-      "identification": { "id": "Module1_Planning_Agent" },
-      "role": { "name": "PlanningAgent" }
+      "identification": { "id": "Module1" },
+      "role": { "name": "ModuleHolon" }
     },
     "receiver": {
       "identification": { "id": "DispatchingAgent_Line1" },
       "role": { "name": "DispatchingAgent" }
     },
-    "type": "inform",
+    "type": "registerMessage",
     "conversationId": "registration-Module1-20231210"
   },
   "interactionElements": [
     {
       "modelType": "SubmodelElementCollection",
-      "idShort": "ModuleRegistration",
+      "idShort": "RegisterMessage",
       "value": [
         {
           "modelType": "Property",
-          "idShort": "ModuleId",
+          "idShort": "AgentId",
           "value": "Module1",
           "valueType": "xs:string"
         },
         {
-          "modelType": "Property",
-          "idShort": "AasId",
-          "value": "https://smartfactory.de/shells/Module1",
-          "valueType": "xs:string"
-        },
-        {
           "modelType": "SubmodelElementList",
-          "idShort": "Neighbors",
+          "idShort": "Subagents",
           "value": [
-            { "value": "Module2", "valueType": "xs:string", "modelType": "Property" },
-            { "value": "Module3", "valueType": "xs:string", "modelType": "Property" }
+            { "value": "Module1_Planning", "valueType": "xs:string", "modelType": "Property" },
+            { "value": "Module1_Execution", "valueType": "xs:string", "modelType": "Property" }
           ]
         },
         {
-          "modelType": "SubmodelElementCollection",
-          "idShort": "CurrentInventory",
-          "value": [ /* Storage-Snapshot wie im StateSummary */ ]
-        },
-        {
-          "modelType": "Property",
-          "idShort": "State",
-          "value": "Active",
-          "valueType": "xs:string"
+          "modelType": "SubmodelElementList",
+          "idShort": "Capabilities",
+          "value": [
+            { "value": "Drilling", "valueType": "xs:string", "modelType": "Property" }
+          ]
         }
       ]
     }
@@ -104,9 +98,17 @@ Untergeordnete Module (bzw. deren Planning Agents) registrieren sich beim Dispat
 
 **Aus der Registrierung baut der Dispatching Agent:**
 - **Modul-Registry:** Map von ModuleId → ModuleInfo
-- **Capability-Index:** Map von CapabilityType → List<ModuleId> (aus AAS CapabilityDescription)
-- **Topologie-Graph:** Nachbarschaftsbeziehungen für Transportplanung
-- **Inventory-Snapshot:** Aktueller Lagerbestand je Modul
+- **Capability-Index:** Map von CapabilityType → List<ModuleId>
+
+Wichtig (Capabilities & Inventory getrennt)
+- Die `RegisterMessage` enthält **keinen** vollständigen Capability-Container und **kein** detailliertes Inventory.
+- Vollständige Capabilities werden separat publiziert: `/{Namespace}/{ModuleId}/Capabilities`.
+- Inventory-Updates kommen separat: `/{Namespace}/{ModuleId}/Inventory` (MessageType i. d. R. `inventoryUpdate`).
+  - Diese Nachrichten enthalten zusätzlich eine `InventorySummary` (free/occupied) innerhalb von `StorageUnits`.
+
+Timeout-basierte Deregistrierung
+- Der Dispatcher entfernt Module automatisch aus seinem Registry-State, wenn sie länger als `DispatchingAgent.AgentTimeoutSeconds` nicht mehr „gesehen“ wurden.
+- Dadurch werden `Subagents`, aggregierte `Capabilities` und die aggregierte `InventorySummary` in der Dispatcher-Namespace-Registration automatisch bereinigt.
 
 ### 2.2 Abruf der AAS-Daten
 
@@ -596,17 +598,17 @@ ProductAgent                DispatchingAgent           PlanningAgent(Module1)   
 ### 5.2 Dispatching Agent ↔ Planning Agent
 
 **Topics:**
-- **Request Offer:** `/DispatchingAgent/{Namespace}/ModuleOffers/{ModuleId}/Request/`
-- **Offer Response:** `/DispatchingAgent/{Namespace}/ModuleOffers/{ModuleId}/Response/`
-- **Schedule Action:** `/Modules/{ModuleId}/ScheduleAction/`
-- **Booking Confirmation:** `/Modules/{ModuleId}/BookingConfirmation/`
+- **Request Offer (Broadcast):** `/{Namespace}/DispatchingAgent/Offer`
+- **Offer Response:** `/{Namespace}/DispatchingAgent/Offers`
+- **Schedule Action:** `/{Namespace}/{ModuleId}/ScheduleAction`
+- **Booking Confirmation:** `/{Namespace}/{ModuleId}/BookingConfirmation`
 
 **Nachrichtenformat (RequestOffer):**
 ```json
 {
   "frame": {
     "sender": { "identification": { "id": "DispatchingAgent_Line1" } },
-    "receiver": { "identification": { "id": "Module1_Planning_Agent" } },
+    "receiver": { "identification": { "id": "Broadcast" } },
     "type": "request",
     "conversationId": "offer-12345-step0"
   },
@@ -629,7 +631,7 @@ ProductAgent                DispatchingAgent           PlanningAgent(Module1)   
 ```json
 {
   "frame": {
-    "sender": { "identification": { "id": "Module1_Planning_Agent" } },
+    "sender": { "identification": { "id": "Module1" } },
     "receiver": { "identification": { "id": "DispatchingAgent_Line1" } },
     "type": "consent",  // oder "refuse"
     "conversationId": "offer-12345-step0"
@@ -746,7 +748,7 @@ ProductAgent --> DispatchingAgent(/Company/)
         <!-- 5. Module Registration Handler -->
         <RepeatUntilFailure name="RegistrationHandler">
           <Sequence>
-            <WaitForMessage Topic="/DispatchingAgent/{Namespace}/ModuleRegistration/" Timeout="5000"/>
+            <WaitForMessage Topic="/{Namespace}/DispatchingAgent/register" Timeout="5000"/>
             <RegisterModule/>
             <FetchCapabilityDescription ModuleId="{ModuleId}" AasId="{AasId}"/>
             <UpdateCapabilityIndex/>
@@ -895,8 +897,8 @@ ProductAgent --> DispatchingAgent(/Company/)
 
 ### 8.1 Configuration Nodes
 
-- **`SubscribeToRegistrationTopic`**: Abonniert `/DispatchingAgent/{Namespace}/ModuleRegistration/`
-- **`RegisterModule`**: Parst ModuleRegistration-Message und speichert in ModuleRegistry
+- **`SubscribeToRegistrationTopic`**: Abonniert `/{Namespace}/DispatchingAgent/register`
+- **`RegisterModule`**: Parst `RegisterMessage` und speichert in ModuleRegistry
 - **`FetchCapabilityDescription`**: Lädt CapabilityDescription aus AAS via `AasSharpClient`
 - **`UpdateCapabilityIndex`**: Fügt Modul-Capabilities zum Index hinzu
 
@@ -1099,8 +1101,8 @@ Planning Agent erhält neue Topics und Nodes:
 **Topics:**
 - Subscribe: `/DispatchingAgent/{Namespace}/ModuleOffers/{ModuleId}/Request/`
 - Publish: `/DispatchingAgent/{Namespace}/ModuleOffers/{ModuleId}/Response/`
-- Subscribe: `/Modules/{ModuleId}/ScheduleAction/`
-- Publish: `/Modules/{ModuleId}/BookingConfirmation/`
+- Subscribe: `/{Namespace}/{ModuleId}/ScheduleAction`
+- Publish: `/{Namespace}/{ModuleId}/BookingConfirmation`
 
 **Neue Nodes:**
 - **`ReceiveOfferRequest`**: Empfängt OfferRequest vom DispatchingAgent

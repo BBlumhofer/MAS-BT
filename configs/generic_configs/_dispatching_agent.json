@@ -27,6 +27,12 @@
     "ShellRepositoryEndpoint": "http://localhost:8080/shells",
     "Timeout": 10000
   },
+  "Neo4j": {
+    "Uri": "bolt://localhost:7687",
+    "Username": "neo4j",
+    "Password": "neo4j",
+    "Database": "neo4j"
+  },
   "DispatchingAgent": {
     "Modules": [
       {
@@ -41,6 +47,11 @@
         "Capabilities": ["Buffer", "Store"],
         "Neighbors": ["Module_Assembly_01"]
       }
-    ]
+    ],
+    "UseSimilarityFiltering": false,
+    "CapabilitySimilarityThreshold": 0.75,
+    "DescriptionTimeoutMs": 30000,
+    "SimilarityTimeoutMs": 30000,
+    "SimilarityAgentId": "SimilarityAnalysisAgent_phuket"
   }
 }

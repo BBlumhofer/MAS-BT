@@ -4,7 +4,7 @@
 - **Product Agent** (`configs/specific_configs/product_agent.json`) sendet `callForProposal` auf `/phuket/ProcessChain`.
 - **Dispatching Agent** (`configs/specific_configs/dispatching_agent.json`) empfängt den CfP, analysiert ihn und publiziert pro Fähigkeit eine CfP-Nachricht auf `/phuket/DispatchingAgent/Offer`.
 - **ModuleHolon P102** (`configs/specific_configs/Module_configs/P102/P102.json`) lauscht auf `/phuket/DispatchingAgent/Offer` und muss jede CfP an seinen internen Planning Agent weiterreichen.
-- **Planning Agent P102** (`configs/specific_configs/Module_configs/P102/P102_Planning_agent.json`) erwartet `callForProposal` auf `/phuket/P102/PlanningAgent/OfferRequest` (sowie auf der Alias-Adresse `/phuket/AssemblyStation/...`) und antwortet mit `proposal`.
+- **Planning Agent P102** (`configs/specific_configs/Module_configs/P102/P102_Planning_agent.json`, `AgentId: P102_Planning`) erwartet `callForProposal` auf `/phuket/P102/PlanningAgent/OfferRequest` (sowie auf der Alias-Adresse `/phuket/AssemblyStation/...`) und antwortet mit `proposal`.
 
 ## Änderungen am Code (Stand 12.12.)
 1. **Alias-Unterstützung für Modul-IDs**

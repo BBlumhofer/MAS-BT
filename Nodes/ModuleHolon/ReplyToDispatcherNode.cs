@@ -39,7 +39,7 @@ public class ReplyToDispatcherNode : BTNode
     private string Resolve(string template)
     {
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var moduleId = Context.Get<string>("config.Agent.ModuleName") ?? Context.Get<string>("ModuleId") ?? Context.AgentId;
+        var moduleId = ModuleContextHelper.ResolveModuleId(Context);
         return template
             .Replace("{Namespace}", ns)
             .Replace("{ModuleId}", moduleId);

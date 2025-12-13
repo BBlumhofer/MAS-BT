@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="SimilarityAnalysisAgent">
+  <BehaviorTree ID="SimilarityAnalysisAgent">
+    <Sequence name="SimilarityAnalysisAgentRoot">
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
+      <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
+      <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
+
+      <ConnectToMessagingBroker
+        name="ConnectMqtt"
+        BrokerHost="{config.MQTT.Broker}"
+        BrokerPort="{config.MQTT.Port}"
+        DefaultTopic="/{config.Namespace}/{config.Agent.AgentId}"
+        TimeoutMs="10000"
+        ClientId="{config.Agent.AgentId}" />
+
+      <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
+      <SubscribeToTopic name="SubscribeCalcSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcSimilarity" />
+      <SubscribeToTopic name="SubscribeCalcDescribedSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcDescribedSimilarity" />
+      <SubscribeToTopic name="SubscribeCreateDescription" Topic="/{config.Namespace}/{config.Agent.AgentId}/CreateDescription" />
+      <RegisterAgent name="InitialRegistration" ParentAgent="DispatchingAgent_{config.Namespace}" />
+
+      <Parallel name="SimilarityLoops">
+        <Repeat name="CalcSimilarityLoop" num_cycles="-1">
+          <Fallback name="CalcSimilarityOrWait">
+            <Sequence name="HandleCalcSimilarity">
+              <WaitForMessage name="WaitCalcSimilarity" ExpectedTypes="calcSimilarity" ExpectedTopic="/{Namespace}/{AgentId}/CalcSimilarity" TimeoutSeconds="10" />
+              <CalcEmbedding name="CalcEmbedding" OllamaEndpoint="{config.Ollama.Endpoint}" Model="{config.Ollama.Model}" />
+              <CalcCosineSimilarity name="CalcCosineSimilarity" />
+              <SendResponseMessage name="SendSimilarityResponse" Topic="/{Namespace}/{AgentId}/CalcSimilarity" />
+              <Wait name="CalcIdle" DelayMs="200" />
+            </Sequence>
+            <Wait name="CalcBackoff" DelayMs="200" />
+          </Fallback>
+        </Repeat>
+       
+          <Repeat name="CalcDescribedSimilarityLoop" num_cycles="-1">
+            <Fallback name="CalcDescribedSimilarityOrWait">
+              <Sequence name="HandleCalcDescribedSimilarity">
+                <WaitForMessage name="WaitCalcDescribedSimilarity" ExpectedTypes="calcDescribedSimilarity" ExpectedTopic="/{Namespace}/{AgentId}/CalcDescribedSimilarity" TimeoutSeconds="10" />
+                <CalcDescribedSimilarity name="CalcDescribedSimilarity" OllamaEndpoint="{config.Ollama.Endpoint}" Model="llama3" />
+                <CalcEmbedding name="CalcEmbeddingDescribed" OllamaEndpoint="{config.Ollama.Endpoint}" Model="{config.Ollama.Model}" />
+                <CalcCosineSimilarity name="CalcCosineSimilarityDescribed" />
+                <BuildDescribedSimilarityResponse name="BuildDescribedSimilarityResponse" />
+                <SendResponseMessage name="SendDescribedSimilarityResponse" Topic="/{Namespace}/{AgentId}/CalcDescribedSimilarity" />
+                <Wait name="DescribedIdle" DelayMs="200" />
+              </Sequence>
+              <Wait name="DescribedBackoff" DelayMs="200" />
+            </Fallback>
+          </Repeat>
+
+        <Repeat name="RegistrationHeartbeat" num_cycles="-1">
+          <Sequence name="RegistrationBeat">
+            <RegisterAgent name="RegisterHeartbeat" ParentAgent="DispatchingAgent_{config.Namespace}" />
+            <PublishAgentState name="PublishState" PublishIntervalSeconds="30" Role="{config.Agent.Role}" />
+            <Wait name="PublishIdle" DelayMs="30000" />
+          </Sequence>
+        </Repeat>
+
+        <Repeat name="CreateDescriptionLoop" num_cycles="-1">
+          <Fallback name="CreateDescriptionOrWait">
+            <Sequence name="HandleCreateDescription">
+              <WaitForMessage name="WaitCreateDescription" ExpectedTypes="createDescription" ExpectedTopic="/{Namespace}/{AgentId}/CreateDescription" TimeoutSeconds="10" />
+              <CreateDescription name="CreateDescription" OllamaEndpoint="{config.Ollama.Endpoint}" Model="llama3" />
+              <BuildCreateDescriptionResponse name="BuildCreateDescriptionResponse" />
+              <SendResponseMessage name="SendCreateDescriptionResponse" Topic="/{Namespace}/{AgentId}/CreateDescription" />
+              <Wait name="CreateDescIdle" DelayMs="200" />
+            </Sequence>
+            <Wait name="CreateDescBackoff" DelayMs="200" />
+          </Fallback>
+        </Repeat>
+      </Parallel>
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Action ID="ReadConfig">
+      <input_port name="configPath" />
+    </Action>
+    <Action ID="SetBlackboardValue">
+      <input_port name="Key" />
+      <input_port name="Value" />
+      <input_port name="ValueType" default="string" />
+    </Action>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost" />
+      <input_port name="BrokerPort" />
+      <input_port name="DefaultTopic" />
+      <input_port name="TimeoutMs" />
+      <input_port name="ClientId" />
+    </Action>
+    <Action ID="SubscribeAgentTopics">
+      <input_port name="Role" />
+      <input_port name="TopicPrefix" />
+    </Action>
+    <Action ID="SubscribeToTopic">
+      <input_port name="Topic" />
+    </Action>
+    <Action ID="RegisterAgent">
+      <input_port name="ParentAgent" />
+      <input_port name="Namespace" />
+    </Action>
+    <Action ID="WaitForMessage">
+      <input_port name="ExpectedType" />
+      <input_port name="ExpectedTypes" />
+      <input_port name="ExpectedSender" />
+      <input_port name="ExpectedTopic" />
+      <input_port name="TimeoutSeconds" />
+      <input_port name="ExpectedConversationId" />
+    </Action>
+    <Action ID="CalcEmbedding">
+      <input_port name="OllamaEndpoint" />
+      <input_port name="Model" />
+    </Action>
+     <Action ID="CalcDescribedSimilarity">
+       <input_port name="OllamaEndpoint" />
+       <input_port name="Model" />
+     </Action>
+    <Action ID="BuildDescribedSimilarityResponse" />
+    <Action ID="CalcCosineSimilarity" />
+    <Action ID="SendResponseMessage">
+      <input_port name="Topic" />
+    </Action>
+    <Action ID="Wait">
+      <input_port name="DelayMs" default="1000" />
+    </Action>
+    <Action ID="PublishAgentState">
+      <input_port name="PublishIntervalSeconds" default="30" />
+      <input_port name="Role" />
+    </Action>
+  </TreeNodesModel>
+</root>

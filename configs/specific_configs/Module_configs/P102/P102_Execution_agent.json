@@ -1,6 +1,7 @@
 {
   "Agent": {
-    "AgentId": "P102",
+    "AgentId": "P102_Execution",
+    "ModuleId": "P102",
     "ModuleName":"AssemblyStation",
     "Role": "ExecutionHolon",
     "LogLevel": "Information",

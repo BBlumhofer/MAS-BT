@@ -3,6 +3,7 @@ using System.IO;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using MAS_BT.Nodes.Configuration;
 using MAS_BT.Nodes.ModuleHolon;
 using MAS_BT.Services;
@@ -43,8 +44,8 @@ public class ModuleHolonSpawnTests
         var launcher = new TestSubHolonLauncher(client);
         context.Set("SubHolonLauncher", launcher);
 
-        var waitNode = new WaitForSubHolonRegisterNode { Context = context };
-        waitNode.SetLogger(loggerFactory.CreateLogger("WaitForSubHolonRegister"));
+        var waitNode = new WaitForRegistrationNode { Context = context };
+        waitNode.SetLogger(loggerFactory.CreateLogger("WaitForRegistration"));
 
         var spawnNode = new SpawnSubHolonsNode { Context = context };
         spawnNode.SetLogger(loggerFactory.CreateLogger("SpawnSubHolons"));
@@ -56,7 +57,7 @@ public class ModuleHolonSpawnTests
 
         Assert.Equal(NodeStatus.Success, spawnStatus);
         Assert.Equal(NodeStatus.Success, waitStatus);
-        Assert.Equal(1, launcher.LaunchedSpecs.Count);
+        Assert.Equal(2, launcher.LaunchedSpecs.Count);
     }
 }
 

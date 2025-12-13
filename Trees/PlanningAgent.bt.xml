@@ -4,17 +4,24 @@
     <Sequence name="PlanningAgentRoot">
       <ReadConfig name="LoadConfig" configPath="{config.Path}" />
       <ConnectToMessagingBroker name="ConnectMqtt" BrokerHost="{config.MQTT.Broker}" BrokerPort="{config.MQTT.Port}" DefaultTopic="factory/agents/messages" TimeoutMs="10000" ClientId="{config.Agent.AgentId}_{config.Agent.Role}" />
-      <SetBlackboardValue name="SetPlanningRole" Key="AgentRole" Value="PlanningAgent" />
-      <SetBlackboardValue name="SetPlanningId" Key="AgentId" Value="{config.Agent.AgentId}_Planning" />
+      <SetBlackboardValue name="SetPlanningRole" Key="AgentRole" Value="{config.Agent.Role}" />
+      <SetBlackboardValue name="SetPlanningId" Key="AgentId" Value="{config.Agent.AgentId}" />
       <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
-      <SetBlackboardValue name="BindModuleId" Key="ModuleId" Value="{config.Agent.AgentId}" />
-      <SubscribePlanningTopics name="SubscribePlanningTopics" />
-      <RegisterSubHolon name="RegisterPlanning" />
+      <SetBlackboardValue name="BindModuleId" Key="ModuleId" Value="{config.Agent.ModuleId}" />
+      <Fallback name="LoadModuleShell">
+        <ReadShell name="LoadModuleShellByName" AgentId="{config.Agent.ModuleName}" ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}" />
+        <ReadShell name="LoadModuleShellById" AgentId="{config.Agent.ModuleId}" ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}" />
+      </Fallback>
+      <LoadCapabilityDescriptionSubmodel name="LoadCapabilityDescription" SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}" />
+      <ExtractCapabilityNames name="ExtractCapabilities" SourceKey="CapabilityDescriptionSubmodel" TargetKey="Capabilities" />
+      <PublishCapabilities name="PublishCapabilities" />
+      <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
+      <RegisterAgent name="RegisterPlanning" ParentAgent="{config.Agent.ModuleId}" />
       
       <Parallel name="PlanningParallel">
         <Repeat name="RegistrationHeartbeat" num_cycles="-1">
           <Sequence name="RegistrationBeat">
-            <RegisterSubHolon name="RegisterPlanningHeartbeat" />
+            <RegisterAgent name="RegisterPlanningHeartbeat" ParentAgent="{config.Agent.ModuleId}" />
             <Wait name="RegistrationWait" DelayMs="5000" />
           </Sequence>
         </Repeat>
@@ -63,6 +70,25 @@
     <Action ID="ReadConfig">
       <input_port name="configPath" />
     </Action>
+    <Action ID="ReadShell">
+      <input_port name="AgentId" />
+      <input_port name="ShellRepositoryEndpoint" />
+    </Action>
+    <Action ID="LoadCapabilityDescriptionSubmodel">
+      <input_port name="SubmodelRepositoryEndpoint" />
+      <input_port name="TargetIdShort" />
+      <input_port name="SemanticIdFilter" />
+    </Action>
+    <Action ID="ExtractCapabilityNames">
+      <input_port name="SourceKey" />
+      <input_port name="TargetKey" />
+      <input_port name="FailOnMissing" default="false" />
+    </Action>
+    <Action ID="PublishCapabilities">
+      <input_port name="Namespace" />
+      <input_port name="ModuleId" />
+      <input_port name="SourceKey" />
+    </Action>
     <Action ID="ConnectToMessagingBroker">
       <input_port name="BrokerHost"/>
       <input_port name="BrokerPort"/>
@@ -70,13 +96,19 @@
       <input_port name="TimeoutMs"/>
       <input_port name="ClientId"/>
     </Action>
-    <Action ID="SubscribePlanningTopics" />
+    <Action ID="SubscribeAgentTopics">
+      <input_port name="Role" />
+      <input_port name="TopicPrefix" />
+    </Action>
     <Action ID="SetBlackboardValue">
       <input_port name="Key" />
       <input_port name="Value" />
       <input_port name="ValueType" default="string" />
     </Action>
-    <Action ID="RegisterSubHolon" />
+    <Action ID="RegisterAgent">
+      <input_port name="ParentAgent" />
+      <input_port name="Namespace" />
+    </Action>
     <!-- LoadProductionPlan removed for PlanningAgent: plan should be provided by external planner -->
     <Action ID="SelectNextAction"/>
     <Action ID="SendSkillRequest">

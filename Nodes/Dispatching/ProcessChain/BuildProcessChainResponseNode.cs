@@ -42,6 +42,28 @@ public class BuildProcessChainResponseNode : BTNode
         var success = negotiation.HasCompleteProcessChain;
         Context.Set("ProcessChain.Result", processChain);
         Context.Set("ProcessChain.Success", success);
+
+        if (!success)
+        {
+            var bestMatchByRequirementId = Context.Get<Dictionary<string, string>>("ProcessChain.SimilarityBestMatch")
+                                       ?? new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var req in negotiation.Requirements)
+            {
+                if (req.CapabilityOffers.Count > 0)
+                {
+                    continue;
+                }
+
+                bestMatchByRequirementId.TryGetValue(req.RequirementId, out var best);
+                Logger.LogWarning(
+                    "BuildProcessChainResponse: requirement failed (no offers). Capability={Capability} RequirementId={RequirementId} Similarity={Best}",
+                    req.Capability,
+                    req.RequirementId,
+                    string.IsNullOrWhiteSpace(best) ? "<unknown>" : best);
+            }
+        }
+
         Logger.LogInformation("BuildProcessChainResponse: built process chain with {Count} requirements (success={Success})", requirementIndex, success);
         return Task.FromResult(NodeStatus.Success);
     }

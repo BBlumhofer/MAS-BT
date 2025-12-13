@@ -118,7 +118,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         node.SetLogger(NullLogger<ForwardCapabilityRequestsNode>.Instance);
 
         var initialStatus = await node.Execute();
-        Assert.Equal(NodeStatus.Running, initialStatus);
+        Assert.Equal(NodeStatus.Failure, initialStatus);
 
         var dispatcherClient = await CreateClientAsync("dispatch/logs");
 

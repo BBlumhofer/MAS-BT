@@ -146,38 +146,61 @@ public class RepeatNode : DecoratorNode
     
     public override async Task<NodeStatus> Execute()
     {
-        bool infinite = Count < 0;
-        
-        Logger.LogDebug("Repeat '{Name}' starting ({Mode})", 
-            Name, infinite ? "infinite" : $"{Count} times");
-        
-        while (infinite || _currentIteration < Count)
+        var infinite = Count < 0;
+
+        // Tick-based repeat:
+        // - Execute the child at most once per tick.
+        // - If the child is Running, propagate Running.
+        // - If the child succeeds, either advance iteration (finite) or keep running (infinite).
+        // This matches BehaviorTree.CPP "tick" semantics and avoids blocking a single Execute() forever.
+
+        var result = await Child.Execute();
+
+        if (result == NodeStatus.Running)
         {
-            _currentIteration++;
-            
-            Logger.LogDebug("Repeat '{Name}' iteration {Iteration}", Name, _currentIteration);
-            
-            var result = await Child.Execute();
-            
-            if (result == NodeStatus.Failure && StopOnFailure)
+            return NodeStatus.Running;
+        }
+
+        if (result == NodeStatus.Failure)
+        {
+            if (StopOnFailure)
             {
-                Logger.LogWarning("Repeat '{Name}' stopped at iteration {Iteration} due to failure", 
-                    Name, _currentIteration);
                 _currentIteration = 0;
                 return NodeStatus.Failure;
             }
-            
-            if (result == NodeStatus.Running)
+
+            // If we don't stop on failure, treat this iteration as "completed" and continue.
+            // Reset child so the next tick starts a fresh attempt.
+            await Child.OnReset();
+            if (!infinite)
             {
-                Logger.LogDebug("Repeat '{Name}' child still running at iteration {Iteration}", 
-                    Name, _currentIteration);
-                return NodeStatus.Running;
+                _currentIteration++;
+                if (_currentIteration >= Count)
+                {
+                    _currentIteration = 0;
+                    return NodeStatus.Success;
+                }
             }
+
+            return NodeStatus.Running;
         }
-        
-        Logger.LogDebug("Repeat '{Name}' completed {Count} iterations", Name, _currentIteration);
-        _currentIteration = 0;
-        return NodeStatus.Success;
+
+        // Success
+        await Child.OnReset();
+
+        if (infinite)
+        {
+            return NodeStatus.Running;
+        }
+
+        _currentIteration++;
+        if (_currentIteration >= Count)
+        {
+            _currentIteration = 0;
+            return NodeStatus.Success;
+        }
+
+        return NodeStatus.Running;
     }
     
     public override async Task OnAbort()

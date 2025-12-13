@@ -5,7 +5,9 @@
     "AgentType": "DispatchingAgent",
     "ModuleId": "DispatchingAgent_phuket",
     "LogLevel": "Information",
-    "InitializationTree": "Trees/DispatchingAgent.bt.xml"
+    "InitializationTree": "Trees/DispatchingAgent.bt.xml",
+    "HeartbeatIntervalSeconds": 30,
+    "StatePublishDelayMs": 1000
   },
   "Namespace": "phuket",
   "MQTT": {
@@ -27,6 +29,20 @@
     "ShellRepositoryEndpoint": "http://localhost:8080/shells",
     "Timeout": 10000
   },
+  "Neo4j": {
+    "Uri": "bolt://localhost:7687",
+    "Username": "neo4j",
+    "Password": "neo4j",
+    "Database": "neo4j"
+  },
   "DispatchingAgent": {
+    "AgentTimeoutSeconds": 30,
+    "UseSimilarityFiltering": true,
+    "CapabilitySimilarityThreshold": 0.75,
+    "DescriptionTimeoutMs": 30000,
+    "SimilarityTimeoutMs": 30000,
+    "SimilarityAgentId": "SimilarityAnalysisAgent_phuket",
+    "CalcSimilarityConcurrency": 20,
+    "CreateDescriptionConcurrency":20
   }
 }

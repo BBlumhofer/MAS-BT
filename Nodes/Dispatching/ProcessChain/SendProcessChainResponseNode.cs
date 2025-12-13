@@ -21,6 +21,7 @@ public class SendProcessChainResponseNode : BTNode
         var processChain = Context.Get<ProcessChainModel>("ProcessChain.Result");
         var negotiation = Context.Get<ProcessChainNegotiationContext>("ProcessChain.Negotiation");
         var success = Context.Get<bool>("ProcessChain.Success");
+        var refusalReason = Context.Get<string>("ProcessChain.RefusalReason");
 
         if (client == null || negotiation == null)
         {
@@ -44,9 +45,12 @@ public class SendProcessChainResponseNode : BTNode
         }
         else
         {
+            var reason = string.IsNullOrWhiteSpace(refusalReason)
+                ? "No capability offers received"
+                : refusalReason;
             builder.AddElement(new Property<string>("Reason")
             {
-                Value = new PropertyValue<string>("No capability offers received")
+                Value = new PropertyValue<string>(reason)
             });
         }
 

@@ -42,13 +42,25 @@ public class ForwardCapabilityRequestsNode : BTNode
 
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
         var identifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
+        var receiverId = message.Frame?.Receiver?.Identification?.Id;
         var conv = message.Frame?.ConversationId ?? Guid.NewGuid().ToString();
         var publishedTopics = new List<string>();
+
+        // If the dispatcher explicitly targeted a single ModuleId, forward only to that module's internal topic.
+        IEnumerable<string> targetModuleIds;
+        if (!string.IsNullOrWhiteSpace(receiverId) && identifiers.Contains(receiverId))
+        {
+            targetModuleIds = new[] { receiverId };
+        }
+        else
+        {
+            targetModuleIds = identifiers;
+        }
 
         Context.Set("LastReceivedMessage", message);
         Context.Set("ForwardedConversationId", conv);
 
-        foreach (var moduleId in identifiers)
+        foreach (var moduleId in targetModuleIds)
         {
             var targetTopic = TargetTopicTemplate
                 .Replace("{Namespace}", ns)
@@ -102,6 +114,8 @@ public class ForwardCapabilityRequestsNode : BTNode
 
         var senderRole = message.Frame.Sender?.Role?.Name ?? string.Empty;
         var receiverRole = message.Frame.Receiver?.Role?.Name ?? string.Empty;
+        var receiverId = message.Frame.Receiver?.Identification?.Id ?? string.Empty;
+        var identifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
 
         if (!string.IsNullOrWhiteSpace(ExpectedSenderRole) &&
             !string.Equals(senderRole, ExpectedSenderRole, StringComparison.OrdinalIgnoreCase))
@@ -109,7 +123,18 @@ public class ForwardCapabilityRequestsNode : BTNode
             return false;
         }
 
-        // Dispatcher CfPs sent to ModuleHolons declare this role
+        // If the dispatcher targeted a specific ModuleId (receiver identification), accept only
+        // when it matches one of our known identifiers. Otherwise accept broadcast CfPs where the
+        // receiver role is ModuleHolon.
+        if (!string.IsNullOrWhiteSpace(receiverId))
+        {
+            if (identifiers.Contains(receiverId))
+            {
+                return true;
+            }
+            return false;
+        }
+
         if (!string.Equals(receiverRole, "ModuleHolon", StringComparison.OrdinalIgnoreCase))
         {
             return false;
@@ -117,4 +142,5 @@ public class ForwardCapabilityRequestsNode : BTNode
 
         return true;
     }
+
 }

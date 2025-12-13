@@ -15,6 +15,7 @@ using MAS_BT.Nodes.Planning.ProcessChain;
 using MAS_BT.Nodes.Dispatching;
 using MAS_BT.Nodes.Dispatching.ProcessChain;
 using MAS_BT.Nodes.ModuleHolon;
+using MAS_BT.Nodes.Common;
 
 namespace MAS_BT.Serialization;
 
@@ -145,6 +146,7 @@ public class NodeRegistry
         Register<LoadProductIdentificationSubmodelNode>();
         Register<LoadBillOfMaterialSubmodelNode>();
         Register<LoadCapabilityDescriptionSubmodelNode>();
+        Register<ExtractCapabilityNamesNode>("ExtractCapabilityNames");
         
         // Locking Nodes
         Register<LockResourceNode>("LockResource");
@@ -157,49 +159,77 @@ public class NodeRegistry
         Register<SendConfigAsLogNode>();
         Register<SendProductSummaryLogNode>();
         Register<WaitForMessageNode>();
+        Register<SendResponseMessageNode>();
+        Register<SubscribeToTopicNode>();
         
         // Messaging Integration Nodes (Phase 3 - NEW)
         Register<ReadMqttSkillRequestNode>();
         Register<SendSkillResponseNode>();
         Register<UpdateInventoryNode>("UpdateInventory");
         Register<PublishNeighborsNode>("PublishNeighbors");
+        Register<PublishCapabilitiesNode>("PublishCapabilities");
+        Register<MAS_BT.Nodes.Dispatching.HandleInventoryUpdateNode>("HandleInventoryUpdate");
         Register<ReadNeighborsFromRemoteNode>("ReadNeighborsFromRemote");
         Register<SendStateMessageNode>();
         Register<EnableStorageChangeMqttNode>();
         Register<SendProcessChainRequestNode>();
-        Register<InitializeDispatchingStateNode>("InitializeDispatchingState");
-        Register<SubscribeDispatchingTopicsNode>("SubscribeDispatchingTopics");
-        Register<SubscribePlanningTopicsNode>("SubscribePlanningTopics");
-        Register<HandleModuleRegistrationNode>("HandleModuleRegistration");
+
+        // Generic agent lifecycle + registration (real generic nodes)
+        Register<InitializeAgentStateNode>("InitializeAgentState");
+        Register<SubscribeAgentTopicsNode>("SubscribeAgentTopics");
+        Register<RegisterAgentNode>("RegisterAgent");
+        Register<HandleRegistrationNode>("HandleRegistration");
+        Register<WaitForRegistrationNode>("WaitForRegistration");
+
+        // AI Agent Nodes (Similarity Analysis)
+        Register<CalcEmbeddingNode>("CalcEmbedding");
+        Register<CalcCosineSimilarityNode>("CalcCosineSimilarity");
+        Register<CalcDescribedSimilarityNode>("CalcDescribedSimilarity");
+        Register<BuildDescribedSimilarityResponseNode>("BuildDescribedSimilarityResponse");
+        Register<CreateDescriptionNode>("CreateDescription");
+        Register<BuildCreateDescriptionResponseNode>("BuildCreateDescriptionResponse");
+
+        // Dispatching / process-chain flow
         Register<ParseProcessChainRequestNode>("ParseProcessChainRequest");
+        Register<CheckForCapabilitiesInNamespaceNode>("CheckForCapabilitiesInNamespace");
         Register<DispatchCapabilityRequestsNode>("DispatchCapabilityRequests");
         Register<CollectCapabilityOffersNode>("CollectCapabilityOffers");
         Register<BuildProcessChainResponseNode>("BuildProcessChainResponse");
         Register<SendProcessChainResponseNode>("SendProcessChainResponse");
+        Register<PublishAgentStateNode>("PublishAgentState");
+
+        // Planning / offer flow
         Register<ParseCapabilityRequestNode>("ParseCapabilityRequest");
         Register<PlanCapabilityOfferNode>("PlanCapabilityOffer");
         Register<SendCapabilityOfferNode>("SendCapabilityOffer");
-        Register<HandleManufacturingSequenceRequestNode>("HandleManufacturingSequenceRequest");
-        Register<HandleBookStepRequestNode>("HandleBookStepRequest");
-        Register<HandleTransportPlanRequestNode>("HandleTransportPlanRequest");
-        Register<ModuleHolonRegistrationNode>("ModuleHolonRegistration");
+        Register<ReceiveOfferMessageNode>("ReceiveOfferMessage");
+        Register<AwaitOfferDecisionNode>("AwaitOfferDecision");
+        Register<ApplyOfferDecisionNode>("ApplyOfferDecision");
+        Register<SelectSchedulableActionNode>("SelectSchedulableAction");
+        Register<RequestTransportNode>("RequestTransport");
+        Register<EvaluateRequestTransportResponseNode>("EvaluateRequestTransportResponse");
+        Register<CheckScheduleFeasibilityNode>("CheckScheduleFeasibility");
+        Register<DispatchScheduledStepsNode>("DispatchScheduledSteps");
+
+        // ModuleHolon internal forwarding
         Register<SubscribeModuleHolonTopicsNode>("SubscribeModuleHolonTopics");
         Register<ReadCachedSnapshotsNode>("ReadCachedSnapshots");
         Register<ForwardCapabilityRequestsNode>("ForwardCapabilityRequests");
         Register<ForwardToInternalNode>("ForwardToInternal");
         Register<WaitForInternalResponseNode>("WaitForInternalResponse");
         Register<ReplyToDispatcherNode>("ReplyToDispatcher");
-        Register<WaitForSubHolonRegisterNode>("WaitForSubHolonRegister");
         Register<SpawnSubHolonsNode>("SpawnSubHolons");
-        Register<RegisterSubHolonNode>("RegisterSubHolon");
+
+        // Direct request handlers
+        Register<HandleManufacturingSequenceRequestNode>("HandleManufacturingSequenceRequest");
+        Register<HandleBookStepRequestNode>("HandleBookStepRequest");
+        Register<HandleTransportPlanRequestNode>("HandleTransportPlanRequest");
         
         // Monitoring Nodes (bestehende)
         Register<ReadStorageNode>();
         Register<CheckStartupSkillStatusNode>();
-        
         // Monitoring Nodes (Phase 1 - Core Monitoring)
         Register<CheckReadyStateNode>();
-        Register<CheckErrorStateNode>();
         Register<CheckLockedStateNode>();
         Register<MonitoringSkillNode>();
         

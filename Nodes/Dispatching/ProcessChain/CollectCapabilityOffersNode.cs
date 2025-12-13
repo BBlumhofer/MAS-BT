@@ -63,6 +63,26 @@ public class CollectCapabilityOffersNode : BTNode
             if (timedOut)
             {
                 Logger.LogWarning("CollectCapabilityOffers: timeout after {Timeout}s", TimeoutSeconds);
+
+                var state = Context.Get<DispatchingState>("DispatchingState");
+                var knownModules = state?.Modules.Select(m => m.ModuleId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList()
+                                 ?? new List<string>();
+                var missingModules = knownModules
+                    .Where(id => !_respondedModules.Contains(id))
+                    .OrderBy(id => id, StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                var missingReqs = ctx.Requirements
+                    .Where(r => r.CapabilityOffers.Count == 0)
+                    .Select(r => $"{r.Capability}({r.RequirementId})")
+                    .ToList();
+
+                Logger.LogWarning(
+                    "CollectCapabilityOffers: respondedModules={Responded}/{Expected}. MissingModules=[{MissingModules}] MissingRequirements=[{MissingReqs}]",
+                    _respondedModules.Count,
+                    _expectedModules,
+                    string.Join(",", missingModules),
+                    string.Join(",", missingReqs));
             }
 
             Context.Set("ProcessChain.Negotiation", ctx);

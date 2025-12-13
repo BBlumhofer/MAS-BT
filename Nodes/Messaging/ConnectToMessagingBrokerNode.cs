@@ -98,7 +98,7 @@ public class ConnectToMessagingBrokerNode : BTNode
 
                     if (!string.IsNullOrEmpty(topic))
                     {
-                        Logger.LogInformation("TransportMessage: Topic={Topic} Payload={...}", topic);
+                        Logger.LogDebug("TransportMessage: Topic={Topic}", topic);
                     }
                 }
                 catch (Exception ex)

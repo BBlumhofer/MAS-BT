@@ -1,0 +1,6 @@
+/home/benjamin/AgentDevelopment/MAS-BT/Tools/obj/Debug/net10.0/Tools.csproj.AssemblyReference.cache
+/home/benjamin/AgentDevelopment/MAS-BT/Tools/obj/Debug/net10.0/Tools.GeneratedMSBuildEditorConfig.editorconfig
+/home/benjamin/AgentDevelopment/MAS-BT/Tools/obj/Debug/net10.0/Tools.AssemblyInfoInputs.cache
+/home/benjamin/AgentDevelopment/MAS-BT/Tools/obj/Debug/net10.0/Tools.AssemblyInfo.cs
+/home/benjamin/AgentDevelopment/MAS-BT/Tools/obj/Debug/net10.0/Tools.csproj.CoreCompileInputs.cache
+/home/benjamin/AgentDevelopment/MAS-BT/Tools/obj/Debug/net10.0/Tools.sourcelink.json

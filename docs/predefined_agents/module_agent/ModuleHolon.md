@@ -9,21 +9,21 @@ Der Module Holon kapselt PlanningAgent und ExecutionAgent und tritt nach außen 
 - **Sub-Holon-Instanziierung:** Module Holon startet PlanningAgent und ExecutionAgent in eigenen Threads/Prozessen und registriert sie auf einem internen Register-Topic.
 
 ## Rollen & Topics
-- **Extern (Dispatcher-facing):**
-  - Registration: `/DispatchingAgent/{ns}/ModuleRegistration/`
-  - Offers: `/DispatchingAgent/{ns}/ModuleOffers/{ModuleId}/Request|Response/`
-  - Scheduling/Booking: `/Modules/{ModuleId}/ScheduleAction/`, `/Modules/{ModuleId}/BookingConfirmation/`
-  - Transport: `/Modules/{ModuleId}/TransportPlan/`
-- **Intern (Sub-Holon-facing):**
-  - Planning Offer-Requests: `/ModuleHolon/{ModuleId}/Planning/OfferRequest`
-  - Planning Schedule/Booking: `/ModuleHolon/{ModuleId}/Planning/ScheduleAction`
-  - Execution SkillRequests (optional): `/ModuleHolon/{ModuleId}/Execution/SkillRequest`
-  - Sub-Holons melden sich an über: `/ModuleHolon/{ModuleId}/register`
+- **Extern (Dispatcher-facing, Namespace-basiert):**
+  - Registration (ModuleHolon → Dispatcher): `/{Namespace}/DispatchingAgent/register`
+  - Offers (Dispatcher → ModuleHolon): `/{Namespace}/DispatchingAgent/Offer`
+  - Scheduling: `/{Namespace}/{ModuleId}/ScheduleAction`
+  - BookingConfirmation: `/{Namespace}/{ModuleId}/BookingConfirmation`
+  - TransportPlan: `/{Namespace}/{ModuleId}/TransportPlan`
+  - Capabilities (Modul-Publish): `/{Namespace}/{ModuleId}/Capabilities`
+  - Inventory (Modul-Publish): `/{Namespace}/{ModuleId}/Inventory`
+- **Intern (Sub-Holon-facing, Module-spezifisch):**
+  - Sub-Holons registrieren sich beim ModuleHolon über: `/{Namespace}/{ModuleId}/register` (MessageType: `subHolonRegister`)
 
 ## Ablauf (vereinfacht)
 1. **Init:** Module Holon lädt Config (AAS-Endpunkte, ModuleId, Namespace, Subholons), verbindet MQTT, liest Nameplate/CapabilityDescription/Neighbors.
-2. **Registrierung:** Publiziert `ModuleRegistration` an den Dispatcher und subscribed auf dessen Service-Topics.
-3. **Sub-Holon-Start:** Spawnt PlanningAgent und ExecutionAgent (eigene Threads/Tasks/Prozesse, konfigurierbar über Commands) und wartet auf deren Registrierung über `/ModuleHolon/{ModuleId}/register`.
+2. **Registrierung:** Publiziert eine standardisierte `RegisterMessage` an `/{Namespace}/DispatchingAgent/register` (MessageType: `registerMessage`).
+3. **Sub-Holon-Start:** Spawnt PlanningAgent und ExecutionAgent (eigene Threads/Tasks/Prozesse) und wartet auf deren Registrierung über `/{Namespace}/{ModuleId}/register`.
 4. **Routing-Loop:**
    - Offer-/Scheduling-/Booking-/Transport-Nachrichten vom Dispatcher → interne Topics → wartet auf Antwort → sendet zurück an Dispatcher (ConversationId bleibt erhalten).
    - Heartbeat/Registration-Refresh in Intervallen.
@@ -38,7 +38,7 @@ Sequence ModuleHolon
   ReadShell / ReadCapabilityDescription / ReadNeighbors
   RegisterModule (send to dispatcher)
   SpawnSubHolons (Planning, Execution) in Threads
-  WaitForSubHolonRegister (Topic /ModuleHolon/{ModuleId}/register)
+  WaitForSubHolonRegister (Topic /{Namespace}/{ModuleId}/register)
   SubscribeExternalTopics
   Parallel
     - OfferHandler Loop (dispatcher offer req -> planning -> dispatcher)
@@ -48,15 +48,20 @@ Sequence ModuleHolon
 ```
 
 ## Inventory- und Neighbor-Snapshots
-- `SubscribeModuleHolonTopics` abonniert `/ {Namespace}/{ModuleId}/Inventory` sowie `/Neighbors` und cached die eingehenden `InventoryMessage`- bzw. `neighborsUpdate`-Payloads.
-- Die Snapshots werden im `ModuleHolon`-Context unter `ModuleInventory` und `Neighbors` abgelegt, damit der `ModuleHolonRegistration` bei jedem Heartbeat die aktuellen StorageUnits/Slots direkt mit registrieren kann.
-- Das Inventory-Format entspricht exakt der `InventoryMessage` aus `AAS-Sharp-Client` (`StorageUnits -> Slots -> SlotContent`). Dadurch kann der Dispatcher sofort den realen Modulzustand sehen, ohne erneut beim Modul nachfragen zu müssen.
-- Beim Start (InitialRegistration) wartet der Holon optional einige Millisekunden (`config.Agent.InitialSnapshotTimeoutMs`), damit erste Snapshots ankommen. Fällt während des Betriebs die Verbindung weg, wird weiterhin das zuletzt empfangene Cache-Abbild verwendet.
+- `SubscribeAgentTopics` abonniert `/{Namespace}/{ModuleId}/Inventory` sowie `/{Namespace}/{ModuleId}/Neighbors` und cached die eingehenden `inventoryUpdate`- bzw. `neighborsUpdate`-Payloads.
+- Wichtig: **Inventory wird nicht mehr in der `RegisterMessage` mitgesendet.** Der Dispatcher aggregiert Inventory über das eigene Topic `/{Namespace}/{ModuleId}/Inventory`.
+- Für schnelle Übersicht enthält jede Inventory-Nachricht innerhalb von `StorageUnits` zusätzlich ein `InventorySummary` (Properties: `free`, `occupied`).
 
 ## Registrierung der Sub-Holone
-- Jeder Sub-Holon veröffentlicht nach Start eine Nachricht auf `/ModuleHolon/{ModuleId}/register` mit seinen Identifiers (AgentId, Role, SupportedMessages).
+- Jeder Sub-Holon veröffentlicht nach Start eine Nachricht auf `/{Namespace}/{ModuleId}/register` (Type: `subHolonRegister`).
 - Module Holon speichert die Sub-Holon-Endpunkte und nutzt sie für das Routing.
-- Startbefehle können im Config unter `SubHolons.Planning.Command` bzw. `SubHolons.Execution.Command` hinterlegt werden (z. B. `dotnet run -- Trees/PlanningAgent.bt.xml`).
+- Startbefehle werden über `SubHolons` im ModuleHolon-Config referenziert (z. B. `P102_Planning_agent`, `P102_Execution_agent`).
+
+## Naming-Konvention (wichtig für Multi-Modul-Tests)
+- `Agent.AgentId` muss pro Prozess eindeutig sein, sonst kommt es zu MQTT-Disconnects (duplicate ClientId) und/oder zu Problemen beim Warten auf Sub-Holon-Registrierungen.
+- Empfohlen:
+  - Planning: `{ModuleId}_Planning` (z. B. `P103_Planning`)
+  - Execution: `{ModuleId}_Execution` (z. B. `P103_Execution`)
 
 ## Offene Punkte
 - Start der Sub-Holone: per ProcessStart vs. Thread/Task (aktuell Thread/Task vorgesehen).

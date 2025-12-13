@@ -2,7 +2,7 @@
 <root BTCPP_format="4" main_tree_to_execute="DispatchingAgent">
   <BehaviorTree ID="DispatchingAgent">
     <Sequence name="DispatchingAgentRoot">
-      <ReadConfig name="LoadConfig" configPath="configs/dispatching_agent.json" />
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
       <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
       <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
       <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
@@ -15,18 +15,32 @@
         TimeoutMs="10000"
         ClientId="{config.Agent.AgentId}_Dispatching" />
 
-      <InitializeDispatchingState name="InitDispatchState" />
-      <SubscribeDispatchingTopics name="SubscribeTopics" />
+      <InitializeAgentState name="InitDispatchState" Role="{config.Agent.Role}" />
+      <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
+      <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
 
       <Parallel name="DispatchingLoops">
         <Repeat name="RegistrationLoop" num_cycles="-1">
           <Fallback name="RegOrWait">
             <Sequence name="HandleRegistration">
-              <WaitForMessage name="WaitRegistration" ExpectedTypes="moduleRegistration" TimeoutSeconds="5" />
-              <HandleModuleRegistration name="HandleModuleRegistration" />
-              <Wait name="RegIdle" DelayMs="200" />
+              <WaitForMessage name="WaitRegistration" ExpectedTypes="registerMessage,moduleRegistration" TimeoutSeconds="10" />
+              <HandleRegistration name="HandleRegistration" />
+              <RegisterAgent name="RegisterAfterRegistration" ParentAgent="{config.Namespace}" />
+              <Wait name="RegIdle" DelayMs="10000" />
             </Sequence>
-            <Wait name="RegBackoff" DelayMs="200" />
+            <Wait name="RegBackoff" DelayMs="10000" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="InventoryLoop" num_cycles="-1">
+          <Fallback name="InvOrWait">
+            <Sequence name="HandleInventory">
+              <WaitForMessage name="WaitInventory" ExpectedTypes="inventoryUpdate" TimeoutSeconds="5" />
+              <HandleInventoryUpdate name="HandleInventoryUpdate" />
+              <RegisterAgent name="RegisterAfterInventory" ParentAgent="{config.Namespace}" />
+              <Wait name="InvIdle" DelayMs="200" />
+            </Sequence>
+            <Wait name="InvBackoff" DelayMs="200" />
           </Fallback>
         </Repeat>
 
@@ -35,10 +49,18 @@
             <Sequence name="HandleProcessChain">
               <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="10" />
               <ParseProcessChainRequest name="ParseProcessChainRequest" />
-              <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
-              <CollectCapabilityOffers name="CollectCapabilityOffers" />
-              <BuildProcessChainResponse name="BuildProcessChainResponse" />
-              <SendProcessChainResponse name="SendProcessChainResponse" />
+              <Fallback name="CapabilityMatchmaking">
+                <Sequence name="CapabilitiesAvailable">
+                  <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
+                  <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
+                  <CollectCapabilityOffers name="CollectCapabilityOffers" />
+                  <BuildProcessChainResponse name="BuildProcessChainResponse" />
+                  <SendProcessChainResponse name="SendProcessChainResponse" />
+                </Sequence>
+                <Sequence name="CapabilitiesMissing">
+                  <SendProcessChainResponse name="SendProcessChainRefusal" />
+                </Sequence>
+              </Fallback>
               <Wait name="ProcessChainIdle" DelayMs="200" />
             </Sequence>
             <Wait name="ProcessChainBackoff" DelayMs="200" />
@@ -77,6 +99,14 @@
             <Wait name="TransportBackoff" DelayMs="300" />
           </Fallback>
         </Repeat>
+        
+        <Repeat name="RegistrationHeartbeat" num_cycles="-1">
+          <Sequence name="RegistrationBeat">
+            <RegisterAgent name="RegisterDispatchingHeartbeat" ParentAgent="{config.Namespace}" />
+            <PublishAgentState name="PublishDispatchingState" PublishIntervalSeconds="30" Role="{config.Agent.Role}" />
+            <Wait name="PublishIdle" DelayMs="{config.Agent.RegistrationIntervalMs}" />
+          </Sequence>
+        </Repeat>
       </Parallel>
     </Sequence>
   </BehaviorTree>
@@ -97,8 +127,17 @@
       <input_port name="TimeoutMs" />
       <input_port name="ClientId" />
     </Action>
-    <Action ID="InitializeDispatchingState" />
-    <Action ID="SubscribeDispatchingTopics" />
+    <Action ID="InitializeAgentState">
+      <input_port name="Role" />
+    </Action>
+    <Action ID="SubscribeAgentTopics">
+      <input_port name="Role" />
+      <input_port name="TopicPrefix" />
+    </Action>
+    <Action ID="RegisterAgent">
+      <input_port name="ParentAgent" />
+      <input_port name="Namespace" />
+    </Action>
     <Action ID="WaitForMessage">
       <input_port name="ExpectedType" />
       <input_port name="ExpectedTypes" />
@@ -107,8 +146,10 @@
       <input_port name="TimeoutSeconds" />
       <input_port name="ExpectedConversationId" />
     </Action>
-    <Action ID="HandleModuleRegistration" />
+    <Action ID="HandleRegistration" />
+    <Action ID="HandleInventoryUpdate" />
     <Action ID="ParseProcessChainRequest" />
+    <Action ID="CheckForCapabilitiesInNamespace" />
     <Action ID="DispatchCapabilityRequests" />
     <Action ID="CollectCapabilityOffers" />
     <Action ID="BuildProcessChainResponse" />
@@ -118,6 +159,10 @@
     <Action ID="HandleTransportPlanRequest" />
     <Action ID="Wait">
       <input_port name="DelayMs" default="1000" />
+    </Action>
+    <Action ID="PublishAgentState">
+      <input_port name="PublishIntervalSeconds" default="30" />
+      <input_port name="Role" />
     </Action>
   </TreeNodesModel>
 </root>

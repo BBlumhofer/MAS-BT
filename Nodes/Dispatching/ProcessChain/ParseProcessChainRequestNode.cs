@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 using BaSyx.Models.AdminShell;
@@ -24,6 +21,9 @@ public class ParseProcessChainRequestNode : BTNode
             Logger.LogWarning("ParseProcessChainRequest: no incoming message available");
             return Task.FromResult(NodeStatus.Failure);
         }
+
+        // Persist the original request so downstream nodes can access raw request details.
+        Context.Set("ProcessChain.RequestMessage", incoming);
 
         var ctx = new ProcessChainNegotiationContext
         {

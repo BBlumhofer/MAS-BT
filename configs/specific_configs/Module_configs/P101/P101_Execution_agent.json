@@ -1,6 +1,7 @@
 {
   "Agent": {
-    "AgentId": "P101",
+    "AgentId": "P101_Execution",
+    "ModuleId": "P101",
     "ModuleName":"DrillingStation",
     "Role": "ExecutionHolon",
     "LogLevel": "Information",

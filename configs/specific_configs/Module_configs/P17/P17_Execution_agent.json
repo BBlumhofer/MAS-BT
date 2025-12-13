@@ -1,6 +1,7 @@
 {
   "Agent": {
-    "AgentId": "P17",
+    "AgentId": "P17_Execution",
+    "ModuleId": "P17",
     "ModuleName":"CA-Module",
     "Role": "ExecutionHolon",
     "LogLevel": "Information",
