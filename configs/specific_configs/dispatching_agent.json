@@ -11,7 +11,7 @@
   },
   "Namespace": "phuket",
   "MQTT": {
-    "Broker": "localhost",
+    "Broker": "192.168.178.30",
     "Port": 1883,
     "Username": "mqttuser",
     "Password": "mqttpass",
@@ -25,12 +25,12 @@
     "ReconnectDelay": 5000
   },
   "AAS": {
-    "SubmodelRepositoryEndpoint": "http://localhost:8080/submodels",
-    "ShellRepositoryEndpoint": "http://localhost:8080/shells",
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
     "Timeout": 10000
   },
   "Neo4j": {
-    "Uri": "bolt://localhost:7687",
+    "Uri": "bolt://192.168.178.30:7687",
     "Username": "neo4j",
     "Password": "neo4j",
     "Database": "neo4j"

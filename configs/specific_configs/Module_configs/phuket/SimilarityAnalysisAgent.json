@@ -11,7 +11,7 @@
   },
   "Namespace": "phuket",
   "MQTT": {
-    "Broker": "localhost",
+    "Broker": "192.168.178.30",
     "Port": 1883,
     "Username": "mqttuser",
     "Password": "mqttpass",
@@ -30,7 +30,7 @@
     "Timeout": 30000
   },
   "SimilarityAnalysis": {
-    "MaxInteractionElements": 2,
-    "MinSimilarityThreshold": 0.0
+    "MaxInteractionElements": 100,
+    "MinSimilarityThreshold": 75.0
   }
 }

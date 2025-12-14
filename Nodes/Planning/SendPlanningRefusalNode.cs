@@ -1,11 +1,12 @@
 using System.Text.Json;
 using System.Threading.Tasks;
-using MAS_BT.Core;
-using Microsoft.Extensions.Logging;
+using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
-using BaSyx.Models.AdminShell;
+using MAS_BT.Core;
+using MAS_BT.Nodes.Planning.ProcessChain;
+using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Planning;
 
@@ -14,7 +15,7 @@ namespace MAS_BT.Nodes.Planning;
 /// </summary>
 public class SendPlanningRefusalNode : BTNode
 {
-    public string ReceiverId { get; set; } = "ProductAgent";
+    public string ReceiverId { get; set; } = "{RequesterId}";
     public string Reason { get; set; } = "unspecified";
 
     public SendPlanningRefusalNode() : base("SendPlanningRefusal") {}
@@ -30,10 +31,18 @@ public class SendPlanningRefusalNode : BTNode
 
         var conv = Context.Get<string>("ConversationId") ?? System.Guid.NewGuid().ToString();
         var refusalReason = Context.Get<string>("RefusalReason") ?? Reason;
+        var failureDetail = Context.Get<string>("CapabilityMatchmaking.FailureDetail");
+        var request = Context.Get<CapabilityRequestContext>("Planning.CapabilityRequest");
+
+        var resolvedReceiver = ResolvePlaceholders(ReceiverId ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(resolvedReceiver))
+        {
+            resolvedReceiver = request?.RequesterId ?? "ProductAgent";
+        }
 
         var builder = new I40MessageBuilder()
             .From("PlanningAgent", "PlanningAgent")
-            .To(ReceiverId, "ProductAgent")
+            .To(resolvedReceiver, "ProductAgent")
             .WithType(I40MessageTypes.REFUSAL)
             .WithConversationId(conv);
 
@@ -43,9 +52,18 @@ public class SendPlanningRefusalNode : BTNode
         };
         builder.AddElement(prop);
 
+        if (!string.IsNullOrWhiteSpace(failureDetail))
+        {
+            var detailProp = new Property<string>("FailureDetail")
+            {
+                Value = new PropertyValue<string>(JsonSerializer.Serialize(failureDetail))
+            };
+            builder.AddElement(detailProp);
+        }
+
         var message = builder.Build();
-        await client.PublishAsync(message, $"/Planning/Refusals/{ReceiverId}/");
-        Logger.LogInformation("SendPlanningRefusal: published refusal to {Receiver} with reason {Reason}", ReceiverId, refusalReason);
+        await client.PublishAsync(message, $"/Planning/Refusals/{resolvedReceiver}/");
+        Logger.LogInformation("SendPlanningRefusal: published refusal to {Receiver} with reason {Reason}", resolvedReceiver, refusalReason);
         return NodeStatus.Success;
     }
 }

@@ -52,11 +52,15 @@ public class CalcEmbeddingNode : BTNode
                 return NodeStatus.Failure;
             }
 
-            var maxElements = ReadMaxInteractionElements() ?? 2;
-            if (interactionElements.Count != maxElements)
+            var maxElements = ReadMaxInteractionElements();
+            if (interactionElements.Count < 2)
             {
-                Logger.LogWarning("CalcEmbedding: Expected exactly {Max} InteractionElements, got {Count}", 
-                    maxElements, interactionElements.Count);
+                Logger.LogWarning("CalcEmbedding: Need at least 2 InteractionElements, got {Count}", interactionElements.Count);
+                return NodeStatus.Failure;
+            }
+            if (maxElements.HasValue && interactionElements.Count > maxElements.Value)
+            {
+                Logger.LogWarning("CalcEmbedding: Too many InteractionElements (max={Max}), got {Count}", maxElements.Value, interactionElements.Count);
                 return NodeStatus.Failure;
             }
 
@@ -64,6 +68,7 @@ public class CalcEmbeddingNode : BTNode
             var model = ResolvePlaceholders(Model);
 
             var embeddings = new List<double[]>();
+            var capabilityNames = new List<string>();
 
             foreach (var element in interactionElements)
             {
@@ -90,12 +95,14 @@ public class CalcEmbeddingNode : BTNode
                 }
 
                 embeddings.Add(embedding);
+                capabilityNames.Add(idShort);
                 var previewText = text.Length > 50 ? text.Substring(0, 50) : text;
                 Logger.LogInformation("CalcEmbedding: Generated embedding with dimension {Dim} for text: {Text}", 
                     embedding.Length, previewText);
             }
 
             Context.Set("Embeddings", embeddings);
+            Context.Set("CapabilityNames", capabilityNames);
             Logger.LogInformation("CalcEmbedding: Successfully calculated {Count} embeddings", embeddings.Count);
 
             return NodeStatus.Success;

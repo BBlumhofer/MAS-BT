@@ -3,6 +3,7 @@
   <BehaviorTree ID="PlanningAgent">
     <Sequence name="PlanningAgentRoot">
       <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <InitNeo4j name="InitNeo4j" />
       <ConnectToMessagingBroker name="ConnectMqtt" BrokerHost="{config.MQTT.Broker}" BrokerPort="{config.MQTT.Port}" DefaultTopic="factory/agents/messages" TimeoutMs="10000" ClientId="{config.Agent.AgentId}_{config.Agent.Role}" />
       <SetBlackboardValue name="SetPlanningRole" Key="AgentRole" Value="{config.Agent.Role}" />
       <SetBlackboardValue name="SetPlanningId" Key="AgentId" Value="{config.Agent.AgentId}" />
@@ -27,12 +28,25 @@
         </Repeat>
         <Repeat name="CapabilityOfferLoop" num_cycles="-1">
           <Fallback name="OfferOrIdle">
-            <Sequence name="RespondToCapabilityRequest">
+            <Sequence name="AwaitThenRespondOrRefuse">
               <WaitForMessage name="AwaitCapabilityRequest" ExpectedTypes="callForProposal" ExpectedTopic="/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest" TimeoutSeconds="10" />
-              <ParseCapabilityRequest name="ParseCapabilityRequest" />
-              <PlanCapabilityOffer name="PlanCapabilityOffer" />
-              <SendCapabilityOffer name="SendCapabilityOffer" />
-              <Wait name="OfferCooldown" DelayMs="200" />
+              <Fallback name="RespondOrRefuseAfterMessage">
+                <Sequence name="RespondToCapabilityRequest">
+                  <ParseCapabilityRequest name="ParseCapabilityRequest" />
+                  <CapabilityMatchmaking name="ExecuteCapabilityMatchmaking" RequiredCapability="{RequiredCapability}" />
+                  <CheckConstraints name="CheckConstraints" />
+                  <RequestTransport name="RequestTransport" FromStation="{ModuleId}" ToStation="{TransportTarget}" />
+                  <EvaluateRequestTransportResponse name="EvaluateTransportResponse" />
+                  <FeasibilityCheck name="FeasibilityCheck" />
+                  <PlanCapabilityOffer name="PlanCapabilityOffer" />
+                  <SendCapabilityOffer name="SendCapabilityOffer" />
+                  <Wait name="OfferCooldown" DelayMs="200" />
+                </Sequence>
+                <Sequence name="SendCapabilityRefusal">
+                  <SendPlanningRefusal name="SendPlanningRefusal" ReceiverId="{RequesterId}" />
+                  <Wait name="RefusalCooldown" DelayMs="500" />
+                </Sequence>
+              </Fallback>
             </Sequence>
             <Wait name="CapabilityIdle" DelayMs="200" />
           </Fallback>
@@ -70,6 +84,7 @@
     <Action ID="ReadConfig">
       <input_port name="configPath" />
     </Action>
+    <Action ID="InitNeo4j" />
     <Action ID="ReadShell">
       <input_port name="AgentId" />
       <input_port name="ShellRepositoryEndpoint" />
@@ -117,7 +132,13 @@
     <Action ID="CapabilityMatchmaking">
       <input_port name="RequiredCapability"/>
     </Action>
+    <Action ID="CheckConstraints"/>
     <Action ID="ParseCapabilityRequest" />
+    <Action ID="SendPlanningRefusal">
+      <input_port name="ReceiverId" />
+      <input_port name="Reason" />
+    </Action>
+    <Action ID="FeasibilityCheck"/>
     <Action ID="PlanCapabilityOffer" />
     <Action ID="SendCapabilityOffer" />
     <Action ID="ReceiveOfferMessage"/>

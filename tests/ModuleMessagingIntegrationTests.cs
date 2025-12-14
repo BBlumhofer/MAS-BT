@@ -131,6 +131,8 @@ public class ModuleMessagingIntegrationTests : IDisposable
             .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>("req-1") })
             .Build();
 
+        Console.WriteLine($"ReceiverId={cfpMessage.Frame?.Receiver?.Identification?.Id}");
+
         await dispatcherClient.PublishAsync(cfpMessage, $"/{ns}/DispatchingAgent/Offer");
 
         var forwardStatus = await node.Execute();

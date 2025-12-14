@@ -128,11 +128,12 @@ public class ForwardCapabilityRequestsNode : BTNode
         // receiver role is ModuleHolon.
         if (!string.IsNullOrWhiteSpace(receiverId))
         {
-            if (identifiers.Contains(receiverId))
+            if (IsBroadcast(receiverId))
             {
-                return true;
+                return string.Equals(receiverRole, "ModuleHolon", StringComparison.OrdinalIgnoreCase);
             }
-            return false;
+
+            return identifiers.Contains(receiverId);
         }
 
         if (!string.Equals(receiverRole, "ModuleHolon", StringComparison.OrdinalIgnoreCase))
@@ -141,6 +142,11 @@ public class ForwardCapabilityRequestsNode : BTNode
         }
 
         return true;
+    }
+
+    private static bool IsBroadcast(string receiverId)
+    {
+        return string.Equals(receiverId, "broadcast", StringComparison.OrdinalIgnoreCase) || receiverId == "*";
     }
 
 }

@@ -780,6 +780,19 @@
           }
         }
       },
+      "Neo4j.Driver/5.28.4": {
+        "type": "package",
+        "compile": {
+          "lib/net8.0/Neo4j.Driver.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net8.0/Neo4j.Driver.dll": {
+            "related": ".xml"
+          }
+        }
+      },
       "Newtonsoft.Json/13.0.3": {
         "type": "package",
         "compile": {
@@ -2093,6 +2106,24 @@
         "nuget.png"
       ]
     },
+    "Neo4j.Driver/5.28.4": {
+      "sha512": "o7oAvl7ourlDsGE8nO3sGOmYAOP+b/vV4ddV20LYIm871VfsJMpd4d8UkvSwPVYT1bkGPh8M39OuWHD8qcYxBg==",
+      "type": "package",
+      "path": "neo4j.driver/5.28.4",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Neo4j-icon-color.png",
+        "lib/net6.0/Neo4j.Driver.dll",
+        "lib/net6.0/Neo4j.Driver.xml",
+        "lib/net8.0/Neo4j.Driver.dll",
+        "lib/net8.0/Neo4j.Driver.xml",
+        "lib/netstandard2.0/Neo4j.Driver.dll",
+        "lib/netstandard2.0/Neo4j.Driver.xml",
+        "neo4j.driver.5.28.4.nupkg.sha512",
+        "neo4j.driver.nuspec"
+      ]
+    },
     "Newtonsoft.Json/13.0.3": {
       "sha512": "HrC5BXdl00IP9zeV+0Z848QWPAoCr9P3bDEZguI+gkLcBKAOxix/tLEAAHC+UvDNPv4a2d18lOReHMOagPa+zQ==",
       "type": "package",
@@ -2463,6 +2494,7 @@
       "Microsoft.Extensions.Logging >= 10.0.0",
       "Microsoft.Extensions.Logging.Console >= 10.0.0",
       "Microsoft.NET.Test.Sdk >= 17.12.0",
+      "Neo4j.Driver >= 5.28.4",
       "SkillSharp.Client >= 1.0.0",
       "System.Text.Json >= 10.0.0",
       "xunit >= 2.9.2",
@@ -2540,6 +2572,10 @@
           "Microsoft.NET.Test.Sdk": {
             "target": "Package",
             "version": "[17.12.0, )"
+          },
+          "Neo4j.Driver": {
+            "target": "Package",
+            "version": "[5.28.4, )"
           },
           "System.Text.Json": {
             "target": "Package",

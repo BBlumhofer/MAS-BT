@@ -13,6 +13,7 @@
           "Microsoft.Extensions.Logging": "10.0.0",
           "Microsoft.Extensions.Logging.Console": "10.0.0",
           "Microsoft.NET.Test.Sdk": "17.12.0",
+          "Neo4j.Driver": "5.28.4",
           "SkillSharp.Client": "1.0.0",
           "xunit": "2.9.2",
           "SkillSharp.Client.Reference": "1.0.0.0"
@@ -613,6 +614,14 @@
           }
         }
       },
+      "Neo4j.Driver/5.28.4": {
+        "runtime": {
+          "lib/net8.0/Neo4j.Driver.dll": {
+            "assemblyVersion": "5.28.1.4",
+            "fileVersion": "5.28.4.0"
+          }
+        }
+      },
       "Newtonsoft.Json/13.0.3": {
         "runtime": {
           "lib/net6.0/Newtonsoft.Json.dll": {
@@ -998,6 +1007,13 @@
       "sha512": "sha512-ah7aHXoedWp5m5a4zy2u4phOEVj0QFYzOb5tFKQeV8RRBrxp+1QREF4ymZuG8D+hzB2dhtrrG81WxTFv0PzOeQ==",
       "path": "mqttnet/4.3.7.1207",
       "hashPath": "mqttnet.4.3.7.1207.nupkg.sha512"
+    },
+    "Neo4j.Driver/5.28.4": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-o7oAvl7ourlDsGE8nO3sGOmYAOP+b/vV4ddV20LYIm871VfsJMpd4d8UkvSwPVYT1bkGPh8M39OuWHD8qcYxBg==",
+      "path": "neo4j.driver/5.28.4",
+      "hashPath": "neo4j.driver.5.28.4.nupkg.sha512"
     },
     "Newtonsoft.Json/13.0.3": {
       "type": "package",

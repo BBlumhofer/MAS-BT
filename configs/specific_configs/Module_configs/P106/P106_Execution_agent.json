@@ -8,7 +8,7 @@
     "InitializationTree": "Trees/ExecutionAgent.bt.xml"
   },
   "OPCUA": {
-    "Endpoint": "opc.tcp://localhost:4906",
+    "Endpoint": "opc.tcp://192.168.178.30:4906",
     "UseAuth": true,
     "Username": "orchestrator",
     "Password": "orchestrator",
@@ -18,8 +18,8 @@
     "ReconnectInterval": 3000
   },
     "AAS": {
-    "SubmodelRepositoryEndpoint": "http://localhost:8080/submodels",
-    "ShellRepositoryEndpoint": "http://localhost:8080/shells",
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
     "Timeout": 10000
   },
   "MQTT": {

@@ -184,8 +184,10 @@ public class NodeRegistry
         // AI Agent Nodes (Similarity Analysis)
         Register<CalcEmbeddingNode>("CalcEmbedding");
         Register<CalcCosineSimilarityNode>("CalcCosineSimilarity");
+        Register<CalcPairwiseSimilarityNode>("CalcPairwiseSimilarity");
         Register<CalcDescribedSimilarityNode>("CalcDescribedSimilarity");
         Register<BuildDescribedSimilarityResponseNode>("BuildDescribedSimilarityResponse");
+        Register<BuildPairwiseSimilarityResponseNode>("BuildPairwiseSimilarityResponse");
         Register<CreateDescriptionNode>("CreateDescription");
         Register<BuildCreateDescriptionResponseNode>("BuildCreateDescriptionResponse");
 
@@ -275,6 +277,9 @@ public class NodeRegistry
         Register<ReceiveOfferMessageNode>("ReceiveOfferMessage");
         Register<SelectSchedulableActionNode>("SelectSchedulableAction");
         Register<CheckSkillPreconditionsNode>();
+        // Neo4j nodes
+        Register<InitNeo4jNode>("InitNeo4j");
+        Register<RunNeo4jTestNode>("RunNeo4jTest");
 
         // Recovery Nodes
         Register<RecoverySequenceNode>("RecoverySequence");

@@ -1,0 +1,30 @@
+{
+  "Agent": {
+    "AgentId": "Neo4jTestAgent_phuket",
+    "Role": "ToolingAgent",
+    "AgentType": "Neo4jTestAgent",
+    "ParentAgent": "DispatchingAgent_phuket",
+    "LogLevel": "Information",
+    "InitializationTree": "Trees/Neo4jTestAgent.bt.xml"
+  },
+  "Namespace": "phuket",
+  "MQTT": {
+    "Broker": "192.168.178.30",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "ClientId": "Neo4jTestAgent_phuket",
+    "UseTLS": false,
+    "UseAuth": false,
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000
+  },
+  "Neo4j": {
+    "Uri": "neo4j://192.168.178.30:7687",
+    "Username": "neo4j",
+    "Password": "testtest",
+    "Database": "neo4j"
+  }
+}

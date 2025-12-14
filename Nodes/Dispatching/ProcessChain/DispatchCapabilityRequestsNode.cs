@@ -489,16 +489,19 @@ public class DispatchCapabilityRequestsNode : BTNode
 
     private async Task EnsureCalcSimilarityResponseListenerAsync(MessagingClient client, string ns, string similarityAgentId)
     {
-        if (!_subscribedCalcSimilarityResponse)
-        {
-            // SimilarityAnalysisAgent currently answers on its own request topics.
-            // Subscribe to both (legacy receiver-topic and request-topic) to be robust.
-            var responseTopicOnReceiver = $"/{ns}/{Context.AgentId}/CalcSimilarity";
-            var responseTopicOnRequester = $"/{ns}/{similarityAgentId}/CalcSimilarity";
-            await client.SubscribeAsync(responseTopicOnReceiver).ConfigureAwait(false);
-            await client.SubscribeAsync(responseTopicOnRequester).ConfigureAwait(false);
-            _subscribedCalcSimilarityResponse = true;
-        }
+            if (!_subscribedCalcSimilarityResponse)
+            {
+                // SimilarityAnalysisAgent may answer on multiple topics. Subscribe to legacy and pairwise topics.
+                var responseTopicOnReceiver = $"/{ns}/{Context.AgentId}/CalcSimilarity";
+                var responseTopicOnRequester = $"/{ns}/{similarityAgentId}/CalcSimilarity";
+                var responseTopicOnReceiverPairwise = $"/{ns}/{Context.AgentId}/CalcPairwiseSimilarity";
+                var responseTopicOnRequesterPairwise = $"/{ns}/{similarityAgentId}/CalcPairwiseSimilarity";
+                await client.SubscribeAsync(responseTopicOnReceiver).ConfigureAwait(false);
+                await client.SubscribeAsync(responseTopicOnRequester).ConfigureAwait(false);
+                await client.SubscribeAsync(responseTopicOnReceiverPairwise).ConfigureAwait(false);
+                await client.SubscribeAsync(responseTopicOnRequesterPairwise).ConfigureAwait(false);
+                _subscribedCalcSimilarityResponse = true;
+            }
     }
 
     private static Property<string> CreateStringProperty(string idShort, string value)

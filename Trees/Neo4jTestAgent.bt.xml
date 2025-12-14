@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="Neo4jTestAgent">
+  <BehaviorTree ID="Neo4jTestAgent">
+    <Sequence name="Neo4jTestAgentRoot">
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <InitNeo4j name="InitNeo4j" />
+      <RunNeo4jTest name="RunNeo4jTest" />
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Action ID="ReadConfig">
+      <input_port name="configPath" />
+    </Action>
+    <Action ID="InitNeo4j" />
+    <Action ID="RunNeo4jTest" />
+  </TreeNodesModel>
+</root>

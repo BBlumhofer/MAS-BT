@@ -53,13 +53,9 @@ public class ModuleInitializationTestRunner
         var preconditionRetries = GetConfigInt(config, "Execution.MaxPreconditionRetries", 10);
         var preconidionBackoffTime = GetConfigInt(config, "Execution.PreconditionBackoffStartMs", 20000);
         
-        Console.WriteLine($"📋 Configuration:");
-        Console.WriteLine($"   OPC UA Endpoint: {opcuaEndpoint}");
-        Console.WriteLine($"   OPC UA Username: {opcuaUsername}");
-        Console.WriteLine($"   Module ID: {moduleId}");
-        Console.WriteLine($"   Module Name: {moduleName}");
-        Console.WriteLine($"   Agent ID: {agentId}");
-        Console.WriteLine($"   MQTT Broker: {mqttBroker}:{mqttPort}");
+        Console.WriteLine("📋 Configuration:");
+        // Print full config structure (recursively) for easier inspection
+        PrintFullConfig(config, indent: "   ");
         Console.WriteLine();
         
         // Shared BTContext (AgentId/Role can change based on config nodes)
@@ -812,27 +808,16 @@ public class ModuleInitializationTestRunner
     {
         Console.WriteLine("📊 CONTEXT STATE:");
         Console.WriteLine();
-        
-        var data = new Dictionary<string, object?>
+
+        // Print all keys stored in the blackboard in a readable form
+        foreach (var key in context.Keys.OrderBy(k => k))
         {
-            ["connected"] = context.Get<bool>("connected"),
-            ["locked"] = context.Get<bool>("locked"),
-            ["coupled"] = context.Get<bool>("coupled"),
-            ["started"] = context.Get<bool>("started"),
-            ["sent"] = context.Get<bool>("sent"),
-            ["moduleEndpoint"] = context.Get<string>("moduleEndpoint"),
-            ["lastExecutedSkill"] = context.Get<string>("lastExecutedSkill"),
-            ["CoupledModules"] = context.Get<List<string>>("CoupledModules")
-        };
-        
-        foreach (var kvp in data)
-        {
-            if (kvp.Value != null)
+            var val = context.Get(key);
+            if (val != null)
             {
-                Console.WriteLine($"   • {kvp.Key}: {FormatValue(kvp.Value)}");
+                Console.WriteLine($"   • {key}: {FormatAnyValue(val)}");
             }
         }
-        
         Console.WriteLine();
     }
     
@@ -845,5 +830,97 @@ public class ModuleInitializationTestRunner
             return $"[{string.Join(", ", list)}]";
         
         return value.ToString() ?? "(null)";
+    }
+
+    private static string FormatAnyValue(object? value)
+    {
+        if (value == null) return "(null)";
+        if (value is bool b) return b ? "✓" : "✗";
+        if (value is string s) return s;
+        if (value is JsonElement je)
+        {
+            switch (je.ValueKind)
+            {
+                case JsonValueKind.Object:
+                    return "{...}";
+                case JsonValueKind.Array:
+                    return "[...]";
+                case JsonValueKind.String:
+                    return je.GetString() ?? string.Empty;
+                case JsonValueKind.Number:
+                    return je.GetRawText();
+                case JsonValueKind.True:
+                case JsonValueKind.False:
+                    return je.GetBoolean() ? "✓" : "✗";
+                default:
+                    return je.ToString();
+            }
+        }
+        if (value is IEnumerable<string> strEnum)
+        {
+            return $"[{string.Join(", ", strEnum)}]";
+        }
+        if (value is System.Collections.IEnumerable enumObj)
+        {
+            try
+            {
+                var items = new List<string>();
+                foreach (var it in enumObj)
+                {
+                    items.Add(it?.ToString() ?? "(null)");
+                    if (items.Count >= 10) { items.Add("..."); break; }
+                }
+                return $"[{string.Join(", ", items)}]";
+            }
+            catch { return value.ToString() ?? "(object)"; }
+        }
+
+        return value.ToString() ?? "(object)";
+    }
+
+    private static void PrintFullConfig(Dictionary<string, object> config, string indent = "")
+    {
+        foreach (var kv in config)
+        {
+            var key = kv.Key;
+            var val = kv.Value;
+            if (val is JsonElement je)
+            {
+                switch (je.ValueKind)
+                {
+                    case JsonValueKind.Object:
+                        Console.WriteLine($"{indent}{key}:");
+                        var sub = new Dictionary<string, object>();
+                        foreach (var prop in je.EnumerateObject())
+                        {
+                            sub[prop.Name] = prop.Value;
+                        }
+                        PrintFullConfig(sub, indent + "  ");
+                        break;
+                    case JsonValueKind.Array:
+                        Console.WriteLine($"{indent}{key}: [");
+                        foreach (var item in je.EnumerateArray())
+                        {
+                            if (item.ValueKind == JsonValueKind.Object)
+                            {
+                                Console.WriteLine($"{indent}  - {{...}}");
+                            }
+                            else
+                            {
+                                Console.WriteLine($"{indent}  - {item.ToString()}");
+                            }
+                        }
+                        Console.WriteLine($"{indent}]");
+                        break;
+                    default:
+                        Console.WriteLine($"{indent}{key}: {je.ToString()}");
+                        break;
+                }
+            }
+            else
+            {
+                Console.WriteLine($"{indent}{key}: {val}");
+            }
+        }
     }
 }

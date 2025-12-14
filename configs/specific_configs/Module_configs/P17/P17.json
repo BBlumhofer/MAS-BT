@@ -11,8 +11,8 @@
   },
   "SubHolons": ["P17_Execution_agent","P17_planning_agent"],
   "AAS": {
-    "SubmodelRepositoryEndpoint": "http://localhost:8080/submodels",
-    "ShellRepositoryEndpoint": "http://localhost:8080/shells",
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
     "Timeout": 10000
   },
   "MQTT": {

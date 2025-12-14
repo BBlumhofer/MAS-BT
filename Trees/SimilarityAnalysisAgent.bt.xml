@@ -17,18 +17,20 @@
 
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
       <SubscribeToTopic name="SubscribeCalcSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcSimilarity" />
+      <SubscribeToTopic name="SubscribeCalcPairwiseSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcPairwiseSimilarity" />
       <SubscribeToTopic name="SubscribeCalcDescribedSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcDescribedSimilarity" />
       <SubscribeToTopic name="SubscribeCreateDescription" Topic="/{config.Namespace}/{config.Agent.AgentId}/CreateDescription" />
       <RegisterAgent name="InitialRegistration" ParentAgent="DispatchingAgent_{config.Namespace}" />
 
       <Parallel name="SimilarityLoops">
-        <Repeat name="CalcSimilarityLoop" num_cycles="-1">
+            <Repeat name="CalcSimilarityLoop" num_cycles="-1">
           <Fallback name="CalcSimilarityOrWait">
             <Sequence name="HandleCalcSimilarity">
-              <WaitForMessage name="WaitCalcSimilarity" ExpectedTypes="calcSimilarity" ExpectedTopic="/{Namespace}/{AgentId}/CalcSimilarity" TimeoutSeconds="10" />
+              <WaitForMessage name="WaitCalcSimilarity" ExpectedTypes="calcPairwiseSimilarity" ExpectedTopic="/{Namespace}/{AgentId}/CalcPairwiseSimilarity" TimeoutSeconds="10" />
               <CalcEmbedding name="CalcEmbedding" OllamaEndpoint="{config.Ollama.Endpoint}" Model="{config.Ollama.Model}" />
-              <CalcCosineSimilarity name="CalcCosineSimilarity" />
-              <SendResponseMessage name="SendSimilarityResponse" Topic="/{Namespace}/{AgentId}/CalcSimilarity" />
+              <CalcPairwiseSimilarity name="CalcPairwiseSimilarity" />
+              <BuildPairwiseSimilarityResponse name="BuildPairwiseSimilarityResponse" />
+              <SendResponseMessage name="SendPairwiseSimilarityResponse" Topic="/{Namespace}/{AgentId}/CalcPairwiseSimilarity" />
               <Wait name="CalcIdle" DelayMs="200" />
             </Sequence>
             <Wait name="CalcBackoff" DelayMs="200" />
@@ -113,6 +115,8 @@
       <input_port name="OllamaEndpoint" />
       <input_port name="Model" />
     </Action>
+    <Action ID="CalcPairwiseSimilarity" />
+    <Action ID="BuildPairwiseSimilarityResponse" />
      <Action ID="CalcDescribedSimilarity">
        <input_port name="OllamaEndpoint" />
        <input_port name="Model" />
