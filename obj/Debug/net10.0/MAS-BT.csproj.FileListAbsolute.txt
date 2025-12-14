@@ -277,4 +277,16 @@ C:/Users/bebl01/Repos/CSharpEnv/MAS-BT/obj/Debug/net10.0/ref/MAS-BT.dll
 /home/benjamin/AgentDevelopment/MAS-BT/obj/Debug/net10.0/MAS-BT.pdb
 /home/benjamin/AgentDevelopment/MAS-BT/obj/Debug/net10.0/MAS-BT.genruntimeconfig.cache
 /home/benjamin/AgentDevelopment/MAS-BT/obj/Debug/net10.0/ref/MAS-BT.dll
+<<<<<<< Updated upstream
 /home/benjamin/AgentDevelopment/MAS-BT/bin/Debug/net10.0/Neo4j.Driver.dll
+=======
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.csproj.AssemblyReference.cache
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.GeneratedMSBuildEditorConfig.editorconfig
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.AssemblyInfoInputs.cache
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.AssemblyInfo.cs
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.csproj.CoreCompileInputs.cache
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.sourcelink.json
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.dll
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/refint/MAS-BT.dll
+/home/benjamin/AgentDevelopment/MAS-BT.worktrees/worktree-2025-12-14T19-32-22/obj/Debug/net10.0/MAS-BT.pdb
+>>>>>>> Stashed changes

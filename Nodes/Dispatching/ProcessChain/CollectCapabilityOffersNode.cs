@@ -16,7 +16,7 @@ using ActionModel = AasSharpClient.Models.Action;
 
 namespace MAS_BT.Nodes.Dispatching.ProcessChain;
 
-public class CollectCapabilityOffersNode : BTNode
+public class CollectCapabilityOfferNode : BTNode
 {
     private readonly ConcurrentQueue<I40Message> _incoming = new();
     private readonly HashSet<string> _respondedModules = new(StringComparer.OrdinalIgnoreCase);
@@ -26,7 +26,7 @@ public class CollectCapabilityOffersNode : BTNode
 
     public int TimeoutSeconds { get; set; } = 5;
 
-    public CollectCapabilityOffersNode() : base("CollectCapabilityOffers") { }
+    public CollectCapabilityOfferNode() : base("CollectCapabilityOffer") { }
 
     public override Task<NodeStatus> Execute()
     {
@@ -34,7 +34,7 @@ public class CollectCapabilityOffersNode : BTNode
         var ctx = Context.Get<ProcessChainNegotiationContext>("ProcessChain.Negotiation");
         if (client == null || ctx == null)
         {
-            Logger.LogError("CollectCapabilityOffers: missing client or context");
+            Logger.LogError("CollectCapabilityOffer: missing client or context");
             return Task.FromResult(NodeStatus.Failure);
         }
 
@@ -46,7 +46,7 @@ public class CollectCapabilityOffersNode : BTNode
 
             var state = Context.Get<DispatchingState>("DispatchingState");
             _expectedModules = state?.Modules.Count ?? 0;
-            Logger.LogInformation("CollectCapabilityOffers: waiting for responses from {Count} modules", _expectedModules);
+            Logger.LogInformation("CollectCapabilityOffer: waiting for responses from {Count} modules", _expectedModules);
         }
 
         while (_incoming.TryDequeue(out var message))
@@ -62,7 +62,7 @@ public class CollectCapabilityOffersNode : BTNode
         {
             if (timedOut)
             {
-                Logger.LogWarning("CollectCapabilityOffers: timeout after {Timeout}s", TimeoutSeconds);
+                Logger.LogWarning("CollectCapabilityOffer: timeout after {Timeout}s", TimeoutSeconds);
 
                 var state = Context.Get<DispatchingState>("DispatchingState");
                 var knownModules = state?.Modules.Select(m => m.ModuleId).Where(id => !string.IsNullOrWhiteSpace(id)).ToList()
@@ -78,7 +78,7 @@ public class CollectCapabilityOffersNode : BTNode
                     .ToList();
 
                 Logger.LogWarning(
-                    "CollectCapabilityOffers: respondedModules={Responded}/{Expected}. MissingModules=[{MissingModules}] MissingRequirements=[{MissingReqs}]",
+                    "CollectCapabilityOffer: respondedModules={Responded}/{Expected}. MissingModules=[{MissingModules}] MissingRequirements=[{MissingReqs}]",
                     _respondedModules.Count,
                     _expectedModules,
                     string.Join(",", missingModules),
@@ -112,7 +112,7 @@ public class CollectCapabilityOffersNode : BTNode
         var requirement = ResolveRequirement(ctx, message);
         if (requirement == null)
         {
-            Logger.LogDebug("CollectCapabilityOffers: received message that does not match any requirement");
+            Logger.LogDebug("CollectCapabilityOffer: received message that does not match any requirement");
             return;
         }
 
@@ -121,12 +121,12 @@ public class CollectCapabilityOffersNode : BTNode
         {
             var offer = BuildCapabilityOffer(requirement, message);
             requirement.AddOffer(offer);
-            Logger.LogInformation("CollectCapabilityOffers: recorded offer {OfferId} for capability {Capability}", offer.InstanceIdentifier.Value.Value, requirement.Capability);
+            Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability}", offer.InstanceIdentifier.Value.Value, requirement.Capability);
         }
         else if (string.Equals(messageType, I40MessageTypes.REFUSE_PROPOSAL, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(messageType, I40MessageTypes.REFUSAL, StringComparison.OrdinalIgnoreCase))
         {
-            Logger.LogInformation("CollectCapabilityOffers: module {Sender} refused requirement {Requirement}", sender, requirement.RequirementId);
+            Logger.LogInformation("CollectCapabilityOffer: module {Sender} refused requirement {Requirement}", sender, requirement.RequirementId);
         }
     }
 

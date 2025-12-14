@@ -53,7 +53,7 @@
                 <Sequence name="CapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
                   <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
-                  <CollectCapabilityOffers name="CollectCapabilityOffers" />
+                  <CollectCapabilityOffer name="CollectCapabilityOffer" />
                   <BuildProcessChainResponse name="BuildProcessChainResponse" />
                   <SendProcessChainResponse name="SendProcessChainResponse" />
                 </Sequence>
@@ -151,7 +151,7 @@
     <Action ID="ParseProcessChainRequest" />
     <Action ID="CheckForCapabilitiesInNamespace" />
     <Action ID="DispatchCapabilityRequests" />
-    <Action ID="CollectCapabilityOffers" />
+    <Action ID="CollectCapabilityOffer" />
     <Action ID="BuildProcessChainResponse" />
     <Action ID="SendProcessChainResponse" />
     <Action ID="HandleManufacturingSequenceRequest" />

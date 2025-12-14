@@ -52,6 +52,14 @@ public class WaitForMessageNode : BTNode
                 return NodeStatus.Failure;
             }
 
+            // Check if SubscribeToTopicNode already captured a matching message in CurrentMessage
+            if (TryConsumeFromContext(out var contextMessage))
+            {
+                Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Found matching message in CurrentMessage (Type={Type}, Conv={Conv})", 
+                    Name, _instanceId, contextMessage.Frame?.Type, contextMessage.Frame?.ConversationId);
+                return HandleDequeuedMessage(contextMessage);
+            }
+
             // Global queueing: try to consume a matching message that arrived while this node wasn't active.
             // Do this before (re-)subscribing callbacks so we don't miss already-buffered messages.
             if (TryConsumeFromClientInbox(client, out var bufferedMessage))
@@ -241,6 +249,78 @@ public class WaitForMessageNode : BTNode
         }
         
         return NodeStatus.Running;
+    }
+
+    private bool TryConsumeFromContext(out I40Message message)
+    {
+        message = null!;
+
+        // Check if CurrentMessage exists and matches our filters
+        if (!Context.Has("CurrentMessage"))
+        {
+            return false;
+        }
+
+        var currentMsg = Context.Get<I40Message>("CurrentMessage");
+        if (currentMsg?.Frame == null)
+        {
+            return false;
+        }
+
+        // Check if this message was already consumed by this WaitForMessage instance
+        var consumedKey = $"WaitForMessage.Consumed:{_instanceId}:{currentMsg.Frame.ConversationId}";
+        if (Context.Get<bool>(consumedKey))
+        {
+            return false;
+        }
+
+        var expectedTypes = ParseExpectedTypes();
+        var expectedTopics = ParseExpectedTopics()
+            .Select(t => ResolvePlaceholders(t))
+            .Where(t => !string.IsNullOrWhiteSpace(t))
+            .Distinct(StringComparer.Ordinal)
+            .ToList();
+
+        var expectedConv = ResolveConversationIdFromInput();
+        var expectedSender = string.IsNullOrWhiteSpace(ExpectedSender) ? null : ExpectedSender;
+
+        // Type filter
+        if (expectedTypes.Count > 0)
+        {
+            var msgType = currentMsg.Frame.Type ?? string.Empty;
+            if (!expectedTypes.Contains(msgType, StringComparer.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+        }
+
+        // Sender filter
+        if (!string.IsNullOrWhiteSpace(expectedSender) && currentMsg.Frame.Sender?.Identification?.Id != expectedSender)
+        {
+            return false;
+        }
+
+        // Conversation filter
+        if (!string.IsNullOrWhiteSpace(expectedConv) && !string.Equals(currentMsg.Frame.ConversationId, expectedConv, StringComparison.Ordinal))
+        {
+            return false;
+        }
+
+        // Topic filter (check against CurrentTopic if available)
+        if (expectedTopics.Count > 0 && Context.Has("CurrentTopic"))
+        {
+            var currentTopic = Context.Get<string>("CurrentTopic");
+            if (!expectedTopics.Contains(currentTopic, StringComparer.Ordinal))
+            {
+                return false;
+            }
+        }
+
+        // Mark this message as consumed by this instance
+        Context.Set(consumedKey, true);
+        
+        message = currentMsg;
+        return true;
     }
 
     private bool TryConsumeFromClientInbox(MessagingClient client, out I40Message message)
