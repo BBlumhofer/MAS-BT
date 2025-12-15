@@ -19,6 +19,14 @@ public class CapabilityRequestContext
     public string RequesterId { get; set; } = string.Empty;
     public string ProductId { get; set; } = string.Empty;
     public CapabilityContainer? CapabilityContainer { get; set; }
+    public string FrameType { get; set; } = string.Empty;
+    public string BaseMessageType { get; set; } = string.Empty;
+    public string MessageSubtype { get; set; } = string.Empty;
+    public I40MessageTypeSubtypes SubType { get; set; } = I40MessageTypeSubtypes.None;
+    public bool IsManufacturingRequest => SubType == I40MessageTypeSubtypes.ManufacturingSequence;
+    public SubmodelElementCollection? RequestedCapabilityElement { get; set; }
+    public string? RequestedInstanceIdentifier { get; set; }
+    public Reference? RequestedCapabilityReference { get; set; }
 
     private static readonly string[] CapabilityPropertyCandidates =
     {
@@ -39,6 +47,12 @@ public class CapabilityRequestContext
         var productId = ExtractProperty(message, "ProductId") ?? string.Empty;
         var conversationId = message.Frame?.ConversationId ?? Guid.NewGuid().ToString();
         var requesterId = message.Frame?.Sender?.Identification?.Id ?? "DispatchingAgent";
+        var frameTypeRaw = message.Frame?.Type ?? string.Empty;
+        var (baseType, subtypeToken) = SplitMessageType(frameTypeRaw);
+        if (!I40MessageTypeSubtypesExtensions.TryParse(subtypeToken, out var typedSubtype))
+        {
+            typedSubtype = I40MessageTypeSubtypes.None;
+        }
 
         var context = new CapabilityRequestContext
         {
@@ -46,16 +60,44 @@ public class CapabilityRequestContext
             RequirementId = requirementId,
             ConversationId = conversationId,
             RequesterId = requesterId,
-            ProductId = productId
+            ProductId = productId,
+            FrameType = frameTypeRaw,
+            BaseMessageType = baseType,
+            MessageSubtype = subtypeToken,
+            SubType = typedSubtype
         };
 
         var containerElement = FindCapabilityContainer(message, capability);
         if (containerElement != null)
         {
+            context.RequestedCapabilityElement = containerElement;
             context.CapabilityContainer = new CapabilityContainer(containerElement);
+            context.RequestedInstanceIdentifier = ExtractInstanceIdentifier(containerElement);
+            context.RequestedCapabilityReference = ExtractCapabilityReference(containerElement);
         }
 
         return context;
+    }
+
+    private static (string BaseType, string SubType) SplitMessageType(string? raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        var parts = raw.Split('/', 2, StringSplitOptions.RemoveEmptyEntries);
+        if (parts.Length == 0)
+        {
+            return (string.Empty, string.Empty);
+        }
+
+        if (parts.Length == 1)
+        {
+            return (parts[0], string.Empty);
+        }
+
+        return (parts[0], parts[1]);
     }
 
     private static string? ExtractCapabilityName(I40Message message)
@@ -216,6 +258,55 @@ public class CapabilityRequestContext
 
         return false;
     }
+
+    private static string? ExtractInstanceIdentifier(SubmodelElementCollection collection)
+    {
+        if (collection?.Values == null)
+        {
+            return null;
+        }
+
+        var property = collection.Values
+            .OfType<Property>()
+            .FirstOrDefault(prop => string.Equals(prop.IdShort, RequiredCapability.InstanceIdentifierIdShort, StringComparison.OrdinalIgnoreCase));
+
+        return property?.Value?.Value?.ToString();
+    }
+
+    private static Reference? ExtractCapabilityReference(SubmodelElementCollection collection)
+    {
+        if (collection?.Values == null)
+        {
+            return null;
+        }
+
+        var referenceElement = collection.Values
+            .OfType<ReferenceElement>()
+            .FirstOrDefault(r => string.Equals(r.IdShort, RequiredCapability.RequiredCapabilityReferenceIdShort, StringComparison.OrdinalIgnoreCase));
+
+        return CloneReference(referenceElement?.Value?.Value);
+    }
+
+    private static Reference? CloneReference(IReference? reference)
+    {
+        if (reference == null)
+        {
+            return null;
+        }
+
+        var keyList = reference.Keys?
+            .Select(k => (IKey)new Key(k.Type, k.Value))
+            .ToList();
+        if (keyList == null || keyList.Count == 0)
+        {
+            return null;
+        }
+
+        return new Reference(keyList)
+        {
+            Type = reference.Type
+        };
+    }
 }
 
 /// <summary>
@@ -230,4 +321,5 @@ public class CapabilityOfferPlan
     public TimeSpan CycleTime { get; set; } = TimeSpan.FromMinutes(1);
     public double Cost { get; set; } = 0.0;
     public OfferedCapability? OfferedCapability { get; set; }
+    public List<OfferedCapability> SupplementalCapabilities { get; } = new List<OfferedCapability>();
 }

@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
@@ -25,47 +26,52 @@ public class CheckConstraintsNode : BTNode
         var step = Context.Get<Step>("DerivedStep") ?? Context.Get<Step>("CurrentPlanStep");
         var request = Context.Get<CapabilityRequestContext>("Planning.CapabilityRequest");
 
-        if (action == null && request?.CapabilityContainer == null)
-        {
-            Logger.LogInformation("CheckConstraints: no CurrentPlanAction or capability container available, skipping constraint evaluation");
-            Context.Set("RequiresTransport", false);
-            return Task.FromResult(NodeStatus.Success);
-        }
-
-        string? target = null;
-        bool hasInStorage;
-
+        var requirements = new List<TransportRequirement>();
         if (action != null)
         {
-            hasInStorage = TryDetectStoragePrecondition(action, out target);
-        }
-        else
-        {
-            hasInStorage = TryDetectStorageConstraint(request!.CapabilityContainer!, out target);
+            requirements.AddRange(ExtractTransportRequirements(action.Preconditions, TransportPlacement.BeforeCapability));
+            requirements.AddRange(ExtractTransportRequirements(action.Effects, TransportPlacement.AfterCapability));
         }
 
-        Context.Set("RequiresTransport", hasInStorage);
-        if (hasInStorage)
+        if (requirements.Count == 0 && request?.CapabilityContainer != null)
         {
-            if (string.IsNullOrWhiteSpace(target))
+            if (TryDetectStorageConstraint(request.CapabilityContainer, out var constraintTarget))
             {
-                var fallback = Context.Get<string>("MachineName");
-                if (!string.IsNullOrWhiteSpace(fallback))
+                requirements.Add(new TransportRequirement
                 {
-                    target = fallback;
-                }
+                    Target = string.IsNullOrWhiteSpace(constraintTarget) ? (request.Capability ?? string.Empty) : constraintTarget!,
+                    Placement = TransportPlacement.BeforeCapability,
+                    SourceId = request.RequestedInstanceIdentifier ?? request.RequirementId
+                });
             }
+        }
 
-            if (!string.IsNullOrWhiteSpace(target))
+        var requiresTransport = requirements.Count > 0;
+        Context.Set("RequiresTransport", requiresTransport);
+        Context.Set("Planning.TransportRequirements", requirements);
+
+        if (requiresTransport)
+        {
+            var firstTarget = requirements.FirstOrDefault()?.Target;
+            if (string.IsNullOrWhiteSpace(firstTarget))
             {
-                Context.Set("TransportTarget", target);
+                firstTarget = Context.Get<string>("MachineName");
             }
 
-            Logger.LogInformation("CheckConstraints: InStorage constraint detected, transport target={Target}", target ?? "<unknown>");
+            if (!string.IsNullOrWhiteSpace(firstTarget))
+            {
+                Context.Set("TransportTarget", firstTarget);
+            }
+
+            Logger.LogInformation(
+                "CheckConstraints: detected {Count} transport requirement(s): {Details}",
+                requirements.Count,
+                string.Join(", ", requirements.Select(r => $"{r.Placement}:{r.Target ?? "<unknown>"}")));
         }
         else
         {
-            Logger.LogInformation("CheckConstraints: no InStorage constraints detected");
+            Context.Set("TransportTarget", null);
+            Logger.LogInformation("CheckConstraints: no transport constraints detected");
         }
 
         Context.Set("CurrentPlanStep", step);
@@ -73,35 +79,51 @@ public class CheckConstraintsNode : BTNode
         return Task.FromResult(NodeStatus.Success);
     }
 
-    private static bool TryDetectStoragePrecondition(ActionModel action, out string? target)
+    private static IEnumerable<TransportRequirement> ExtractTransportRequirements(SubmodelElementCollection? parent, TransportPlacement placement)
     {
-        target = null;
-        var preconditions = action.Preconditions?.OfType<SubmodelElementCollection>() ?? Enumerable.Empty<SubmodelElementCollection>();
-        foreach (var pc in preconditions)
+        if (parent == null)
         {
-            if (pc.IdShort.Contains("storage", StringComparison.OrdinalIgnoreCase))
-            {
-                target = ExtractSlotValue(pc);
-                return true;
-            }
-
-            var conditionType = pc.FirstOrDefault(el => el.IdShort is "ConditionType") as Property<string>;
-            var conditionValue = conditionType?.Value.Value?.ToString() ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(conditionValue) &&
-                conditionValue.Contains("InStorage", StringComparison.OrdinalIgnoreCase))
-            {
-                target = ExtractSlotValue(pc);
-                return true;
-            }
+            yield break;
         }
 
-        return false;
+        foreach (var collection in parent.OfType<SubmodelElementCollection>())
+        {
+            if (!LooksLikeStorageCondition(collection))
+            {
+                continue;
+            }
+
+            var target = ExtractStorageTarget(collection);
+            yield return new TransportRequirement
+            {
+                Placement = placement,
+                Target = target ?? string.Empty,
+                SourceId = collection.IdShort
+            };
+        }
     }
 
-    private static string? ExtractSlotValue(SubmodelElementCollection storage)
+    private static string? ExtractStorageTarget(SubmodelElementCollection collection)
     {
-        var slotValue = storage.FirstOrDefault(el => el.IdShort is "SlotValue") as Property<string>;
-        return slotValue?.Value.Value?.ToString();
+        var slotValue = FindPropertyValue(collection, "SlotValue");
+        if (!string.IsNullOrWhiteSpace(slotValue))
+        {
+            return slotValue;
+        }
+
+        var targetStation = FindPropertyValue(collection, "TargetStation");
+        if (!string.IsNullOrWhiteSpace(targetStation))
+        {
+            return targetStation;
+        }
+
+        var machineName = FindPropertyValue(collection, "MachineName");
+        if (!string.IsNullOrWhiteSpace(machineName))
+        {
+            return machineName;
+        }
+
+        return null;
     }
 
     private static bool TryDetectStorageConstraint(CapabilityContainer container, out string? target)
@@ -168,5 +190,104 @@ public class CheckConstraintsNode : BTNode
     {
         return !string.IsNullOrWhiteSpace(value) &&
                value.Contains("storage", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? ExtractSlotValue(SubmodelElementCollection storage)
+    {
+        return FindPropertyValue(storage, "SlotValue");
+    }
+
+    private static bool LooksLikeStorageCondition(SubmodelElementCollection? collection)
+    {
+        if (collection == null)
+        {
+            return false;
+        }
+
+        if (ContainsStorageKeyword(collection.IdShort))
+        {
+            return true;
+        }
+
+        foreach (var element in EnumerateDescendants(collection))
+        {
+            if (element is Property property)
+            {
+                if (ContainsStorageKeyword(property.IdShort) ||
+                    ContainsStorageKeyword(TryExtractString(property.Value?.Value)))
+                {
+                    return true;
+                }
+            }
+            else if (element is SubmodelElementCollection nested && ContainsStorageKeyword(nested.IdShort))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static IEnumerable<ISubmodelElement> EnumerateDescendants(SubmodelElementCollection collection)
+    {
+        if (collection?.Values == null)
+        {
+            yield break;
+        }
+
+        foreach (var element in collection.Values)
+        {
+            if (element == null)
+            {
+                continue;
+            }
+
+            yield return element;
+
+            if (element is SubmodelElementCollection nested)
+            {
+                foreach (var child in EnumerateDescendants(nested))
+                {
+                    yield return child;
+                }
+            }
+        }
+    }
+
+    private static string? FindPropertyValue(SubmodelElementCollection? collection, string idShort)
+    {
+        if (collection?.Values == null)
+        {
+            return null;
+        }
+
+        foreach (var element in collection.Values)
+        {
+            if (element is Property prop && string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
+            {
+                return TryExtractString(prop.Value?.Value);
+            }
+
+            if (element is SubmodelElementCollection nested)
+            {
+                var nestedValue = FindPropertyValue(nested, idShort);
+                if (!string.IsNullOrWhiteSpace(nestedValue))
+                {
+                    return nestedValue;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private static string? TryExtractString(object? value)
+    {
+        if (value is IValue nested)
+        {
+            return nested.Value?.ToString();
+        }
+
+        return value?.ToString();
     }
 }

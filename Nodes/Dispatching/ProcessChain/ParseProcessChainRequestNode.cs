@@ -1,11 +1,14 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using MAS_BT.Core;
-using Microsoft.Extensions.Logging;
-using BaSyx.Models.AdminShell;
 using AasSharpClient.Models;
+using AasSharpClient.Models.ProcessChain;
+using BaSyx.Models.AdminShell;
+using MAS_BT.Core;
 using I40Sharp.Messaging.Models;
+using Microsoft.Extensions.Logging;
+using ProcessChainModel = AasSharpClient.Models.ProcessChain.ProcessChain;
+using RequiredCapabilityModel = AasSharpClient.Models.ProcessChain.RequiredCapability;
 
 namespace MAS_BT.Nodes.Dispatching.ProcessChain;
 
@@ -32,12 +35,28 @@ public class ParseProcessChainRequestNode : BTNode
         };
 
         ctx.ProductId = ExtractProductIdentifier(incoming) ?? string.Empty;
-
-        var containers = ExtractCapabilityContainers(incoming).ToList();
-        // create requirements from explicit capability containers
-        foreach (var container in containers)
+        var processChainElement = ResolveProcessChainElement(incoming);
+        if (processChainElement != null)
         {
-            ctx.Requirements.Add(container);
+            ctx.RequestProcessChainElement = processChainElement;
+        }
+
+        var requestedMetadata = ExtractRequestedCapabilityMetadata(processChainElement).ToList();
+        var containers = ExtractCapabilityContainers(incoming).ToList();
+
+        if (requestedMetadata.Count > 0 && requestedMetadata.Count != containers.Count)
+        {
+            Logger.LogWarning(
+                "ParseProcessChainRequest: capability metadata count mismatch (containers={ContainerCount}, requestEntries={RequestEntries})",
+                containers.Count,
+                requestedMetadata.Count);
+        }
+
+        for (var i = 0; i < containers.Count; i++)
+        {
+            var requirement = ctx.Requirements.Add(containers[i]);
+            var metadata = ResolveMetadataForRequirement(requirement, requestedMetadata, i);
+            ApplyRequestedMetadata(requirement, metadata);
         }
 
 
@@ -283,5 +302,239 @@ public class ParseProcessChainRequestNode : BTNode
         }
 
         return !string.IsNullOrWhiteSpace(name) ? name! : (container.IdShort ?? "Capability");
+    }
+
+    private SubmodelElementCollection? ResolveProcessChainElement(I40Message message)
+    {
+        try
+        {
+            var cached = Context.Get<SubmodelElementCollection>("ProcessChain.Result");
+            if (cached != null)
+            {
+                return cached;
+            }
+        }
+        catch
+        {
+            // Context lookup may throw if key missing - ignore and scan the message instead.
+        }
+
+        if (message?.InteractionElements == null)
+        {
+            return null;
+        }
+
+        foreach (var element in message.InteractionElements.OfType<SubmodelElementCollection>())
+        {
+            if (string.Equals(element.IdShort, "ProcessChain", StringComparison.OrdinalIgnoreCase))
+            {
+                return element;
+            }
+        }
+
+        return null;
+    }
+
+    private static IReadOnlyList<RequestedCapabilityMetadata> ExtractRequestedCapabilityMetadata(SubmodelElementCollection? processChainElement)
+    {
+        if (processChainElement?.Values == null)
+        {
+            return Array.Empty<RequestedCapabilityMetadata>();
+        }
+
+        var requiredList = processChainElement.Values
+            .OfType<SubmodelElementList>()
+            .FirstOrDefault(list => string.Equals(list.IdShort, ProcessChainModel.RequiredCapabilitiesIdShort, StringComparison.OrdinalIgnoreCase));
+
+        if (requiredList == null || requiredList.Count == 0)
+        {
+            return Array.Empty<RequestedCapabilityMetadata>();
+        }
+
+        var metadata = new List<RequestedCapabilityMetadata>(requiredList.Count);
+        foreach (var entry in requiredList)
+        {
+            if (entry is not SubmodelElementCollection collection)
+            {
+                continue;
+            }
+
+            var data = new RequestedCapabilityMetadata(collection)
+            {
+                InstanceIdentifier = ExtractPropertyString(collection, RequiredCapabilityModel.InstanceIdentifierIdShort),
+                CapabilityReference = ExtractReference(collection, RequiredCapabilityModel.RequiredCapabilityReferenceIdShort),
+                CapabilityName = ExtractCapabilityName(collection)
+            };
+
+            metadata.Add(data);
+        }
+
+        return metadata;
+    }
+
+    private static RequestedCapabilityMetadata? ResolveMetadataForRequirement(
+        CapabilityRequirement requirement,
+        IList<RequestedCapabilityMetadata> metadata,
+        int index)
+    {
+        if (metadata == null || metadata.Count == 0)
+        {
+            return null;
+        }
+
+        RequestedCapabilityMetadata? candidate = null;
+        if (index < metadata.Count && !metadata[index].Assigned)
+        {
+            candidate = metadata[index];
+        }
+        else if (!string.IsNullOrWhiteSpace(requirement.Capability))
+        {
+            candidate = metadata.FirstOrDefault(m =>
+                !m.Assigned
+                && !string.IsNullOrWhiteSpace(m.CapabilityName)
+                && string.Equals(m.CapabilityName, requirement.Capability, StringComparison.OrdinalIgnoreCase));
+        }
+
+        candidate ??= metadata.FirstOrDefault(m => !m.Assigned);
+
+        if (candidate != null)
+        {
+            candidate.Assigned = true;
+        }
+
+        return candidate;
+    }
+
+    private static void ApplyRequestedMetadata(CapabilityRequirement requirement, RequestedCapabilityMetadata? metadata)
+    {
+        if (requirement == null || metadata == null)
+        {
+            return;
+        }
+
+        if (!string.IsNullOrWhiteSpace(metadata.InstanceIdentifier))
+        {
+            requirement.RequirementId = metadata.InstanceIdentifier!;
+            requirement.RequestedInstanceIdentifier = metadata.InstanceIdentifier;
+        }
+
+        if (metadata.CapabilityReference != null)
+        {
+            requirement.RequestedCapabilityReference = metadata.CapabilityReference;
+        }
+
+        requirement.RequestedCapabilityElement = metadata.Element;
+
+        if (string.IsNullOrWhiteSpace(requirement.Capability) && !string.IsNullOrWhiteSpace(metadata.CapabilityName))
+        {
+            requirement.Capability = metadata.CapabilityName!;
+        }
+    }
+
+    private static string? ExtractPropertyString(SubmodelElementCollection collection, string idShort)
+    {
+        if (collection?.Values == null)
+        {
+            return null;
+        }
+
+        var property = collection.Values
+            .OfType<Property>()
+            .FirstOrDefault(prop => string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
+
+        if (property?.Value?.Value == null)
+        {
+            return null;
+        }
+
+        try
+        {
+            var extracted = property.Value.Value.ToObject<string>();
+            return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
+        }
+        catch
+        {
+            return TryExtractString(property.Value.Value.ToString());
+        }
+    }
+
+    private static Reference? ExtractReference(SubmodelElementCollection collection, string idShort)
+    {
+        if (collection?.Values == null)
+        {
+            return null;
+        }
+
+        var referenceElement = collection.Values
+            .OfType<ReferenceElement>()
+            .FirstOrDefault(r => string.Equals(r.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
+
+        return CloneReference(referenceElement?.Value?.Value);
+    }
+
+    private static Reference? CloneReference(IReference? reference)
+    {
+        if (reference == null)
+        {
+            return null;
+        }
+
+        var keyList = reference.Keys?
+            .Select(k => (IKey)new Key(k.Type, k.Value))
+            .ToList();
+        if (keyList == null || keyList.Count == 0)
+        {
+            return null;
+        }
+
+        return new Reference(keyList)
+        {
+            Type = reference.Type
+        };
+    }
+
+    private static string? ExtractCapabilityName(SubmodelElementCollection collection)
+    {
+        if (collection?.Values == null)
+        {
+            return null;
+        }
+
+        string? TryExtract(SubmodelElementCollection source)
+        {
+            var capability = source.Values?.OfType<Capability>().FirstOrDefault();
+            return string.IsNullOrWhiteSpace(capability?.IdShort) ? null : capability.IdShort;
+        }
+
+        var direct = TryExtract(collection);
+        if (!string.IsNullOrWhiteSpace(direct))
+        {
+            return direct;
+        }
+
+        foreach (var child in collection.Values.OfType<SubmodelElementCollection>())
+        {
+            var nested = TryExtract(child);
+            if (!string.IsNullOrWhiteSpace(nested))
+            {
+                return nested;
+            }
+        }
+
+        return null;
+    }
+
+    private sealed class RequestedCapabilityMetadata
+    {
+        public RequestedCapabilityMetadata(SubmodelElementCollection element)
+        {
+            Element = element;
+        }
+
+        public SubmodelElementCollection Element { get; }
+        public string? InstanceIdentifier { get; set; }
+        public Reference? CapabilityReference { get; set; }
+        public string? CapabilityName { get; set; }
+        public bool Assigned { get; set; }
     }
 }

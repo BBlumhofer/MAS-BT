@@ -4,10 +4,14 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using AasSharpClient.Models;
+using AasSharpClient.Models.ManufacturingSequence;
+using AasSharpClient.Models.ProcessChain;
 using MAS_BT.Core;
 using MAS_BT.Nodes.ModuleHolon;
 using MAS_BT.Nodes.Planning.ProcessChain;
 using MAS_BT.Nodes.Dispatching.ProcessChain;
+using MAS_BT.Services.Graph;
 using MAS_BT.Tests.TestHelpers;
 using Microsoft.Extensions.Logging.Abstractions;
 using I40Sharp.Messaging;
@@ -16,6 +20,7 @@ using I40Sharp.Messaging.Models;
 using I40Sharp.Messaging.Transport;
 using BaSyx.Models.AdminShell;
 using Xunit;
+using ActionModel = AasSharpClient.Models.Action;
 
 namespace MAS_BT.Tests;
 
@@ -147,7 +152,8 @@ public class ModuleMessagingIntegrationTests : IDisposable
             var forwarded = tcs.Task.Result;
             Assert.NotNull(forwarded);
             Assert.Equal(conversationId, forwarded!.Frame?.ConversationId);
-            Assert.Equal(I40MessageTypes.CALL_FOR_PROPOSAL, forwarded.Frame?.Type);
+            Assert.True(IsCallForProposalType(forwarded.Frame?.Type),
+                $"Expected callForProposal (or subtype) but got '{forwarded.Frame?.Type}'");
         }
     }
 
@@ -233,7 +239,8 @@ public class ModuleMessagingIntegrationTests : IDisposable
             var match = offers.FirstOrDefault(msg => string.Equals(ExtractProperty(msg, "Capability"), requirement.Capability, StringComparison.OrdinalIgnoreCase));
             Assert.NotNull(match);
             Assert.Equal(processChain.Frame?.ConversationId, match!.Frame?.ConversationId);
-            Assert.Equal(I40MessageTypes.CALL_FOR_PROPOSAL, match.Frame?.Type);
+            Assert.True(IsCallForProposalType(match.Frame?.Type),
+                $"Expected callForProposal (or subtype) but got '{match.Frame?.Type}'");
             Assert.Equal("ModuleHolon", match.Frame?.Receiver?.Role?.Name);
 
             if (requirement.CapabilityContainer != null)
@@ -307,6 +314,148 @@ public class ModuleMessagingIntegrationTests : IDisposable
         Assert.NotNull(inputParameters);
     }
 
+    [Fact]
+    public async Task DispatcherBuildsManufacturingSequenceWithTransportSequences()
+    {
+        var ns = $"test{Guid.NewGuid():N}";
+        var manufacturingRequest = CreateManufacturingSequenceRequest();
+        manufacturingRequest.Frame.Type = $"{I40MessageTypes.CALL_FOR_PROPOSAL}/{I40MessageTypeSubtypes.ManufacturingSequence.ToProtocolString()}";
+        manufacturingRequest.Frame.Receiver ??= new Participant();
+        manufacturingRequest.Frame.Receiver.Identification ??= new Identification();
+        manufacturingRequest.Frame.Receiver.Identification.Id = $"{ns}/DispatchingAgent";
+        manufacturingRequest.Frame.Receiver.Role ??= new Role();
+        manufacturingRequest.Frame.Receiver.Role.Name = "DispatchingAgent";
+
+        var context = new BTContext(NullLogger<BTContext>.Instance)
+        {
+            AgentId = "DispatchingAgent_tests",
+            AgentRole = "DispatchingAgent"
+        };
+        context.Set("config.Namespace", ns);
+        context.Set("Namespace", ns);
+        context.Set("LastReceivedMessage", manufacturingRequest);
+        context.Set("ProcessChain.RequestType", "ManufacturingSequence");
+        context.Set("CapabilityReferenceQuery", new PassthroughCapabilityReferenceQuery());
+
+        var dispatchClient = await CreateClientAsync("dispatch/logs");
+        await dispatchClient.SubscribeAsync($"/{ns}/DispatchingAgent/Offer");
+        context.Set("MessagingClient", dispatchClient);
+
+        var moduleClient = await CreateClientAsync("module/logs");
+        var offerTopic = $"/{ns}/DispatchingAgent/Offer";
+        await moduleClient.SubscribeAsync(offerTopic);
+
+        var parseNode = new ParseProcessChainRequestNode { Context = context };
+        Assert.Equal(NodeStatus.Success, await parseNode.Execute());
+        var negotiation = context.Get<ProcessChainNegotiationContext>("ProcessChain.Negotiation")
+                           ?? throw new InvalidOperationException("Negotiation context missing");
+        var expectedRequirements = negotiation.Requirements.Count;
+        Assert.True(expectedRequirements > 0);
+
+        var state = new DispatchingState();
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "P101", Capabilities = new List<string> { "Drill" } });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "P100", Capabilities = new List<string> { "Screw" } });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "P102", Capabilities = new List<string> { "Assemble" } });
+        context.Set("DispatchingState", state);
+        context.Set("ProcessChain.CfPTopic", offerTopic);
+
+        var cfpMessages = new List<I40Message>();
+        var cfpCompletion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        SubscribeToCallForProposalTypes(moduleClient, msg =>
+        {
+            lock (cfpMessages)
+            {
+                cfpMessages.Add(msg);
+                if (cfpMessages.Count >= expectedRequirements)
+                {
+                    cfpCompletion.TrySetResult(true);
+                }
+            }
+        });
+
+        var dispatchNode = new DispatchCapabilityRequestsNode { Context = context };
+        Assert.Equal(NodeStatus.Success, await dispatchNode.Execute());
+        var completed = await Task.WhenAny(cfpCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        Assert.Same(cfpCompletion.Task, completed);
+
+        List<I40Message> cfps;
+        lock (cfpMessages)
+        {
+            cfps = cfpMessages.ToList();
+        }
+        Assert.Equal(expectedRequirements, cfps.Count);
+
+        var collectNode = new CollectCapabilityOfferNode { Context = context, TimeoutSeconds = 5 };
+        Assert.Equal(NodeStatus.Running, await collectNode.Execute());
+
+        foreach (var cfp in cfps)
+        {
+            var capability = ExtractProperty(cfp, "Capability") ?? string.Empty;
+            var moduleId = capability switch
+            {
+                "Drill" => "P101",
+                "Screw" => "P100",
+                "Assemble" => "P102",
+                _ => "P999"
+            };
+
+            var transports = capability.Equals("Drill", StringComparison.OrdinalIgnoreCase)
+                ? new[]
+                {
+                    (InstanceId: "transport-pre-drill", Placement: TransportPlacement.BeforeCapability),
+                    (InstanceId: "transport-post-drill", Placement: TransportPlacement.AfterCapability)
+                }
+                : Array.Empty<(string InstanceId, TransportPlacement Placement)>();
+
+            var offeredCapability = CreateOfferedCapabilityWithTransports(moduleId, capability, transports);
+            await PublishProposalAsync(moduleClient, cfp, moduleId, offeredCapability, ns);
+        }
+
+        NodeStatus collectStatus;
+        var attempts = 0;
+        do
+        {
+            collectStatus = await collectNode.Execute();
+            if (collectStatus == NodeStatus.Running)
+            {
+                await Task.Delay(20);
+            }
+        } while (collectStatus == NodeStatus.Running && attempts++ < 100);
+        Assert.Equal(NodeStatus.Success, collectStatus);
+
+        var buildNode = new BuildProcessChainResponseNode { Context = context };
+        Assert.Equal(NodeStatus.Success, await buildNode.Execute());
+
+        var manufacturingResult = context.Get<SubmodelElement>("ManufacturingSequence.Result") as ManufacturingSequence;
+        Assert.NotNull(manufacturingResult);
+        var requiredCapabilities = manufacturingResult!.GetRequiredCapabilities().ToList();
+        Assert.Equal(expectedRequirements, requiredCapabilities.Count);
+
+        var drillEntry = requiredCapabilities.First(rc => string.Equals(
+            rc.InstanceIdentifier.Value?.Value?.ToString(),
+            "req-drill",
+            StringComparison.OrdinalIgnoreCase));
+
+        var drillSequence = drillEntry.GetSequences()
+            .Select(seq => seq.GetCapabilities().ToList())
+            .First(seq => seq.Any(cap => string.Equals(cap.InstanceIdentifier.Value?.Value?.ToString(), "P101-Drill", StringComparison.OrdinalIgnoreCase)));
+        Assert.Equal(3, drillSequence.Count);
+        Assert.Equal("transport-pre-drill", drillSequence[0].InstanceIdentifier.Value?.Value?.ToString());
+        Assert.Equal("P101-Drill", drillSequence[1].InstanceIdentifier.Value?.Value?.ToString());
+        Assert.Equal("transport-post-drill", drillSequence[2].InstanceIdentifier.Value?.Value?.ToString());
+
+        var assembleEntry = requiredCapabilities.First(rc => string.Equals(
+            rc.InstanceIdentifier.Value?.Value?.ToString(),
+            "req-assemble",
+            StringComparison.OrdinalIgnoreCase));
+        var assembleSequence = assembleEntry.GetSequences().First().GetCapabilities().ToList();
+        Assert.Single(assembleSequence);
+        Assert.Equal("P102-Assemble", assembleSequence[0].InstanceIdentifier.Value?.Value?.ToString());
+
+        Assert.True(context.Get<bool>("ProcessChain.Success"));
+        Assert.True(context.Get<bool>("ManufacturingSequence.Success"));
+    }
+
     private async Task<(List<I40Message> Offers, ProcessChainNegotiationContext Ctx, I40Message OriginalRequest)> DispatchProcessChainAsync()
     {
         var processChain = LoadMessage("ProcessChain.json");
@@ -347,7 +496,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
 
         var offers = new List<I40Message>();
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        moduleClient.OnMessageType(I40MessageTypes.CALL_FOR_PROPOSAL, msg =>
+        SubscribeToCallForProposalTypes(moduleClient, msg =>
         {
             lock (offers)
             {
@@ -367,6 +516,147 @@ public class ModuleMessagingIntegrationTests : IDisposable
         {
             return (offers.ToList(), negotiation, processChain);
         }
+    }
+
+    private static I40Message CreateManufacturingSequenceRequest()
+    {
+        var message = LoadMessage("ProcessChain.json");
+        var processChainElement = BuildProcessChainElement();
+        message.InteractionElements.Add(processChainElement);
+        return message;
+    }
+
+    private static SubmodelElementCollection BuildProcessChainElement()
+    {
+        var processChain = new ProcessChain();
+        processChain.AddRequiredCapability(CreateRequiredCapabilityEntry("Drill", "req-drill"));
+        processChain.AddRequiredCapability(CreateRequiredCapabilityEntry("Screw", "req-screw"));
+        processChain.AddRequiredCapability(CreateRequiredCapabilityEntry("Assemble", "req-assemble"));
+        return processChain;
+    }
+
+    private static RequiredCapability CreateRequiredCapabilityEntry(string capability, string requirementId)
+    {
+        var required = new RequiredCapability($"RequiredCapability_{capability}");
+        required.SetInstanceIdentifier(requirementId);
+        required.SetRequiredCapabilityReference(CreateCapabilityReference(capability));
+        return required;
+    }
+
+    private static Reference CreateCapabilityReference(string capability)
+    {
+        var keys = new List<IKey> { new Key(KeyType.GlobalReference, $"capability:{capability}") };
+        return new Reference(keys) { Type = ReferenceType.ExternalReference };
+    }
+
+    private static OfferedCapability CreateOfferedCapabilityWithTransports(
+        string moduleId,
+        string capability,
+        IEnumerable<(string InstanceId, TransportPlacement Placement)> transports)
+    {
+        var offered = new OfferedCapability("OfferedCapability");
+        offered.InstanceIdentifier.Value = new PropertyValue<string>($"{moduleId}-{capability}");
+        offered.Station.Value = new PropertyValue<string>(moduleId);
+        offered.MatchingScore.Value = new PropertyValue<double>(1.0);
+        offered.SetCost(100);
+        offered.OfferedCapabilityReference.Value = new ReferenceElementValue(CreateCapabilityReference(capability));
+        offered.AddAction(new ActionModel($"Action_{capability}", capability, ActionStatusEnum.PLANNED, null, null, null, null, moduleId));
+
+        foreach (var transport in transports ?? Array.Empty<(string InstanceId, TransportPlacement Placement)>())
+        {
+            var nested = new OfferedCapability("OfferedCapability");
+            nested.InstanceIdentifier.Value = new PropertyValue<string>(transport.InstanceId);
+            nested.Station.Value = new PropertyValue<string>("Transport");
+            nested.SetSequencePlacement(transport.Placement == TransportPlacement.AfterCapability ? "post" : "pre");
+            nested.SetCost(0);
+            nested.OfferedCapabilityReference.Value = new ReferenceElementValue(CreateCapabilityReference("Transport"));
+            nested.AddAction(new ActionModel("ActionTransport", "Transport", ActionStatusEnum.PLANNED, null, null, null, null, "Transport"));
+            offered.AddCapabilityToSequence(nested);
+        }
+
+        return offered;
+    }
+
+    private static async Task PublishProposalAsync(
+        MessagingClient client,
+        I40Message cfp,
+        string moduleId,
+        OfferedCapability offeredCapability,
+        string ns)
+    {
+        var capability = ExtractProperty(cfp, "Capability") ?? offeredCapability.InstanceIdentifier.Value?.Value?.ToString() ?? "Capability";
+        var requirementId = ExtractProperty(cfp, "RequirementId") ?? Guid.NewGuid().ToString();
+
+        var message = new I40MessageBuilder()
+            .From($"{moduleId}_Planning", "PlanningHolon")
+            .To("DispatchingAgent", "DispatchingAgent")
+            .WithType(I40MessageTypes.PROPOSAL)
+            .WithConversationId(cfp.Frame?.ConversationId ?? Guid.NewGuid().ToString())
+            .AddElement(new Property<string>("Capability") { Value = new PropertyValue<string>(capability) })
+            .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>(requirementId) })
+            .AddElement(offeredCapability)
+            .Build();
+
+        await client.PublishAsync(message, $"/{ns}/DispatchingAgent/Offer");
+    }
+
+    private sealed class PassthroughCapabilityReferenceQuery : ICapabilityReferenceQuery
+    {
+        public Task<string?> GetCapabilityReferenceJsonAsync(string moduleShellId, string capabilityIdShort, System.Threading.CancellationToken cancellationToken = default)
+        {
+            var json = $"[{{\"type\":\"GlobalReference\",\"value\":\"capability:{capabilityIdShort}\"}}]";
+            return Task.FromResult<string?>(json);
+        }
+    }
+
+    private static readonly IReadOnlyList<string> CallForProposalTypeVariants = BuildCallForProposalTypeVariants();
+
+    private static IReadOnlyList<string> BuildCallForProposalTypeVariants()
+    {
+        var variants = new List<string> { I40MessageTypes.CALL_FOR_PROPOSAL };
+        foreach (var subtype in Enum.GetValues<I40MessageTypeSubtypes>())
+        {
+            if (subtype == I40MessageTypeSubtypes.None)
+            {
+                continue;
+            }
+
+            var token = subtype.ToProtocolString();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                continue;
+            }
+
+            variants.Add($"{I40MessageTypes.CALL_FOR_PROPOSAL}/{token}");
+        }
+
+        return variants;
+    }
+
+    private static void SubscribeToCallForProposalTypes(MessagingClient client, Action<I40Message> callback)
+    {
+        foreach (var variant in CallForProposalTypeVariants)
+        {
+            client.OnMessageType(variant, callback);
+        }
+    }
+
+    private static bool IsCallForProposalType(string? messageType)
+    {
+        if (string.IsNullOrWhiteSpace(messageType))
+        {
+            return false;
+        }
+
+        foreach (var variant in CallForProposalTypeVariants)
+        {
+            if (string.Equals(messageType, variant, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string? ExtractProperty(I40Message message, string idShort)

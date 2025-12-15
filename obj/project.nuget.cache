@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "MzSE4d/kmEM=",
+  "dgSpecHash": "lcEhNItJjXU=",
   "success": true,
   "projectFilePath": "/home/benjamin/AgentDevelopment/MAS-BT/MAS-BT.csproj",
   "expectedPackageFiles": [
@@ -43,7 +43,6 @@
     "/home/benjamin/.nuget/packages/opcfoundation.netstandard.opc.ua.configuration/1.5.377.22/opcfoundation.netstandard.opc.ua.configuration.1.5.377.22.nupkg.sha512",
     "/home/benjamin/.nuget/packages/opcfoundation.netstandard.opc.ua.core/1.5.377.22/opcfoundation.netstandard.opc.ua.core.1.5.377.22.nupkg.sha512",
     "/home/benjamin/.nuget/packages/opcfoundation.netstandard.opc.ua.security.certificates/1.5.377.22/opcfoundation.netstandard.opc.ua.security.certificates.1.5.377.22.nupkg.sha512",
-    "/home/benjamin/.nuget/packages/system.text.json/10.0.0/system.text.json.10.0.0.nupkg.sha512",
     "/home/benjamin/.nuget/packages/xunit/2.9.2/xunit.2.9.2.nupkg.sha512",
     "/home/benjamin/.nuget/packages/xunit.abstractions/2.0.3/xunit.abstractions.2.0.3.nupkg.sha512",
     "/home/benjamin/.nuget/packages/xunit.analyzers/1.16.0/xunit.analyzers.1.16.0.nupkg.sha512",
@@ -53,18 +52,5 @@
     "/home/benjamin/.nuget/packages/xunit.extensibility.execution/2.9.2/xunit.extensibility.execution.2.9.2.nupkg.sha512",
     "/home/benjamin/.nuget/packages/xunit.runner.visualstudio/3.0.0/xunit.runner.visualstudio.3.0.0.nupkg.sha512"
   ],
-  "logs": [
-    {
-      "code": "NU1510",
-      "level": "Warning",
-      "message": "PackageReference System.Text.Json will not be pruned. Consider removing this package from your dependencies, as it is likely unnecessary.",
-      "projectPath": "/home/benjamin/AgentDevelopment/MAS-BT/MAS-BT.csproj",
-      "warningLevel": 1,
-      "filePath": "/home/benjamin/AgentDevelopment/MAS-BT/MAS-BT.csproj",
-      "libraryId": "System.Text.Json",
-      "targetGraphs": [
-        "net10.0"
-      ]
-    }
-  ]
+  "logs": []
 }

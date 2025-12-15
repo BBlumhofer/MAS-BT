@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Models.ProcessChain;
+using AasSharpClient.Models.ManufacturingSequence;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
 using MAS_BT.Services.Graph;
@@ -25,25 +27,21 @@ public class BuildProcessChainResponseNode : BTNode
             return Task.FromResult(NodeStatus.Failure);
         }
         Logger.LogInformation("Valid Offers received start building ProcessChain Offer Response");
-        var processChain = new ProcessChainModel();
-        var requirementIndex = 0;
-        foreach (var requirement in negotiation.Requirements)
-        {
-            var requiredCapability = new RequiredCapabilityModel($"RequiredCapability_{++requirementIndex}");
-            requiredCapability.SetInstanceIdentifier(requirement.RequirementId);
-            requiredCapability.SetRequiredCapabilityReference(CreateCapabilityReference(requirement, negotiation));
+        var requestType = Context.Get<string>("ProcessChain.RequestType");
+        var isManufacturing = string.Equals(requestType, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase);
 
-            foreach (var offer in requirement.CapabilityOffers)
-            {
-                requiredCapability.AddOfferedCapability(offer);
-            }
-
-            processChain.AddRequiredCapability(requiredCapability);
-        }
+        SubmodelElement resultElement = isManufacturing
+            ? BuildManufacturingSequenceModel(negotiation)
+            : BuildProcessChainModel(negotiation);
 
         var success = negotiation.HasCompleteProcessChain;
-        Context.Set("ProcessChain.Result", processChain);
+        Context.Set("ProcessChain.Result", resultElement);
         Context.Set("ProcessChain.Success", success);
+        if (isManufacturing)
+        {
+            Context.Set("ManufacturingSequence.Result", resultElement);
+            Context.Set("ManufacturingSequence.Success", success);
+        }
 
         if (!success)
         {
@@ -66,12 +64,195 @@ public class BuildProcessChainResponseNode : BTNode
             }
         }
 
-        Logger.LogInformation("BuildProcessChainResponse: built process chain with {Count} requirements (success={Success})", requirementIndex, success);
+        Logger.LogInformation(
+            "BuildProcessChainResponse: built {Mode} with {Count} requirements (success={Success})",
+            isManufacturing ? "ManufacturingSequence" : "ProcessChain",
+            negotiation.Requirements.Count,
+            success);
         return Task.FromResult(NodeStatus.Success);
+    }
+
+    private ProcessChainModel BuildProcessChainModel(ProcessChainNegotiationContext negotiation)
+    {
+        var processChain = new ProcessChainModel();
+        var requirementIndex = 0;
+        foreach (var requirement in negotiation.Requirements)
+        {
+            var requiredCapability = new RequiredCapabilityModel($"RequiredCapability_{++requirementIndex}");
+            requiredCapability.SetInstanceIdentifier(requirement.RequirementId);
+            requiredCapability.SetRequiredCapabilityReference(CreateCapabilityReference(requirement, negotiation));
+
+            foreach (var offer in requirement.CapabilityOffers)
+            {
+                requiredCapability.AddOfferedCapability(offer);
+            }
+
+            processChain.AddRequiredCapability(requiredCapability);
+        }
+
+        return processChain;
+    }
+
+    private ManufacturingSequence BuildManufacturingSequenceModel(ProcessChainNegotiationContext negotiation)
+    {
+        var sequence = new ManufacturingSequence();
+        var requirementIndex = 0;
+        foreach (var requirement in negotiation.Requirements)
+        {
+            var requiredCapability = new ManufacturingRequiredCapability($"RequiredCapability_{++requirementIndex}");
+            requiredCapability.SetInstanceIdentifier(requirement.RequirementId);
+            requiredCapability.SetRequiredCapabilityReference(CreateCapabilityReference(requirement, negotiation));
+
+            foreach (var offer in requirement.CapabilityOffers)
+            {
+                var offeredSequence = new ManufacturingOfferedCapabilitySequence();
+                AppendCapabilitySequence(offeredSequence, offer);
+                requiredCapability.AddSequence(offeredSequence);
+            }
+
+            sequence.AddRequiredCapability(requiredCapability);
+        }
+
+        return sequence;
+    }
+
+    private void AppendCapabilitySequence(ManufacturingOfferedCapabilitySequence targetSequence, OfferedCapability offeredCapability)
+    {
+        if (targetSequence == null || offeredCapability == null)
+        {
+            return;
+        }
+
+        var added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        void TryAdd(OfferedCapability cap)
+        {
+            if (cap == null)
+            {
+                return;
+            }
+
+            var id = cap.InstanceIdentifier.Value?.Value?.ToString() ?? string.Empty;
+            if (!added.Add(id))
+            {
+                return;
+            }
+
+            targetSequence.AddCapability(cap);
+        }
+
+        var pre = new List<OfferedCapability>();
+        var post = new List<OfferedCapability>();
+        var nestedCapabilities = new List<OfferedCapability>();
+        foreach (var element in offeredCapability.CapabilitySequence)
+        {
+            if (element is OfferedCapability nested)
+            {
+                nestedCapabilities.Add(nested);
+                if (IsPostPlacement(nested))
+                {
+                    post.Add(nested);
+                }
+                else
+                {
+                    pre.Add(nested);
+                }
+            }
+        }
+        offeredCapability.CapabilitySequence.Clear();
+        foreach (var nested in nestedCapabilities)
+        {
+            StripCapabilitySequence(nested);
+        }
+        RemoveCapabilitySequenceContainer(offeredCapability);
+
+        foreach (var nested in pre)
+        {
+            TryAdd(nested);
+        }
+
+        TryAdd(offeredCapability);
+
+        foreach (var nested in post)
+        {
+            TryAdd(nested);
+        }
+    }
+
+    private static void StripCapabilitySequence(OfferedCapability capability)
+    {
+        if (capability == null)
+        {
+            return;
+        }
+
+        if (capability.CapabilitySequence.Count > 0)
+        {
+            foreach (var child in capability.CapabilitySequence.OfType<OfferedCapability>())
+            {
+                StripCapabilitySequence(child);
+            }
+        }
+
+        capability.CapabilitySequence.Clear();
+        RemoveCapabilitySequenceContainer(capability);
+    }
+
+    private static void RemoveCapabilitySequenceContainer(OfferedCapability capability)
+    {
+        if (capability == null)
+        {
+            return;
+        }
+
+        capability.CapabilitySequence.Clear();
+        capability.Remove(OfferedCapability.CapabilitySequenceIdShort);
+    }
+
+    private static bool IsPostPlacement(OfferedCapability capability)
+    {
+        var placement = capability?.SequencePlacement?.Value?.Value?.ToString();
+        if (string.IsNullOrWhiteSpace(placement))
+        {
+            return false;
+        }
+
+        return placement.Equals("post", StringComparison.OrdinalIgnoreCase)
+               || placement.Equals("after", StringComparison.OrdinalIgnoreCase)
+               || placement.Equals("afterCapability", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Reference? CloneReference(IReference? reference)
+    {
+        if (reference == null)
+        {
+            return null;
+        }
+
+        var keyList = reference.Keys?
+            .Select(k => (IKey)new Key(k.Type, k.Value))
+            .ToList();
+        if (keyList == null || keyList.Count == 0)
+        {
+            return null;
+        }
+
+        return new Reference(keyList)
+        {
+            Type = reference.Type
+        };
     }
 
     private Reference CreateCapabilityReference(CapabilityRequirement requirement, ProcessChainNegotiationContext negotiation)
     {
+        if (requirement?.RequestedCapabilityReference != null)
+        {
+            var cached = CloneReference(requirement.RequestedCapabilityReference);
+            if (cached != null)
+            {
+                return cached;
+            }
+        }
+
         var capability = requirement?.Capability ?? string.Empty;
 
         if (string.IsNullOrWhiteSpace(capability))

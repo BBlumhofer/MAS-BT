@@ -1,4 +1,4 @@
-# CFP Routing
+# Call-for-Proposal (CFP) Routing
 
 ## Overview
 
@@ -6,11 +6,11 @@ This document explains the Call-for-Proposal (CFP) routing logic used by the dis
 
 ## Topics
 
-- CFP lifecycle: creation, broadcast, collection of offers, selection.
-- Routing patterns: broadcast and targeted CFPs using capability matching.
+- Call-for-Proposal (CFP) lifecycle: creation, broadcast, collection of offers, selection.
+- Routing patterns: broadcast and targeted Call-for-Proposals (CFPs) using capability matching.
 - Failure handling and retry strategies.
 
 ## Recommendations
 
 - Combine capability matching with heuristics (availability, cost) for selection.
-- Log CFP lifecycle events for observability and debugging.
+- Log Call-for-Proposal (CFP) lifecycle events for observability and debugging.

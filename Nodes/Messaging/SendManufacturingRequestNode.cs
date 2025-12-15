@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
 using BaSyx.Models.AdminShell;
@@ -17,7 +18,8 @@ namespace MAS_BT.Nodes.Messaging;
 public class SendManufacturingRequestNode : BTNode
 {
     public string Topic { get; set; } = "/{Namespace}/ManufacturingSequenceRequest";
-    public string MessageType { get; set; } = "requestManufacturingSequence";
+    public string MessageType { get; set; } = I40MessageTypes.CALL_FOR_PROPOSAL;
+    public I40MessageTypeSubtypes MessageSubtype { get; set; } = I40MessageTypeSubtypes.ManufacturingSequence;
 
     public SendManufacturingRequestNode() : base("SendManufacturingRequest")
     {
@@ -36,6 +38,7 @@ public class SendManufacturingRequestNode : BTNode
                         ?? Context.Get<CapabilityDescriptionSubmodel>("AAS.Submodel.CapabilityDescription");
         var productId = Context.Get<ProductIdentificationSubmodel>("ProductIdentificationSubmodel")
                         ?? Context.Get<ProductIdentificationSubmodel>("AAS.Submodel.ProductIdentification");
+        var processChainElement = ResolveProcessChainElement();
 
         if (capability == null || productId == null)
         {
@@ -46,7 +49,10 @@ public class SendManufacturingRequestNode : BTNode
         var ns = Context.Get<string>("config.Namespace") ?? "phuket";
         var topic = ResolveTopic(ns);
         var conversationId = Guid.NewGuid().ToString();
-        var messageType = string.IsNullOrWhiteSpace(MessageType) ? "requestManufacturingSequence" : MessageType;
+        var messageType = string.IsNullOrWhiteSpace(MessageType)
+            ? I40MessageTypes.CALL_FOR_PROPOSAL
+            : MessageType.Trim();
+        var messageSubtype = MessageSubtype;
 
         try
         {
@@ -56,12 +62,30 @@ public class SendManufacturingRequestNode : BTNode
                 WrapSubmodel(productId, "ProductIdentification")
             };
 
+            if (processChainElement != null)
+            {
+                interactionElements.Add(processChainElement);
+                Logger.LogDebug("SendManufacturingRequest: attached ProcessChain element with idShort={IdShort}", processChainElement.IdShort);
+            }
+            else
+            {
+                Logger.LogWarning("SendManufacturingRequest: no ProcessChain element present on blackboard; request will not embed the process chain");
+            }
+
             var builder = new I40MessageBuilder()
                 .From(Context.AgentId, Context.AgentRole)
                 .To($"{ns}/DispatchingAgent", "DispatchingAgent")
-                .WithType(messageType)
                 .WithConversationId(conversationId)
                 .AddElements(interactionElements);
+
+            if (messageType.Contains('/', StringComparison.Ordinal))
+            {
+                builder.WithType(messageType);
+            }
+            else
+            {
+                builder.WithType(messageType, messageSubtype);
+            }
 
             var message = builder.Build();
             await client.PublishAsync(message, topic).ConfigureAwait(false);
@@ -98,5 +122,45 @@ public class SendManufacturingRequestNode : BTNode
         }
 
         return collection;
+    }
+
+    private SubmodelElement? ResolveProcessChainElement()
+    {
+        try
+        {
+            if (Context.Has("ProcessChain.Result"))
+            {
+                var element = Context.Get<SubmodelElement>("ProcessChain.Result");
+                if (element != null)
+                {
+                    return element;
+                }
+            }
+        }
+        catch
+        {
+            // ignore and fall through
+        }
+
+        try
+        {
+            if (Context.Has("ProcessChain.Submodel"))
+            {
+                var submodel = Context.Get<Submodel>("ProcessChain.Submodel");
+                var candidate = submodel?.SubmodelElements?.Values?
+                    .OfType<SubmodelElementCollection>()
+                    .FirstOrDefault(e => string.Equals(e.IdShort, "ProcessChain", StringComparison.OrdinalIgnoreCase));
+                if (candidate != null)
+                {
+                    return candidate;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return null;
     }
 }

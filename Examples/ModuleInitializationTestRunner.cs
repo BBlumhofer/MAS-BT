@@ -190,7 +190,7 @@ public class ModuleInitializationTestRunner
             var keepRunning = true;
             var tickCount = 0;
             var startTime = DateTime.UtcNow;
-            const int tickPeriodMs = 100; // 10 Hz Tick-Rate (wie BehaviorTree.CPP Standard)
+            const int tickPeriodMs = 10; // 10 Hz Tick-Rate (wie BehaviorTree.CPP Standard)
             
             // Ctrl+C Handler - NUR EINMAL registrieren
             var ctrlCPressed = false;

@@ -100,7 +100,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
 
         var offers = new List<I40Message>();
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-        moduleClient.OnMessageType(I40MessageTypes.CALL_FOR_PROPOSAL, msg =>
+        SubscribeToCallForProposals(moduleClient, msg =>
         {
             lock (offers)
             {
@@ -272,6 +272,38 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
 
         var reason = ExtractProperty(response, "Reason");
         Assert.Equal("No registered agent implements the required capabilities", reason);
+    }
+
+    private static readonly IReadOnlyList<string> CallForProposalTypeVariants = BuildCallForProposalTypeVariants();
+
+    private static IReadOnlyList<string> BuildCallForProposalTypeVariants()
+    {
+        var variants = new List<string> { I40MessageTypes.CALL_FOR_PROPOSAL };
+        foreach (var subtype in Enum.GetValues<I40MessageTypeSubtypes>())
+        {
+            if (subtype == I40MessageTypeSubtypes.None)
+            {
+                continue;
+            }
+
+            var token = subtype.ToProtocolString();
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                continue;
+            }
+
+            variants.Add($"{I40MessageTypes.CALL_FOR_PROPOSAL}/{token}");
+        }
+
+        return variants;
+    }
+
+    private static void SubscribeToCallForProposals(MessagingClient client, Action<I40Message> callback)
+    {
+        foreach (var variant in CallForProposalTypeVariants)
+        {
+            client.OnMessageType(variant, callback);
+        }
     }
 
     private static string? ExtractProperty(I40Message message, string idShort)

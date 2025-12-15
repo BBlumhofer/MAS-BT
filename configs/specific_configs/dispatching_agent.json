@@ -6,7 +6,7 @@
     "ModuleId": "DispatchingAgent_phuket",
     "LogLevel": "Information",
     "InitializationTree": "Trees/DispatchingAgent.bt.xml",
-    "RegistrationIntervalMs": 30000,
+    "RegistrationIntervalMs": 1000,
     "HeartbeatIntervalSeconds": 30,
     "StatePublishDelayMs": 1000
   },
@@ -37,7 +37,7 @@
     "Database": "neo4j"
   },
   "DispatchingAgent": {
-    "AgentTimeoutSeconds": 30,
+    "AgentTimeoutSeconds": 60,
     "UseSimilarityFiltering": true,
     "CapabilitySimilarityThreshold": 0.75,
     "DescriptionTimeoutMs": 30000,

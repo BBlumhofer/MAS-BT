@@ -281,10 +281,10 @@ public class CollectCapabilityOfferNode : BTNode
                 return;
             }
 
-            OfferedCapability offer;
+            IList<OfferedCapability> offers;
             try
             {
-                offer = BuildCapabilityOffer(requirement, message);
+                offers = BuildCapabilityOffers(requirement, message);
             }
             catch (Exception ex)
             {
@@ -292,8 +292,16 @@ public class CollectCapabilityOfferNode : BTNode
                 throw;
             }
 
-            requirement.AddOffer(offer);
-            Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability}", offer.InstanceIdentifier.Value.Value, requirement.Capability);
+            foreach (var offer in offers)
+            {
+                if (offer == null)
+                {
+                    continue;
+                }
+                requirement.AddOffer(offer);
+                var offerId = offer.InstanceIdentifier.Value?.Value?.ToString() ?? "<unknown>";
+                Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability}", offerId, requirement.Capability);
+            }
         }
         else if (string.Equals(messageType, I40MessageTypes.REFUSE_PROPOSAL, StringComparison.OrdinalIgnoreCase) ||
                  string.Equals(messageType, I40MessageTypes.REFUSAL, StringComparison.OrdinalIgnoreCase))
@@ -338,9 +346,18 @@ public class CollectCapabilityOfferNode : BTNode
                && client.TryDequeueMatching(
                    (msg, _topic) => string.Equals(msg.Frame?.ConversationId, conversationId, StringComparison.Ordinal),
                    out var msg,
-                   out var _))
+                   out var topic,
+                   out var receivedAt))
         {
             _incoming.Enqueue(msg);
+            var now = DateTimeOffset.UtcNow;
+            var latencyMs = receivedAt == default ? "n/a" : (now - receivedAt).TotalMilliseconds.ToString("F1");
+            Logger.LogInformation(
+                "CollectCapabilityOffer: buffered message delivered Type={Type} Topic={Topic} ReceivedAt={ReceivedAt:o} LatencyMs={Latency}",
+                msg?.Frame?.Type ?? "<unknown>",
+                topic,
+                receivedAt,
+                latencyMs);
             drained++;
         }
 
@@ -372,17 +389,21 @@ public class CollectCapabilityOfferNode : BTNode
         return null;
     }
 
-    private static OfferedCapability BuildCapabilityOffer(CapabilityRequirement requirement, I40Message message)
+    private static IList<OfferedCapability> BuildCapabilityOffers(CapabilityRequirement requirement, I40Message message)
     {
-        var provided = ExtractOfferedCapability(message);
-        if (provided == null)
+        var provided = ExtractOfferedCapabilities(message);
+        if (provided == null || provided.Count == 0)
         {
             var details = BuildMissingOfferedCapabilityDetails(requirement, message);
             throw new InvalidOperationException(details);
         }
 
-        EnsureOfferDefaults(requirement, message, provided);
-        EnsureOfferHasInputParameters(requirement, message, provided);
+        foreach (var offer in provided)
+        {
+            EnsureOfferDefaults(requirement, message, offer);
+            EnsureOfferHasInputParameters(requirement, message, offer);
+        }
+
         return provided;
     }
 
@@ -462,28 +483,53 @@ public class CollectCapabilityOfferNode : BTNode
         }
     }
 
-    private static OfferedCapability? ExtractOfferedCapability(I40Message message)
+    private static List<OfferedCapability> ExtractOfferedCapabilities(I40Message message)
     {
+        var offers = new List<OfferedCapability>();
         if (message?.InteractionElements == null)
         {
-            return null;
+            return offers;
         }
 
         foreach (var element in message.InteractionElements)
         {
-            if (element is OfferedCapability direct)
-            {
-                return direct;
-            }
-
-            if (element is SubmodelElementCollection collection
-                && string.Equals(collection.IdShort, "OfferedCapability", StringComparison.OrdinalIgnoreCase))
-            {
-                return CreateOfferedCapabilityFromCollection(collection);
-            }
+            CollectOfferedCapabilities(element, offers);
         }
 
-        return null;
+        return offers;
+    }
+
+    private static void CollectOfferedCapabilities(ISubmodelElement element, IList<OfferedCapability> sink)
+    {
+        if (element == null)
+        {
+            return;
+        }
+
+        switch (element)
+        {
+            case OfferedCapability direct:
+                sink.Add(direct);
+                break;
+            case SubmodelElementCollection collection when string.Equals(collection.IdShort, "OfferedCapability", StringComparison.OrdinalIgnoreCase):
+                sink.Add(CreateOfferedCapabilityFromCollection(collection));
+                break;
+            case SubmodelElementCollection collection when collection.Values != null:
+                foreach (var child in collection.Values)
+                {
+                    CollectOfferedCapabilities(child, sink);
+                }
+                break;
+            case SubmodelElementList list when string.Equals(list.IdShort, OfferedCapability.CapabilitySequenceIdShort, StringComparison.OrdinalIgnoreCase):
+                // Capability sequences are handled when materializing the parent offer; do not treat entries as standalone offers.
+                break;
+            case SubmodelElementList list:
+                foreach (var child in list)
+                {
+                    CollectOfferedCapabilities(child, sink);
+                }
+                break;
+        }
     }
 
     private static OfferedCapability CreateOfferedCapabilityFromCollection(SubmodelElementCollection source)
@@ -524,6 +570,9 @@ public class CollectCapabilityOfferNode : BTNode
                         offer.SetCost(detectedCost);
                     }
                     break;
+                case Property prop when string.Equals(prop.IdShort, OfferedCapability.SequencePlacementIdShort, StringComparison.OrdinalIgnoreCase):
+                    offer.SequencePlacement.Value = new PropertyValue<string>(TryExtractString(prop.Value?.Value) ?? string.Empty);
+                    break;
                 case SubmodelElementCollection collection when string.Equals(collection.IdShort, OfferedCapability.EarliestSchedulingInformationIdShort, StringComparison.OrdinalIgnoreCase):
                     CopySchedulingFromCollection(offer, collection);
                     break;
@@ -537,6 +586,20 @@ public class CollectCapabilityOfferNode : BTNode
                         else if (actionElement is ISubmodelElement element)
                         {
                             offer.Actions.Add(EnsureListChildHasNoIdShort(element));
+                        }
+                    }
+                    break;
+                case SubmodelElementList list when string.Equals(list.IdShort, OfferedCapability.CapabilitySequenceIdShort, StringComparison.OrdinalIgnoreCase):
+                    offer.CapabilitySequence.Clear();
+                    foreach (var seqElement in list)
+                    {
+                        if (TryMaterializeOfferedCapability(seqElement, out var nestedCap))
+                        {
+                            offer.CapabilitySequence.Add(nestedCap);
+                        }
+                        else
+                        {
+                            offer.CapabilitySequence.Add(EnsureListChildHasNoIdShort(seqElement));
                         }
                     }
                     break;
@@ -664,7 +727,44 @@ public class CollectCapabilityOfferNode : BTNode
         return element;
     }
 
-    private static string BuildMissingOfferedCapabilityDetails(CapabilityRequirement requirement, I40Message message, IEnumerable<string>? missingFields = null)
+    private static bool TryMaterializeOfferedCapability(ISubmodelElement element, out OfferedCapability capability)
+    {
+        capability = null!;
+        switch (element)
+        {
+            case OfferedCapability direct:
+                capability = direct;
+                return true;
+            case SubmodelElementCollection collection when IsOfferedCapabilityCollection(collection):
+                capability = CreateOfferedCapabilityFromCollection(collection);
+                capability.IdShort = string.Empty;
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    private static bool IsOfferedCapabilityCollection(SubmodelElementCollection collection)
+    {
+        if (collection == null)
+        {
+            return false;
+        }
+
+        if (string.Equals(collection.IdShort, "OfferedCapability", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // Many CapabilitySequence entries intentionally clear IdShort. Detect them by contained properties.
+        var children = collection.Values ?? Array.Empty<ISubmodelElement>();
+        return children.OfType<ReferenceElement>().Any(r =>
+                   string.Equals(r.IdShort, OfferedCapability.OfferedCapabilityReferenceIdShort, StringComparison.OrdinalIgnoreCase))
+               || children.OfType<Property>().Any(p =>
+                   string.Equals(p.IdShort, OfferedCapability.InstanceIdentifierIdShort, StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static string BuildMissingOfferedCapabilityDetails(CapabilityRequirement requirement, I40Message? message, IEnumerable<string>? missingFields = null)
     {
         var sender = message?.Frame?.Sender?.Identification?.Id ?? string.Empty;
         var conv = message?.Frame?.ConversationId ?? string.Empty;
@@ -676,13 +776,11 @@ public class CollectCapabilityOfferNode : BTNode
             ? "<none>"
             : string.Join(", ", elements.Select(e => $"{e.GetType().Name}:{(e as ISubmodelElement)?.IdShort ?? ""}"));
 
-        var propertiesPresent = string.Join(", ", new[]
-        {
-            $"Capability={(!string.IsNullOrWhiteSpace(ExtractProperty(message, "Capability"))).ToString()}",
-            $"RequirementId={(!string.IsNullOrWhiteSpace(ExtractProperty(message, "RequirementId"))).ToString()}",
-            $"OfferId={(!string.IsNullOrWhiteSpace(ExtractProperty(message, "OfferId"))).ToString()}",
-            $"Station={(!string.IsNullOrWhiteSpace(ExtractProperty(message, "Station"))).ToString()}"
-        });
+        var capabilityPresent = message == null ? false : !string.IsNullOrWhiteSpace(ExtractProperty(message, "Capability"));
+        var requirementPresent = message == null ? false : !string.IsNullOrWhiteSpace(ExtractProperty(message, "RequirementId"));
+        var offerIdPresent = message == null ? false : !string.IsNullOrWhiteSpace(ExtractProperty(message, "OfferId"));
+        var stationPresent = message == null ? false : !string.IsNullOrWhiteSpace(ExtractProperty(message, "Station"));
+        var propertiesPresent = $"Capability={capabilityPresent}, RequirementId={requirementPresent}, OfferId={offerIdPresent}, Station={stationPresent}";
 
         var missing = missingFields == null ? "" : $" Missing=[{string.Join(", ", missingFields)}]";
         return $"CollectCapabilityOffer: Failed to extract valid OfferedCapability (expected element type OfferedCapability OR SubmodelElementCollection with IdShort='OfferedCapability'). Sender='{sender}' ConversationId='{conv}' Capability='{cap}' RequirementId='{reqId}'.{missing} PropertiesPresent=[{propertiesPresent}] InteractionElements=[{elementSummary}]";

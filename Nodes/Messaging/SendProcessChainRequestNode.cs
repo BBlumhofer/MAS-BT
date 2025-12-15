@@ -58,7 +58,7 @@ public class SendProcessChainRequestNode : BTNode
             var builder = new I40MessageBuilder()
                 .From(Context.AgentId, Context.AgentRole)
                 .To("Broadcast", "System")
-                .WithType(I40Sharp.Messaging.Models.I40MessageTypes.CALL_FOR_PROPOSAL)
+                .WithType(I40MessageTypes.CALL_FOR_PROPOSAL, I40MessageTypeSubtypes.ProcessChain)
                 .WithConversationId(convId)
                 .AddElements(interactionElements);
 

@@ -7,7 +7,6 @@ using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
-using ProcessChainModel = AasSharpClient.Models.ProcessChain.ProcessChain;
 
 namespace MAS_BT.Nodes.Dispatching.ProcessChain;
 
@@ -18,7 +17,7 @@ public class SendProcessChainResponseNode : BTNode
     public override async Task<NodeStatus> Execute()
     {
         var client = Context.Get<MessagingClient>("MessagingClient");
-        var processChain = Context.Get<ProcessChainModel>("ProcessChain.Result");
+        var resultElement = Context.Get<SubmodelElement>("ProcessChain.Result");
         var negotiation = Context.Get<ProcessChainNegotiationContext>("ProcessChain.Negotiation");
         var success = Context.Get<bool>("ProcessChain.Success");
         var refusalReason = Context.Get<string>("ProcessChain.RefusalReason");
@@ -30,7 +29,21 @@ public class SendProcessChainResponseNode : BTNode
         }
 
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var topic = $"/{ns}/ProcessChain";
+        var requestType = Context.Get<string>("ProcessChain.RequestType") ?? "ProcessChain";
+        var isManufacturing = string.Equals(requestType, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase);
+        if (resultElement == null && isManufacturing)
+        {
+            try
+            {
+                resultElement = Context.Get<SubmodelElement>("ManufacturingSequence.Result");
+            }
+            catch
+            {
+                // ignore; fallback handled below
+            }
+        }
+
+        var topic = isManufacturing ? $"/{ns}/ManufacturingSequence" : $"/{ns}/ProcessChain";
         var messageType = success ? I40MessageTypes.PROPOSAL : I40MessageTypes.REFUSE_PROPOSAL;
 
         var builder = new I40MessageBuilder()
@@ -39,9 +52,9 @@ public class SendProcessChainResponseNode : BTNode
             .WithType(messageType)
             .WithConversationId(negotiation.ConversationId);
 
-        if (success && processChain != null)
+        if (success && resultElement != null)
         {
-            builder.AddElement(processChain);
+            builder.AddElement(resultElement);
         }
         else
         {
@@ -55,7 +68,7 @@ public class SendProcessChainResponseNode : BTNode
         }
 
         await client.PublishAsync(builder.Build(), topic);
-        Logger.LogInformation("SendProcessChainResponse: published {Type} to {Topic}", messageType, topic);
+        Logger.LogInformation("SendProcessChainResponse: published {Type} ({RequestType}) to {Topic}", messageType, requestType, topic);
         return NodeStatus.Success;
     }
 }

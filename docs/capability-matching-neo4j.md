@@ -13,7 +13,7 @@ This document describes how capability matching is implemented using Neo4j as a 
 ## Usage
 
 - Use Neo4j to store capability ontologies and semantic links
-- Query the graph when routing CFPs (Call for Proposals) or searching for compatible modules
+- Query the graph when routing Call-for-Proposals (CFPs) (Call for Proposals) or searching for compatible modules
 - Tune indexes and caching for production workloads
 
 For examples and detailed queries, refer to the project examples and the I4.0-Sharp-Messaging integration docs.

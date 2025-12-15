@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
@@ -103,6 +104,45 @@ public class PlanCapabilityOfferNodeTests
         Assert.Equal("AssembleContainer", keys[2].Value);
         Assert.Equal(KeyType.Capability, keys[3].Type);
         Assert.Equal("Assemble", keys[3].Value);
+    }
+
+    [Fact]
+    public async Task PlanCapabilityOffer_AppendsTransportSequenceInPlacementOrder()
+    {
+        var context = CreatePlanningContext();
+        var request = LoadMessage("OfferRequestP102_Assemble.json");
+        context.Set("LastReceivedMessage", request);
+
+        var parseNode = new ParseCapabilityRequestNode { Context = context };
+        Assert.Equal(NodeStatus.Success, await parseNode.Execute());
+
+        var beforeTransport = CreateTransportOffer("transport_before");
+        var afterTransport = CreateTransportOffer("transport_after");
+
+        context.Set("Planning.TransportSequence", new List<TransportSequenceItem>
+        {
+            new TransportSequenceItem(TransportPlacement.BeforeCapability, beforeTransport),
+            new TransportSequenceItem(TransportPlacement.AfterCapability, afterTransport)
+        });
+
+        var planNode = new PlanCapabilityOfferNode { Context = context };
+        Assert.Equal(NodeStatus.Success, await planNode.Execute());
+
+        var plan = context.Get<CapabilityOfferPlan>("Planning.CapabilityOffer");
+        Assert.NotNull(plan);
+        var offeredCapability = plan!.OfferedCapability;
+        Assert.NotNull(offeredCapability);
+
+        var sequence = offeredCapability!.CapabilitySequence.OfType<OfferedCapability>().ToList();
+        Assert.Equal(2, sequence.Count);
+
+        Assert.Equal("transport_before", sequence[0].InstanceIdentifier.Value?.Value?.ToString());
+        Assert.Equal("pre", sequence[0].SequencePlacement.Value?.Value?.ToString());
+
+        Assert.Equal("transport_after", sequence[1].InstanceIdentifier.Value?.Value?.ToString());
+        Assert.Equal("post", sequence[1].SequencePlacement.Value?.Value?.ToString());
+
+        Assert.Equal(2, plan.SupplementalCapabilities.Count);
     }
 
     private static BTContext CreatePlanningContext()
@@ -222,6 +262,16 @@ public class PlanCapabilityOfferNodeTests
         {
             Type = ReferenceType.ExternalReference
         };
+    }
+
+    private static OfferedCapability CreateTransportOffer(string instanceId)
+    {
+        var offer = new OfferedCapability($"Transport_{instanceId}");
+        offer.InstanceIdentifier.Value = new PropertyValue<string>(instanceId);
+        offer.Station.Value = new PropertyValue<string>("Storage");
+        offer.MatchingScore.Value = new PropertyValue<double>(1.0);
+        offer.SetCost(0);
+        return offer;
     }
 
     private sealed class FakeCapabilityReferenceQuery : ICapabilityReferenceQuery

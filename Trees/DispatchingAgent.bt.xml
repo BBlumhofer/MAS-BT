@@ -18,6 +18,7 @@
 
       <InitializeAgentState name="InitDispatchState" Role="{config.Agent.Role}" />
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
+      <SubscribeToTopic name="SubscribeTransportPlan" Topic="/{Namespace}/TransportPlan" />
       <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
 
       <Parallel name="DispatchingLoops">
@@ -48,7 +49,7 @@
         <Repeat name="ProcessChainLoop" num_cycles="-1">
           <Fallback name="ProcessChainOrIdle">
             <Sequence name="HandleProcessChain">
-              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal,callForProposal/ProcessChain" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="10" />
               <SetBlackboardValue name="BindProcessChainRequestType" Key="ProcessChain.RequestType" Value="ProcessChain" />
               <ParseProcessChainRequest name="ParseProcessChainRequest" />
               <Fallback name="CapabilityMatchmaking">
@@ -56,7 +57,6 @@
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
                   <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
                   <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="20" />
-                  <DispatchTransportRequests name="DispatchTransportRequests" />
                   <BuildProcessChainResponse name="BuildProcessChainResponse" />
                   <SendProcessChainResponse name="SendProcessChainResponse" />
                 </Sequence>
@@ -73,7 +73,7 @@
         <Repeat name="ManufacturingSequenceLoop" num_cycles="-1">
           <Fallback name="MfgSeqOrIdle">
             <Sequence name="HandleMfgSeq">
-              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="requestManufacturingSequence,manufacturingSequenceRequest" ExpectedTopic="/{Namespace}/ManufacturingSequenceRequest" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequenceRequest" TimeoutSeconds="10" />
               <SetBlackboardValue name="BindManufacturingRequestType" Key="ProcessChain.RequestType" Value="ManufacturingSequence" />
               <ParseProcessChainRequest name="ParseManufacturingSequenceRequest" />
               <Fallback name="MfgCapabilityMatchmaking">
@@ -81,7 +81,6 @@
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespaceMfg" />
                   <DispatchCapabilityRequests name="DispatchCapabilityRequestsMfg" />
                   <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="20" />
-                  <DispatchTransportRequests name="DispatchTransportRequestsMfg" />
                   <BuildProcessChainResponse name="BuildManufacturingSequenceResponse" />
                   <SendProcessChainResponse name="SendManufacturingSequenceResponse" />
                 </Sequence>
@@ -109,7 +108,10 @@
         <Repeat name="TransportPlanLoop" num_cycles="-1">
           <Fallback name="TransportOrIdle">
             <Sequence name="HandleTransportPlan">
-              <WaitForMessage name="AwaitTransportPlan" ExpectedTypes="requestTransportPlan,transportRequest" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitTransportPlan"
+                              ExpectedTypes="requirement/TransportRequest"
+                              ExpectedTopic="/{Namespace}/TransportPlan"
+                              TimeoutSeconds="10" />
               <HandleTransportPlanRequest name="HandleTransportPlanRequest" />
               <Wait name="TransportIdle" DelayMs="300" />
             </Sequence>
@@ -170,9 +172,6 @@
     <Action ID="DispatchCapabilityRequests" />
     <Action ID="CollectCapabilityOffer">
       <input_port name="TimeoutSeconds" default="5" />
-    </Action>
-    <Action ID="DispatchTransportRequests">
-      <input_port name="ResponseTimeoutSeconds" default="15" />
     </Action>
     <Action ID="BuildProcessChainResponse" />
     <Action ID="SendProcessChainResponse" />

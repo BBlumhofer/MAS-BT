@@ -82,27 +82,30 @@ public class ForwardCapabilityRequestsNode : BTNode
             return;
         }
 
-        client.OnMessageType(I40Sharp.Messaging.Models.I40MessageTypes.CALL_FOR_PROPOSAL, message =>
+        foreach (var type in EnumerateCfPTypes())
         {
-            try
+            client.OnMessageType(type, message =>
             {
-                if (!MatchesDispatcherOffer(message))
+                try
                 {
-                    return;
-                }
+                    if (!MatchesDispatcherOffer(message))
+                    {
+                        return;
+                    }
 
-                _pendingMessages.Enqueue(message);
-                Logger.LogInformation("ForwardCapabilityRequests: queued CfP conversation {Conv} (queue={Count})",
-                    message.Frame?.ConversationId, _pendingMessages.Count);
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "ForwardCapabilityRequests: exception while queuing CfP");
-            }
-        });
+                    _pendingMessages.Enqueue(message);
+                    Logger.LogInformation("ForwardCapabilityRequests: queued CfP conversation {Conv} (queue={Count})",
+                        message.Frame?.ConversationId, _pendingMessages.Count);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "ForwardCapabilityRequests: exception while queuing CfP");
+                }
+            });
+        }
 
         _listenerRegistered = true;
-        Logger.LogInformation("ForwardCapabilityRequests: registered dispatcher offer listener");
+        Logger.LogInformation("ForwardCapabilityRequests: registered dispatcher offer listener for CfP sub-types");
     }
 
     private bool MatchesDispatcherOffer(I40Message message)
@@ -147,6 +150,13 @@ public class ForwardCapabilityRequestsNode : BTNode
     private static bool IsBroadcast(string receiverId)
     {
         return string.Equals(receiverId, "broadcast", StringComparison.OrdinalIgnoreCase) || receiverId == "*";
+    }
+
+    private static IEnumerable<string> EnumerateCfPTypes()
+    {
+        yield return I40MessageTypes.CALL_FOR_PROPOSAL;
+        yield return $"{I40MessageTypes.CALL_FOR_PROPOSAL}/{I40MessageTypeSubtypes.ProcessChain.ToProtocolString()}";
+        yield return $"{I40MessageTypes.CALL_FOR_PROPOSAL}/{I40MessageTypeSubtypes.ManufacturingSequence.ToProtocolString()}";
     }
 
 }

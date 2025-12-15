@@ -30,7 +30,6 @@ public class ParseCapabilityRequestNode : BTNode
         Context.Set("RequiredCapability", request.Capability);
         Context.Set("RequesterId", request.RequesterId);
         Context.Set("ConversationId", request.ConversationId);
-
         Logger.LogInformation("ParseCapabilityRequest: capability={Capability} requirement={Requirement}", request.Capability, request.RequirementId);
         return Task.FromResult(NodeStatus.Success);
     }

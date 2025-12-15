@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using BaSyx.Clients.AdminShell.Http;
@@ -53,6 +54,11 @@ namespace MAS_BT.Nodes.Configuration
             {
                 Logger.LogWarning("UploadSubmodel: No element found under context key '{Key}'", ContextKey);
                 return NodeStatus.Failure;
+            }
+
+            if (!string.IsNullOrWhiteSpace(ContextKey))
+            {
+                Context.Set(ContextKey, candidate);
             }
 
             // Build Submodel
@@ -186,17 +192,37 @@ namespace MAS_BT.Nodes.Configuration
 
         private object? ExtractElementFromMessage(I40Message? msg)
         {
-            if (msg == null) return null;
-            if (msg.InteractionElements == null) return null;
-            // Prefer a ProcessChain typed element
-            var pc = msg.InteractionElements.OfType<AasSharpClient.Models.ProcessChain.ProcessChain>().FirstOrDefault();
-            if (pc != null) return pc;
-            // Otherwise prefer a collection with idShort ProcessChain
-            var coll = msg.InteractionElements.OfType<SubmodelElementCollection>().FirstOrDefault(c => string.Equals(c.IdShort, "ProcessChain", StringComparison.OrdinalIgnoreCase));
-            if (coll != null) return coll;
-            // Fallback: return first element
-            return msg.InteractionElements.FirstOrDefault();
+        if (msg == null) return null;
+        if (msg.InteractionElements == null) return null;
+        // Prefer a ProcessChain typed element
+        var pc = msg.InteractionElements.OfType<AasSharpClient.Models.ProcessChain.ProcessChain>().FirstOrDefault();
+        if (pc != null) return pc;
+
+        foreach (var preferred in EnumerateCandidateIdShorts())
+        {
+            var match = msg.InteractionElements
+                .OfType<SubmodelElementCollection>()
+                .FirstOrDefault(c => string.Equals(c.IdShort, preferred, StringComparison.OrdinalIgnoreCase));
+            if (match != null)
+            {
+                return match;
+            }
         }
+
+        // Fallback: return first element
+        return msg.InteractionElements.FirstOrDefault();
+    }
+
+    private IEnumerable<string> EnumerateCandidateIdShorts()
+    {
+        if (!string.IsNullOrWhiteSpace(SubmodelIdShort))
+        {
+            yield return SubmodelIdShort;
+        }
+
+        yield return "ProcessChain";
+        yield return "ManufacturingSequence";
+    }
 
         private string ResolveSubmodelEndpoint()
         {

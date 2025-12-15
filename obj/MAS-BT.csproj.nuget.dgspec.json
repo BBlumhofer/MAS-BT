@@ -436,10 +436,6 @@
             "MQTTnet": {
               "target": "Package",
               "version": "[4.3.7.1207, )"
-            },
-            "System.Text.Json": {
-              "target": "Package",
-              "version": "[10.0.0, )"
             }
           },
           "imports": [
@@ -808,10 +804,6 @@
             "Neo4j.Driver": {
               "target": "Package",
               "version": "[5.28.4, )"
-            },
-            "System.Text.Json": {
-              "target": "Package",
-              "version": "[10.0.0, )"
             },
             "xunit": {
               "target": "Package",

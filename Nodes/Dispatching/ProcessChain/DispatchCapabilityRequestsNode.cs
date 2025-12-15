@@ -1,4 +1,7 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
@@ -18,6 +21,14 @@ public class DispatchCapabilityRequestsNode : BTNode
     private bool _responseHandlerRegistered = false;
     private bool _subscribedCreateDescriptionResponse = false;
     private bool _subscribedCalcSimilarityResponse = false;
+    private SemaphoreSlim? _createDescriptionLimiter;
+    private SemaphoreSlim? _calcSimilarityLimiter;
+    private int _createDescriptionLimiterSize;
+    private int _calcSimilarityLimiterSize;
+    private readonly object _limiterLock = new();
+    private bool _similarityTemporarilyDisabled = false;
+    private DateTime _similarityRetryUtc = DateTime.MinValue;
+    private readonly TimeSpan _similarityDisableWindow = TimeSpan.FromSeconds(60);
 
     public override async Task<NodeStatus> Execute()
     {
@@ -37,6 +48,13 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
         var topic = $"/{ns}/DispatchingAgent/Offer";
+        var requestMode = GetRequestMode();
+        var subtype = string.Equals(requestMode, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase)
+            ? I40MessageTypeSubtypes.ManufacturingSequence
+            : I40MessageTypeSubtypes.ProcessChain;
+        var createDescriptionConcurrency = ClampInt(GetConfigInt("config.DispatchingAgent.CreateDescriptionConcurrency", defaultValue: 3), 1, 20);
+        var calcSimilarityConcurrency = ClampInt(GetConfigInt("config.DispatchingAgent.CalcSimilarityConcurrency", defaultValue: 3), 1, 20);
+        EnsureLimitersInitialized(createDescriptionConcurrency, calcSimilarityConcurrency);
 
         // Cache emitted CfPs so the collector can re-issue them when a target module registers late.
         // MQTT does not deliver messages that were published before a subscriber connected.
@@ -44,8 +62,8 @@ public class DispatchCapabilityRequestsNode : BTNode
         var cfpDispatchUtc = DateTime.UtcNow;
 
         var similarityAgentId = Context.Get<string>("config.DispatchingAgent.SimilarityAgentId") ?? $"SimilarityAnalysisAgent_{ns}";
-        var descriptionTimeoutMs = GetConfigInt("config.DispatchingAgent.DescriptionTimeoutMs", defaultValue: 30000);
-        var similarityTimeoutMs = GetConfigInt("config.DispatchingAgent.SimilarityTimeoutMs", defaultValue: 30000);
+        var descriptionTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.DescriptionTimeoutMs", defaultValue: 30000), 500, 5000);
+        var similarityTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.SimilarityTimeoutMs", defaultValue: 30000), 500, 5000);
         var threshold = GetConfigDouble("config.DispatchingAgent.CapabilitySimilarityThreshold", fallbackKey: "config.SimilarityAnalysis.MinSimilarityThreshold", defaultValue: 0.75);
 
         var logSimilarityMatrix = GetConfigInt("config.DispatchingAgent.LogSimilarityMatrix", defaultValue: 0) != 0;
@@ -69,6 +87,7 @@ public class DispatchCapabilityRequestsNode : BTNode
         var similarityAgentAvailable = state.Modules.Any(m =>
             !string.IsNullOrWhiteSpace(m.ModuleId)
             && string.Equals(m.ModuleId, similarityAgentId, StringComparison.OrdinalIgnoreCase));
+        var allowSimilarity = similarityAgentAvailable && IsSimilarityEnabled();
 
         var capabilitiesToDescribe = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var cap in state.Modules.SelectMany(m => m.Capabilities))
@@ -80,14 +99,21 @@ public class DispatchCapabilityRequestsNode : BTNode
             if (!string.IsNullOrWhiteSpace(req.Capability)) capabilitiesToDescribe.Add(req.Capability);
         }
 
-        if (similarityAgentAvailable)
+        if (allowSimilarity)
         {
             var descTasks = new List<Task>();
             foreach (var cap in capabilitiesToDescribe)
             {
                 if (!state.TryGetCapabilityDescription(cap, out var _))
                 {
-                    descTasks.Add(RequestCapabilityDescriptionAsync(client, ns, similarityAgentId, cap, descriptionTimeoutMs));
+                    descTasks.Add(RunWithLimiterAsync(_createDescriptionLimiter!, async () =>
+                    {
+                        var description = await RequestCapabilityDescriptionAsync(client, ns, similarityAgentId, cap, descriptionTimeoutMs).ConfigureAwait(false);
+                        if (description == null)
+                        {
+                            DisableSimilarityTemporarily($"no description response for capability '{cap}'");
+                        }
+                    }));
                 }
             }
             if (descTasks.Count > 0)
@@ -96,15 +122,24 @@ public class DispatchCapabilityRequestsNode : BTNode
                 catch { /* individual failures are logged inside RequestCapabilityDescriptionAsync */ }
             }
         }
+        // Re-evaluate in case description requests disabled similarity.
+        allowSimilarity = similarityAgentAvailable && IsSimilarityEnabled();
 
         // For each requirement, compute candidate modules by similarity and send CfP only to those modules
         var expectedOfferResponders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var requirement in ctx.Requirements)
         {
-            // evaluate modules (pipeline similarity requests; limiter controls in-flight concurrency)
+            // Re-evaluate similarity availability before every requirement so cooldowns take effect immediately.
+            var allowSimilarityForRequirement = similarityAgentAvailable && IsSimilarityEnabled();
+
             var allModules = state.Modules.ToList();
-            var descReq = state.TryGetCapabilityDescription(requirement.Capability, out var descA) ? descA : null;
-            if (string.IsNullOrWhiteSpace(descReq) || !similarityAgentAvailable)
+            string? descReq = null;
+            if (allowSimilarityForRequirement)
+            {
+                descReq = state.TryGetCapabilityDescription(requirement.Capability, out var descA) ? descA : null;
+            }
+
+            if (string.IsNullOrWhiteSpace(descReq) || !allowSimilarityForRequirement)
             {
                 // Fallback: exact capability name matching if similarity infra is unavailable.
                 var candidateModulesExact = allModules
@@ -132,7 +167,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                     var builder = new I40MessageBuilder()
                         .From(Context.AgentId, Context.AgentRole)
                         .To(tgtModule, "ModuleHolon")
-                        .WithType(I40MessageTypes.CALL_FOR_PROPOSAL)
+                        .WithType(I40MessageTypes.CALL_FOR_PROPOSAL, subtype)
                         .WithConversationId(ctx.ConversationId)
                         .AddElement(CreateStringProperty("Capability", requirement.Capability))
                         .AddElement(CreateStringProperty("RequirementId", requirement.RequirementId));
@@ -155,7 +190,15 @@ public class DispatchCapabilityRequestsNode : BTNode
                     }
                     list.Add(cfp);
 
-                    await client.PublishAsync(cfp, topic);
+                    var publishedAt = DateTimeOffset.UtcNow;
+                    await client.PublishAsync(cfp, topic).ConfigureAwait(false);
+                    Logger.LogInformation(
+                        "DispatchCapabilityRequests: CfP published at {Timestamp:o} to {Module} Capability={Capability} Requirement={RequirementId} Topic={Topic}",
+                        publishedAt,
+                        tgtModule,
+                        requirement.Capability,
+                        requirement.RequirementId,
+                        topic);
                 }
 
                 continue;
@@ -179,18 +222,19 @@ public class DispatchCapabilityRequestsNode : BTNode
                     if (string.IsNullOrWhiteSpace(descMod)) continue;
 
                     var capLocal = modCap;
-                    simTasks.Add(Task.Run(async () =>
+                    simTasks.Add(RunWithLimiterAsync(_calcSimilarityLimiter!, async () =>
                     {
                         var sim = await GetOrRequestCapabilitySimilarityAsync(
-                            client,
-                            state,
-                            ns,
-                            similarityAgentId,
-                            capabilityA: requirement.Capability,
-                            capabilityB: capLocal,
-                            descA: descReq!,
-                            descB: descMod!,
-                            timeoutMs: similarityTimeoutMs).ConfigureAwait(false);
+                                client,
+                                state,
+                                ns,
+                                similarityAgentId,
+                                capabilityA: requirement.Capability,
+                                capabilityB: capLocal,
+                                descA: descReq!,
+                                descB: descMod!,
+                                timeoutMs: similarityTimeoutMs)
+                            .ConfigureAwait(false);
                         return (Cap: capLocal, Sim: sim);
                     }));
                 }
@@ -291,7 +335,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 var builder = new I40MessageBuilder()
                     .From(Context.AgentId, Context.AgentRole)
                     .To(tgtModule, "ModuleHolon")
-                    .WithType(I40MessageTypes.CALL_FOR_PROPOSAL)
+                    .WithType(I40MessageTypes.CALL_FOR_PROPOSAL, subtype)
                     .WithConversationId(ctx.ConversationId)
                     .AddElement(CreateStringProperty("Capability", requirement.Capability))
                     .AddElement(CreateStringProperty("RequirementId", requirement.RequirementId));
@@ -307,7 +351,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 }
 
                 // attach cached description if available
-                if (state.TryGetCapabilityDescription(requirement.Capability, out var descForReq) && !string.IsNullOrWhiteSpace(descForReq))
+                if (allowSimilarity && state.TryGetCapabilityDescription(requirement.Capability, out var descForReq) && !string.IsNullOrWhiteSpace(descForReq))
                 {
                     builder.AddElement(CreateStringProperty("CapabilityDescription", descForReq));
                 }
@@ -320,7 +364,15 @@ public class DispatchCapabilityRequestsNode : BTNode
                 }
                 list.Add(cfp);
 
-                await client.PublishAsync(cfp, topic);
+                var publishedAt = DateTimeOffset.UtcNow;
+                await client.PublishAsync(cfp, topic).ConfigureAwait(false);
+                Logger.LogInformation(
+                    "DispatchCapabilityRequests: CfP published at {Timestamp:o} to {Module} Capability={Capability} Requirement={RequirementId} Topic={Topic}",
+                    publishedAt,
+                    tgtModule,
+                    requirement.Capability,
+                    requirement.RequirementId,
+                    topic);
             }
         }
 
@@ -335,6 +387,12 @@ public class DispatchCapabilityRequestsNode : BTNode
         var totalCfPs = cfpsByTarget.Values.Sum(v => v?.Count ?? 0);
         Logger.LogInformation("DispatchCapabilityRequests: published {Count} CfP messages to {Topic}", totalCfPs, topic);
         return NodeStatus.Success;
+    }
+
+    private string GetRequestMode()
+    {
+        var mode = Context.Get<string>("ProcessChain.RequestType");
+        return string.IsNullOrWhiteSpace(mode) ? "ProcessChain" : mode;
     }
 
     private Task EnsureResponseHandlerRegisteredAsync(MessagingClient client)
@@ -414,7 +472,11 @@ public class DispatchCapabilityRequestsNode : BTNode
             await client.PublishAsync(builder.Build(), requestTopic).ConfigureAwait(false);
 
             var response = await WaitForResponseAsync(tcs, timeoutMs).ConfigureAwait(false);
-            if (response == null) return null;
+            if (response == null)
+            {
+                DisableSimilarityTemporarily($"description timeout for capability '{capability}'");
+                return null;
+            }
 
             if (response.InteractionElements != null)
             {
@@ -453,7 +515,15 @@ public class DispatchCapabilityRequestsNode : BTNode
         return null;
     }
 
-    private async Task<double?> RequestCapabilitySimilarityAsync(MessagingClient client, string ns, string similarityAgentId, string descA, string descB, int timeoutMs)
+    private async Task<double?> RequestCapabilitySimilarityAsync(
+        MessagingClient client,
+        string ns,
+        string similarityAgentId,
+        string capabilityA,
+        string capabilityB,
+        string descA,
+        string descB,
+        int timeoutMs)
     {
         if (string.IsNullOrWhiteSpace(descA) || string.IsNullOrWhiteSpace(descB)) return null;
         var convId = Guid.NewGuid().ToString();
@@ -474,7 +544,11 @@ public class DispatchCapabilityRequestsNode : BTNode
             await client.PublishAsync(builder.Build(), requestTopic).ConfigureAwait(false);
 
             var response = await WaitForResponseAsync(tcs, timeoutMs).ConfigureAwait(false);
-            if (response == null) return null;
+            if (response == null)
+            {
+                DisableSimilarityTemporarily($"similarity timeout ({capabilityA} vs {capabilityB})");
+                return null;
+            }
             if (response.InteractionElements != null)
             {
                 foreach (var el in response.InteractionElements)
@@ -524,7 +598,15 @@ public class DispatchCapabilityRequestsNode : BTNode
             return cached;
         }
 
-        var sim = await RequestCapabilitySimilarityAsync(client, ns, similarityAgentId, descA, descB, timeoutMs).ConfigureAwait(false);
+        var sim = await RequestCapabilitySimilarityAsync(
+            client,
+            ns,
+            similarityAgentId,
+            capabilityA,
+            capabilityB,
+            descA,
+            descB,
+            timeoutMs).ConfigureAwait(false);
         if (sim.HasValue)
         {
             state.SetCapabilitySimilarity(capabilityA, capabilityB, sim.Value);
@@ -624,5 +706,80 @@ public class DispatchCapabilityRequestsNode : BTNode
             // ignore
         }
         return null;
+    }
+
+    private bool IsSimilarityEnabled()
+    {
+        if (!_similarityTemporarilyDisabled)
+        {
+            return true;
+        }
+
+        if (DateTime.UtcNow >= _similarityRetryUtc)
+        {
+            _similarityTemporarilyDisabled = false;
+            Logger.LogInformation("DispatchCapabilityRequests: re-enabled similarity matching after cooldown");
+            return true;
+        }
+
+        return false;
+    }
+
+    private void DisableSimilarityTemporarily(string reason)
+    {
+        if (_similarityTemporarilyDisabled && DateTime.UtcNow < _similarityRetryUtc)
+        {
+            return;
+        }
+
+        _similarityTemporarilyDisabled = true;
+        _similarityRetryUtc = DateTime.UtcNow.Add(_similarityDisableWindow);
+        Logger.LogWarning(
+            "DispatchCapabilityRequests: disabling similarity matching for {WindowSeconds}s due to {Reason}",
+            (int)_similarityDisableWindow.TotalSeconds,
+            reason);
+    }
+
+    private void EnsureLimitersInitialized(int createDescriptionConcurrency, int calcSimilarityConcurrency)
+    {
+        lock (_limiterLock)
+        {
+            if (_createDescriptionLimiter == null || _createDescriptionLimiterSize != createDescriptionConcurrency)
+            {
+                _createDescriptionLimiter?.Dispose();
+                _createDescriptionLimiter = new SemaphoreSlim(createDescriptionConcurrency, createDescriptionConcurrency);
+                _createDescriptionLimiterSize = createDescriptionConcurrency;
+            }
+
+            if (_calcSimilarityLimiter == null || _calcSimilarityLimiterSize != calcSimilarityConcurrency)
+            {
+                _calcSimilarityLimiter?.Dispose();
+                _calcSimilarityLimiter = new SemaphoreSlim(calcSimilarityConcurrency, calcSimilarityConcurrency);
+                _calcSimilarityLimiterSize = calcSimilarityConcurrency;
+            }
+        }
+    }
+
+    private Task RunWithLimiterAsync(SemaphoreSlim limiter, Func<Task> action)
+    {
+        return RunWithLimiterAsync(limiter, async () =>
+        {
+            await action().ConfigureAwait(false);
+            return true;
+        });
+    }
+
+    private async Task<T> RunWithLimiterAsync<T>(SemaphoreSlim limiter, Func<Task<T>> action)
+    {
+        if (limiter == null) throw new ArgumentNullException(nameof(limiter));
+        await limiter.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            return await action().ConfigureAwait(false);
+        }
+        finally
+        {
+            limiter.Release();
+        }
     }
 }

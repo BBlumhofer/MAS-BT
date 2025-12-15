@@ -152,6 +152,42 @@ public class PlanCapabilityOfferNode : BTNode
         offeredCapability.AddAction(action);
 
         plan.OfferedCapability = offeredCapability;
+        var transportSequence = Context.Get<List<TransportSequenceItem>>("Planning.TransportSequence");
+        if (transportSequence != null && transportSequence.Count > 0)
+        {
+            foreach (var entry in transportSequence)
+            {
+                var transportOffer = entry?.Capability;
+                if (transportOffer == null)
+                {
+                    continue;
+                }
+
+                transportOffer.SetSequencePlacement(ConvertPlacement(entry.Placement));
+                plan.SupplementalCapabilities.Add(transportOffer);
+                offeredCapability.AddCapabilityToSequence(transportOffer);
+            }
+        }
+        else
+        {
+            var supplementalOffers = Context.Get<List<OfferedCapability>>("Planning.TransportOffers");
+            if (supplementalOffers != null && supplementalOffers.Count > 0)
+            {
+                foreach (var transportOffer in supplementalOffers)
+                {
+                    if (transportOffer == null)
+                    {
+                        continue;
+                    }
+
+                    transportOffer.SetSequencePlacement("pre");
+                    plan.SupplementalCapabilities.Add(transportOffer);
+                    offeredCapability.AddCapabilityToSequence(transportOffer);
+                }
+            }
+        }
+        Context.Set("Planning.TransportSequence", null);
+        Context.Set("Planning.TransportOffers", null);
 
         Context.Set("Planning.CapabilityOffer", plan);
         Logger.LogInformation("PlanCapabilityOffer: planned start={Start} cost={Cost}", plannedStart, plan.Cost);
@@ -503,6 +539,11 @@ public class PlanCapabilityOfferNode : BTNode
     private static object? ExtractElementValue(object? value)
     {
         return value is IValue nested ? nested.Value : value;
+    }
+
+    private static string ConvertPlacement(TransportPlacement placement)
+    {
+        return placement == TransportPlacement.AfterCapability ? "post" : "pre";
     }
 
     private static string? GetStringValue(Property? property)

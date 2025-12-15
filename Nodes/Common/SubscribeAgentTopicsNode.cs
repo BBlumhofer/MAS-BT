@@ -45,7 +45,7 @@ namespace MAS_BT.Nodes.Common
                     $"/{ns}/ProcessChain",
                     $"/{ns}/request/ManufacturingSequence",
                     $"/{ns}/request/BookStep",
-                    $"/{ns}/request/TransportPlan",
+                    $"/{ns}/TransportPlan",
 
                     // Offer request/response topics (CfP broadcast + module proposals)
                     $"/{ns}/DispatchingAgent/Offer",
@@ -134,7 +134,8 @@ namespace MAS_BT.Nodes.Common
             var moduleIdentifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
             var moduleTopics = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                $"/{ns}/DispatchingAgent/Offer"
+                $"/{ns}/DispatchingAgent/Offer",
+                $"/{ns}/TransportPlan"
             };
 
             foreach (var moduleId in moduleIdentifiers)

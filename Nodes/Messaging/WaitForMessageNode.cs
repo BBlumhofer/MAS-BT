@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
 using MAS_BT.Services;
 using I40Sharp.Messaging;
@@ -24,6 +25,11 @@ public class WaitForMessageNode : BTNode
     // Optional: wait for messages belonging to a specific conversation.
     // Only used when explicitly provided; otherwise type/sender filters apply.
     public string? ExpectedConversationId { get; set; } = null;
+    private static readonly IReadOnlyDictionary<string, string> KnownResultContextKeys = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
+    {
+        ["ProcessChain"] = "ProcessChain.Result",
+        ["ManufacturingSequence"] = "ManufacturingSequence.Result"
+    };
     
     private readonly ConcurrentQueue<I40Message> _messageQueue = new();
     private bool _subscribed = false;
@@ -360,16 +366,6 @@ public class WaitForMessageNode : BTNode
             return false;
         }
 
-        // Topic filter (check against CurrentTopic if available)
-        if (expectedTopics.Count > 0 && Context.Has("CurrentTopic"))
-        {
-            var currentTopic = Context.Get<string>("CurrentTopic");
-            if (!expectedTopics.Contains(currentTopic, StringComparer.Ordinal))
-            {
-                return false;
-            }
-        }
-
         // Mark this message as consumed by this instance
         Context.Set(consumedKey, true);
         
@@ -422,10 +418,20 @@ public class WaitForMessageNode : BTNode
                 }
 
                 return true;
-            }, out var dequeued, out var dequeuedTopic))
+            }, out var dequeued, out var dequeuedTopic, out var receivedAt))
         {
             Context.Set("LastReceivedTopic", dequeuedTopic);
             Context.Set("CurrentTopic", dequeuedTopic);
+            var now = DateTimeOffset.UtcNow;
+            var latencyMs = receivedAt == default ? "n/a" : (now - receivedAt).TotalMilliseconds.ToString("F1");
+            Logger.LogDebug(
+                "WaitForMessage[{Name}][{Inst}]: dequeued buffered message Type={Type} Topic={Topic} ReceivedAt={ReceivedAt:o} LatencyMs={Latency}",
+                Name,
+                _instanceId,
+                dequeued?.Frame?.Type ?? "<unknown>",
+                dequeuedTopic,
+                receivedAt,
+                latencyMs);
             message = dequeued;
             return true;
         }
@@ -484,6 +490,7 @@ public class WaitForMessageNode : BTNode
         // Keep "LastReceivedMessage" for backwards compatibility with other flows.
         Context.Set("LastReceivedMessage", message);
         Context.Set("CurrentMessage", message);
+        CacheKnownResultElements(message);
         var receivedConv = message.Frame.ConversationId ?? string.Empty;
         var expectedConv = _usedConversationId ?? string.Empty;
             if (!string.IsNullOrEmpty(expectedConv))
@@ -523,6 +530,33 @@ public class WaitForMessageNode : BTNode
         }
         _startTime = DateTime.UtcNow;
         return NodeStatus.Success;
+    }
+
+    private void CacheKnownResultElements(I40Message message)
+    {
+        if (message?.InteractionElements == null || message.InteractionElements.Count == 0)
+        {
+            return;
+        }
+
+        foreach (var element in message.InteractionElements)
+        {
+            if (element is not SubmodelElementCollection collection)
+            {
+                continue;
+            }
+
+            var idShort = collection.IdShort;
+            if (string.IsNullOrWhiteSpace(idShort))
+            {
+                continue;
+            }
+
+            if (KnownResultContextKeys.TryGetValue(idShort, out var contextKey))
+            {
+                Context.Set(contextKey, collection);
+            }
+        }
     }
 
     private string? ResolveConversationIdFromInput()

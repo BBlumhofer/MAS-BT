@@ -15,6 +15,7 @@ public class ProcessChainNegotiationContext
     public string ConversationId { get; set; } = string.Empty;
     public string RequesterId { get; set; } = string.Empty;
     public string ProductId { get; set; } = string.Empty;
+    public SubmodelElementCollection? RequestProcessChainElement { get; set; }
     public CapabilityRequirementCollection Requirements { get; } = new CapabilityRequirementCollection();
 
     public bool HasCompleteProcessChain => Requirements.All(r => r.CapabilityOffers.Count > 0);
@@ -26,6 +27,9 @@ public class CapabilityRequirement
     public string RequirementId { get; set; } = Guid.NewGuid().ToString();
     public CapabilityContainer? CapabilityContainer { get; set; }
     public IList<OfferedCapability> CapabilityOffers { get; } = new List<OfferedCapability>();
+    public string? RequestedInstanceIdentifier { get; set; }
+    public Reference? RequestedCapabilityReference { get; set; }
+    public SubmodelElementCollection? RequestedCapabilityElement { get; set; }
 
     public void AddOffer(OfferedCapability offer)
     {

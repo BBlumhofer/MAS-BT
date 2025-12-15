@@ -201,7 +201,6 @@ public class NodeRegistry
         Register<CheckForCapabilitiesInNamespaceNode>("CheckForCapabilitiesInNamespace");
         Register<DispatchCapabilityRequestsNode>("DispatchCapabilityRequests");
         Register<CollectCapabilityOfferNode>("CollectCapabilityOffer");
-        Register<DispatchTransportRequestsNode>("DispatchTransportRequests");
         Register<BuildProcessChainResponseNode>("BuildProcessChainResponse");
         Register<SendProcessChainResponseNode>("SendProcessChainResponse");
         Register<PublishAgentStateNode>("PublishAgentState");

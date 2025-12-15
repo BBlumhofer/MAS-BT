@@ -26,41 +26,61 @@
         </Fallback>
       </Retry>
 
-      <Sequence name="PlanningPhase">
-        <Fallback name="ReuseOrRequestProcessChain">
-          <Sequence name="UseExistingProcessChain">
-            <CheckProcessChainRequestPolicy name="CheckForceProcessChainRequest" ConfigFlagPath="Agent.ForceProcessChainRequest" />
-            <LoadProcessChainFromShell name="LoadExistingProcessChain"
-                                       ContextKey="ProcessChain.Result"
-                                       SubmodelIdContextKey="ProcessChain.SubmodelId"
-                                       SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
-                                       TargetElementIdShort="ProcessChain" />
-          </Sequence>
-          <Sequence name="RequestNewProcessChain">
-            <SendProcessChainRequest name="SendProcessChainRequest" />
-            <!-- Expect negotiation reply: 'proposal' or 'refuseProposal' for the callForProposal pattern -->
-            <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="proposal,refuseProposal" ExpectedConversationId="{ConversationId}" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="30000" />
-            <UploadSubmodel name="UploadProcessChain"
-                           ContextKey="ProcessChain.Result"
-                           SubmodelIdPrefix="processChain"
-                           SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
-                           ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}"
-                           AddReferenceToShell="true" />
-            <SetBlackboardValue name="RememberProcessChainSubmodelId"
-                                Key="ProcessChain.SubmodelId"
-                                Value="{Submodel.LastUploadedId}" />
-          </Sequence>
-        </Fallback>
-        <Fallback name="MaybeSendManufacturingSequence">
-          <CheckConfigFlag name="SkipManufacturingSequence"
+      <Fallback name="SelectPlanningMode">
+        <Sequence name="ProcessChainMode">
+          <CheckConfigFlag name="CheckProcessChainMode"
                            ConfigPath="Agent.RequestProcessChainOnly"
                            ExpectedValue="true"
                            DefaultValue="false" />
+          <Fallback name="ReuseOrRequestProcessChain">
+            <Sequence name="UseExistingProcessChain">
+              <CheckProcessChainRequestPolicy name="CheckForceProcessChainRequest" ConfigFlagPath="Agent.ForceProcessChainRequest" />
+              <LoadProcessChainFromShell name="LoadExistingProcessChain"
+                                         ContextKey="ProcessChain.Result"
+                                         SubmodelIdContextKey="ProcessChain.SubmodelId"
+                                         SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
+                                         TargetElementIdShort="ProcessChain" />
+            </Sequence>
+            <Sequence name="RequestNewProcessChain">
+              <SendProcessChainRequest name="SendProcessChainRequest" />
+              <!-- Expect negotiation reply: 'proposal' or 'refuseProposal' for the callForProposal pattern -->
+              <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="proposal,refuseProposal" ExpectedConversationId="{ConversationId}" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="30000" />
+              <UploadSubmodel name="UploadProcessChain"
+                             ContextKey="ProcessChain.Result"
+                             SubmodelIdPrefix="processChain"
+                             SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
+                             ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}"
+                             AddReferenceToShell="true" />
+              <SetBlackboardValue name="RememberProcessChainSubmodelId"
+                                  Key="ProcessChain.SubmodelId"
+                                  Value="{Submodel.LastUploadedId}" />
+            </Sequence>
+          </Fallback>
+        </Sequence>
+        <Sequence name="ManufacturingSequenceMode">
+          <CheckConfigFlag name="CheckManufacturingMode"
+                           ConfigPath="Agent.RequestProcessChainOnly"
+                           ExpectedValue="false"
+                           DefaultValue="false" />
           <SendManufacturingRequest name="SendManufacturingRequest"
-                                    Topic="/{Namespace}/ManufacturingSequenceRequest"
-                                    MessageType="requestManufacturingSequence" />
-        </Fallback>
-      </Sequence>
+                                    Topic="/{Namespace}/ManufacturingSequenceRequest" />
+          <WaitForMessage name="AwaitManufacturingSequenceResponse"
+                          ExpectedTypes="proposal,refuseProposal"
+                          ExpectedTopic="/{Namespace}/ManufacturingSequence"
+                          ExpectedConversationId="{ManufacturingRequest.ConversationId}"
+                          TimeoutSeconds="30000" />
+          <UploadSubmodel name="UploadManufacturingSequence"
+                          ContextKey="ManufacturingSequence.Result"
+                          SubmodelIdShort="ManufacturingSequence"
+                          SubmodelIdPrefix="manufacturingSequence"
+                          SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
+                          ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}"
+                          AddReferenceToShell="true" />
+          <SetBlackboardValue name="RememberManufacturingSequenceSubmodelId"
+                              Key="ManufacturingSequence.SubmodelId"
+                              Value="{Submodel.LastUploadedId}" />
+        </Sequence>
+      </Fallback>
     </Sequence>
   </BehaviorTree>
 

@@ -5,7 +5,7 @@
     "Role": "ModuleHolon",
     "LogLevel": "Information",
     "InitializationTree": "Trees/ModuleHolon.bt.xml",
-    "RegistrationIntervalMs": 30000,
+    "RegistrationIntervalMs": 1000,
     "InitialSnapshotTimeoutMs": 10000,
     "SnapshotPollDelayMs": 2500,
     "HeartbeatIntervalSeconds": 30,
