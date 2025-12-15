@@ -289,14 +289,17 @@ public class ParseProcessChainRequestNode : BTNode
             return "Capability";
         }
 
-        var capabilityElem = container.Values?.OfType<Capability>().FirstOrDefault();
+        var capabilityValues = container.Values?.OfType<Capability>() ?? Array.Empty<Capability>();
+        var capabilityElem = capabilityValues.FirstOrDefault();
         string? name = null;
 
         if (capabilityElem != null && !string.IsNullOrWhiteSpace(capabilityElem.IdShort))
         {
             name = capabilityElem.IdShort;
         }
-        else if (!string.IsNullOrWhiteSpace(container.IdShort) && container.IdShort!.EndsWith("Container", StringComparison.OrdinalIgnoreCase) && container.Values.OfType<Capability>().Any())
+        else if (!string.IsNullOrWhiteSpace(container.IdShort)
+                 && container.IdShort!.EndsWith("Container", StringComparison.OrdinalIgnoreCase)
+                 && capabilityValues.Any())
         {
             name = container.IdShort[..^"Container".Length];
         }

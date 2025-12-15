@@ -432,6 +432,11 @@ public class WaitForMessageNode : BTNode
                 dequeuedTopic,
                 receivedAt,
                 latencyMs);
+            if (dequeued == null)
+            {
+                return false;
+            }
+
             message = dequeued;
             return true;
         }

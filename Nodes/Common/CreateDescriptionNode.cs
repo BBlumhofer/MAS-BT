@@ -127,8 +127,13 @@ public class CreateDescriptionNode : BTNode
         return null;
     }
 
-    private static string? TryExtractPropertyValue(ISubmodelElement element)
+    private static string? TryExtractPropertyValue(ISubmodelElement? element)
     {
+        if (element == null)
+        {
+            return null;
+        }
+
         if (element is Property<string> stringProperty && stringProperty.Value != null)
         {
             return stringProperty.Value.Value?.ToString();

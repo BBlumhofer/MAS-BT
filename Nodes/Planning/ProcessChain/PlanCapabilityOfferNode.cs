@@ -157,7 +157,12 @@ public class PlanCapabilityOfferNode : BTNode
         {
             foreach (var entry in transportSequence)
             {
-                var transportOffer = entry?.Capability;
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                var transportOffer = entry.Capability;
                 if (transportOffer == null)
                 {
                     continue;

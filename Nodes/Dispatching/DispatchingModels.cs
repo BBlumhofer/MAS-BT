@@ -112,7 +112,13 @@ namespace MAS_BT
             {
                 return false;
             }
-            return _capabilityDescriptions.TryGetValue(capability.Trim(), out description);
+            if (_capabilityDescriptions.TryGetValue(capability.Trim(), out var stored) && stored != null)
+            {
+                description = stored;
+                return true;
+            }
+
+            return false;
         }
 
         public void SetCapabilityDescription(string capability, string description)

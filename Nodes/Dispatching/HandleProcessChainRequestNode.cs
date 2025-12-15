@@ -415,11 +415,12 @@ namespace MAS_BT.Nodes.Dispatching
                 {
                     try
                     {
-                        if (msg == null)
+                        var safeMsg = msg;
+                        if (safeMsg == null)
                         {
                             return;
                         }
-                        var conv = msg?.Frame?.ConversationId;
+                        var conv = safeMsg.Frame?.ConversationId;
                         if (string.IsNullOrWhiteSpace(conv))
                         {
                             return;
@@ -427,13 +428,13 @@ namespace MAS_BT.Nodes.Dispatching
 
                         if (_pendingCreateDescription.TryGetValue(conv, out var tcs1))
                         {
-                            tcs1.TrySetResult(msg);
+                            tcs1.TrySetResult(safeMsg);
                             return;
                         }
 
                         if (_pendingCalcSimilarity.TryGetValue(conv, out var tcs2))
                         {
-                            tcs2.TrySetResult(msg);
+                            tcs2.TrySetResult(safeMsg);
                             return;
                         }
                     }

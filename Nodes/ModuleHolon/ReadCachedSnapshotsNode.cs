@@ -17,13 +17,14 @@ public class ReadCachedSnapshotsNode : BTNode
         var inventoryCache = Context.Get<CachedInventoryData>($"InventoryCache_{moduleId}");
         var neighborsCache = Context.Get<CachedNeighborsData>($"NeighborsCache_{moduleId}");
 
-        if (inventoryCache != null && inventoryCache.StorageUnits != null && inventoryCache.StorageUnits.Count > 0)
+        var storageUnits = inventoryCache?.StorageUnits;
+        if (storageUnits != null && storageUnits.Count > 0)
         {
-            Context.Set("ModuleInventory", inventoryCache.StorageUnits);
-            Logger.LogInformation("ReadCachedSnapshots: loaded {Count} storage units from cache for {Module}", inventoryCache.StorageUnits.Count, moduleId);
+            Context.Set("ModuleInventory", storageUnits);
+            Logger.LogInformation("ReadCachedSnapshots: loaded {Count} storage units from cache for {Module}", storageUnits.Count, moduleId);
             try
             {
-                var first = inventoryCache.StorageUnits[0];
+                var first = storageUnits[0];
                 var slotCount = first.Slots?.Count ?? 0;
                 var sample = slotCount > 0 ? first.Slots[0].Content : null;
                 Logger.LogDebug("ReadCachedSnapshots: sample storage='{Storage}' slots={SlotCount} sampleContent={Sample}", first.Name, slotCount, sample);
@@ -34,10 +35,11 @@ public class ReadCachedSnapshotsNode : BTNode
             }
         }
 
-        if (neighborsCache != null && neighborsCache.Neighbors != null)
+        var neighbors = neighborsCache?.Neighbors;
+        if (neighbors != null)
         {
-            Context.Set("Neighbors", neighborsCache.Neighbors);
-            Logger.LogInformation("ReadCachedSnapshots: loaded {Count} neighbors from cache for {Module}", neighborsCache.Neighbors.Count, moduleId);
+            Context.Set("Neighbors", neighbors);
+            Logger.LogInformation("ReadCachedSnapshots: loaded {Count} neighbors from cache for {Module}", neighbors.Count, moduleId);
         }
 
         return Task.FromResult(NodeStatus.Success);

@@ -815,9 +815,9 @@ public class CollectCapabilityOfferNode : BTNode
         };
     }
 
-    private static string? ExtractProperty(I40Message message, string idShort)
+    private static string? ExtractProperty(I40Message? message, string idShort)
     {
-        if (message.InteractionElements == null)
+        if (message?.InteractionElements == null)
         {
             return null;
         }

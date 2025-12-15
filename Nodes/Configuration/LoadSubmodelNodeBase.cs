@@ -331,8 +331,13 @@ public abstract class LoadSubmodelNodeBase<TSubmodel> : BTNode where TSubmodel :
         };
     }
 
-    private static string GetSemanticIdValue(IReference reference)
+    private static string GetSemanticIdValue(IReference? reference)
     {
+        if (reference == null)
+        {
+            return "<none>";
+        }
+
         try
         {
             var semanticProp = reference.GetType().GetProperty("SemanticId");
@@ -351,8 +356,13 @@ public abstract class LoadSubmodelNodeBase<TSubmodel> : BTNode where TSubmodel :
         return "<none>";
     }
 
-    private static string GetReferredSemanticIdValue(IReference reference)
+    private static string GetReferredSemanticIdValue(IReference? reference)
     {
+        if (reference == null)
+        {
+            return "<none>";
+        }
+
         try
         {
             var referredProp = reference.GetType().GetProperty("ReferredSemanticId");
@@ -371,7 +381,7 @@ public abstract class LoadSubmodelNodeBase<TSubmodel> : BTNode where TSubmodel :
         return "<none>";
     }
 
-    private static List<string> GetReferenceSemanticIdValues(IReference reference)
+    private static List<string> GetReferenceSemanticIdValues(IReference? reference)
     {
         var values = new List<string>();
         var semantic = GetSemanticIdValue(reference);

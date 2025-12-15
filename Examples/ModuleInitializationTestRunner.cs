@@ -671,7 +671,7 @@ public class ModuleInitializationTestRunner
         }
     }
 
-    private static string GetConfigValue(Dictionary<string, object> config, string path, string defaultValue)
+    private static string GetConfigValue(Dictionary<string, object> config, string path, [System.Diagnostics.CodeAnalysis.AllowNull] string defaultValue)
     {
         var parts = path.Split('.');
         object? current = config;
