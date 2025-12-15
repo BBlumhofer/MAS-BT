@@ -509,4 +509,50 @@ public class RegistrationIntegrationTests
         Assert.Equal(3, p102!.InventoryFree);
         Assert.Equal(7, p102.InventoryOccupied);
     }
+
+    [Fact]
+    public async Task SubscribeAgentTopics_DispatchingAgent_ReceivesOfferResponsesOnOfferTopic()
+    {
+        var ns = $"test{Guid.NewGuid():N}";
+
+        var transport = new InMemoryTransport();
+        var dispatching = new MessagingClient(transport, "dispatch/default");
+        var publisher = new MessagingClient(transport, "pub/default");
+        await dispatching.ConnectAsync();
+        await publisher.ConnectAsync();
+
+        var context = new BTContext(NullLogger<BTContext>.Instance)
+        {
+            AgentId = $"DispatchingAgent_{ns}",
+            AgentRole = "DispatchingAgent"
+        };
+        context.Set("config.Namespace", ns);
+        context.Set("MessagingClient", dispatching);
+        context.Set("DispatchingState", new DispatchingState());
+
+        var subNode = new SubscribeAgentTopicsNode { Context = context, Role = "DispatchingAgent" };
+        subNode.SetLogger(NullLogger<SubscribeAgentTopicsNode>.Instance);
+        Assert.Equal(NodeStatus.Success, await subNode.Execute());
+
+        var tcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
+        dispatching.OnMessage(m => tcs.TrySetResult(m));
+
+        var conv = Guid.NewGuid().ToString();
+        var msg = new I40MessageBuilder()
+            .From("P102_Planning", "PlanningHolon")
+            .To("DispatchingAgent", "DispatchingAgent")
+            .WithType(I40MessageTypes.PROPOSAL)
+            .WithConversationId(conv)
+            .AddElement(new Property<string>("Capability") { Value = new PropertyValue<string>("Assemble") })
+            .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>("req-1") })
+            .Build();
+
+        await publisher.PublishAsync(msg, $"/{ns}/DispatchingAgent/Offer");
+
+        var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(1)));
+        Assert.Same(tcs.Task, completed);
+        Assert.NotNull(tcs.Task.Result);
+        Assert.Equal(I40MessageTypes.PROPOSAL, tcs.Task.Result!.Frame?.Type);
+        Assert.Equal(conv, tcs.Task.Result.Frame?.ConversationId);
+    }
 }

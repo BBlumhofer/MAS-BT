@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AasSharpClient.Models;
+using AasSharpClient.Models.ProcessChain;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
@@ -71,7 +73,9 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
 
         // Simulate at least one registered module/agent.
         var state = new DispatchingState();
-        state.Upsert(new DispatchingModuleInfo { ModuleId = "Module_1", Capabilities = new List<string> { "Assemble" } });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "Module_Assemble", Capabilities = new List<string> { "Assemble" } });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "Module_Drill", Capabilities = new List<string> { "Drill" } });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "Module_Screw", Capabilities = new List<string> { "Screw" } });
         context.Set("DispatchingState", state);
 
         var dispatchClient = await CreateClientAsync("dispatch/logs");
@@ -117,6 +121,102 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         {
             Assert.Equal(expectedCount, offers.Count);
         }
+    }
+
+    [Fact]
+    public async Task CollectCapabilityOffer_ConsumesBufferedResponsesFromInbox()
+    {
+        var ns = $"test{Guid.NewGuid():N}";
+        var conv = Guid.NewGuid().ToString();
+
+        var transport = new InMemoryTransport();
+        var dispatchingClient = new MessagingClient(transport, "dispatch/default");
+        var moduleClient = new MessagingClient(transport, "module/default");
+        await dispatchingClient.ConnectAsync();
+        await moduleClient.ConnectAsync();
+
+        // Dispatcher subscribes to the shared Offer topic.
+        await dispatchingClient.SubscribeAsync($"/{ns}/DispatchingAgent/Offer");
+
+        // Publish proposals BEFORE CollectCapabilityOffer registers its conversation callback.
+        var offeredA = new OfferedCapability("OfferedCapability");
+        offeredA.InstanceIdentifier.Value = new BaSyx.Models.AdminShell.PropertyValue<string>("offer-1");
+        offeredA.Station.Value = new BaSyx.Models.AdminShell.PropertyValue<string>("P100");
+        var actionA = new AasSharpClient.Models.Action(
+            idShort: "Action001",
+            actionTitle: "Drill",
+            status: ActionStatusEnum.PLANNED,
+            inputParameters: null,
+            finalResultData: null,
+            preconditions: null,
+            skillReference: null,
+            machineName: "P100");
+        actionA.InputParameters.SetParameter("Dummy", "1");
+        offeredA.AddAction(actionA);
+
+        var msgA = new I40MessageBuilder()
+            .From("P100_Planning", "PlanningHolon")
+            .To("DispatchingAgent", "DispatchingAgent")
+            .WithType(I40MessageTypes.PROPOSAL)
+            .WithConversationId(conv)
+            .AddElement(new BaSyx.Models.AdminShell.Property<string>("Capability") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>("Drill") })
+            .AddElement(new BaSyx.Models.AdminShell.Property<string>("RequirementId") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>("req-drill") })
+            .AddElement(new BaSyx.Models.AdminShell.Property<string>("OfferId") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>("offer-1") })
+            .AddElement(offeredA)
+            .Build();
+
+        var offeredB = new OfferedCapability("OfferedCapability");
+        offeredB.InstanceIdentifier.Value = new BaSyx.Models.AdminShell.PropertyValue<string>("offer-2");
+        offeredB.Station.Value = new BaSyx.Models.AdminShell.PropertyValue<string>("P101");
+        var actionB = new AasSharpClient.Models.Action(
+            idShort: "Action001",
+            actionTitle: "Screw",
+            status: ActionStatusEnum.PLANNED,
+            inputParameters: null,
+            finalResultData: null,
+            preconditions: null,
+            skillReference: null,
+            machineName: "P101");
+        actionB.InputParameters.SetParameter("Dummy", "1");
+        offeredB.AddAction(actionB);
+
+        var msgB = new I40MessageBuilder()
+            .From("P101_Planning", "PlanningHolon")
+            .To("DispatchingAgent", "DispatchingAgent")
+            .WithType(I40MessageTypes.PROPOSAL)
+            .WithConversationId(conv)
+            .AddElement(new BaSyx.Models.AdminShell.Property<string>("Capability") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>("Screw") })
+            .AddElement(new BaSyx.Models.AdminShell.Property<string>("RequirementId") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>("req-screw") })
+            .AddElement(new BaSyx.Models.AdminShell.Property<string>("OfferId") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>("offer-2") })
+            .AddElement(offeredB)
+            .Build();
+
+        await moduleClient.PublishAsync(msgA, $"/{ns}/DispatchingAgent/Offer");
+        await moduleClient.PublishAsync(msgB, $"/{ns}/DispatchingAgent/Offer");
+
+        var context = new BTContext(NullLogger<BTContext>.Instance)
+        {
+            AgentId = "DispatchingAgent_test",
+            AgentRole = "DispatchingAgent"
+        };
+        context.Set("config.Namespace", ns);
+        context.Set("Namespace", ns);
+        context.Set("MessagingClient", dispatchingClient);
+
+        var negotiation = new ProcessChainNegotiationContext
+        {
+            ConversationId = conv,
+            RequesterId = "ProductAgent"
+        };
+        negotiation.Requirements.Add(new CapabilityRequirement { Capability = "Drill", RequirementId = "req-drill" });
+        negotiation.Requirements.Add(new CapabilityRequirement { Capability = "Screw", RequirementId = "req-screw" });
+        context.Set("ProcessChain.Negotiation", negotiation);
+
+        var collect = new CollectCapabilityOfferNode { Context = context, TimeoutSeconds = 1 };
+        Assert.Equal(NodeStatus.Success, await collect.Execute());
+
+        var updated = context.Get<ProcessChainNegotiationContext>("ProcessChain.Negotiation")!;
+        Assert.All(updated.Requirements, r => Assert.True(r.CapabilityOffers.Count > 0, $"Missing offer for {r.Capability}"));
     }
 
     [Fact]

@@ -46,6 +46,10 @@ namespace MAS_BT.Nodes.Common
                     $"/{ns}/request/ManufacturingSequence",
                     $"/{ns}/request/BookStep",
                     $"/{ns}/request/TransportPlan",
+
+                    // Offer request/response topics (CfP broadcast + module proposals)
+                    $"/{ns}/DispatchingAgent/Offer",
+
                     $"/{ns}/DispatchingAgent/register",
                     $"/{ns}/DispatchingAgent/Register",
                     $"/{ns}/DispatchingAgent/ModuleRegistration/",

@@ -1,0 +1,26 @@
+{
+  "idShort": "Reference",
+  "kind": "Instance",
+  "modelType": "ReferenceElement",
+  "value": {
+    "type": "ModelReference",
+    "keys": [
+      {
+        "type": "Submodel",
+        "value": "https://smartfactory.de/submodels/capability/3b3c7ec0-ddd0-422b-99c3-7e61aa670f83"
+      },
+      {
+        "type": "SubmodelElementCollection",
+        "value": "CapabilitySet"
+      },
+      {
+        "type": "SubmodelElementCollection",
+        "value": "AssembleContainer"
+      },
+      {
+        "type": "Capability",
+        "value": "Assemble"
+      }
+    ]
+  }
+}

@@ -1,117 +1,225 @@
-# MAS-BT Progress (2025-12-09)
+# MAS-BT Progress & Status
 
-## Latest changes
-- Skill preconditions are now evaluated before ExecuteSkill runs: module must be coupled, locked, startup skill running, and custom `InStorage` conditions must resolve against current storages; unmet conditions cause the request to re-queue instead of failing.
-- Skill execution no longer refuses when the module is unlocked: ExecuteSkill, Ready-State monitoring, and MQTT dequeueing now requeue the SkillRequest until the lock is reacquired, preventing duplicate error responses.
-- Execution queue now persists full SkillRequest envelopes (raw I4.0 message + metadata) so responses always carry the correct conversation/product ID and sender/receiver pair.
-- Action queue snapshots are now published to `/{Namespace}/{ModuleId}/ActionQueue` whenever the queue changes; each message contains metadata for every pending action.
-- Messaging serializer now uses BaSyx FullSubmodelElementConverter + JsonStringEnumConverter; interactionElements include `value` fields again (logs, state, inventory, neighbor, skill messages).
-- SkillRequest parsing builds a BaSyx `SubmodelElementCollection` and `AasSharpClient.Models.Action`; input parameters are auto-typed (strings like "true" become bool) to avoid OPC UA BadTypeMismatch.
-- Log messages sent via `SendLogMessageNode` now carry populated values; MQTT payload matches the AAS-Sharp-Client examples.
-- SubTree expansion and Groot compatibility fixes remain in place (decorator child count, TreeNodesModel ports for ExecuteSkill, Repeat num_cycles).
+**Last Updated**: 2025-12-15
 
-## Current focus
-- Queue and Preconditions design: enqueue SkillRequests, consent/refuse with queue-full handling; preconditions SMC (InStorage) with SlotContentType/SlotValue; ActionUpdate on precondition retries.
-- Recovery and monitoring: continuous health monitor for lock/startup/error, trigger RecoverySequence; improve Couple/Startup retries and timeouts.
-- Messaging paths: finalize SendMessage/WaitForMessage and inventory/neighbor readers using the unified serializer; add MQTT integration tests.
+---
 
-## Known issues and warnings
-- OPC UA KeepAlive can report Bad transiently; SDK reconnect handles it but monitor logs.
-- Build warnings: NU1510 for System.Text.Json (pruning), CS0108 in ProcessParametersValidNode (hides Equals).
-- Occasional skill state values from server (e.g., 17) still need mapping/logging for clarity.
+## Current Status
 
-## Verification
-- `dotnet build MAS-BT/MAS-BT.csproj -c Debug` succeeds (warnings above).
-- Example run: `dotnet run --Examples/ActionExecutionTest.bt.xml` (used during latest checks).
- - Example run: `dotnet run -- Trees/PlanningAgent.bt.xml` or `dotnet run -- Examples/ActionExecutionTest.bt.xml` (used during latest checks). Note: `PlanningAgent` no longer loads a demo ProductionPlan; plans should be provided externally.
-- Lock-aware queue scenario: start the agent, intentionally release the module lock, publish a skill via `tests/mqtt_skill_request_publisher.py`, and observe the request waiting in the queue until the lock is granted again (no refusal/error spam).
-- SkillRequest publisher (`tests/mqtt_skill_request_publisher.py`) exercises BaSyx parsing and typed parameter handling.
+### ✅ Completed Features
 
-## Next steps (shortlist)
-1) Implement and wire Execution-Queue with precondition-aware dequeue/skip/retry; add ActionUpdate messaging for retries.
-2) Add ContinuousHealthCheck/RecoverySequence monitor branch in example trees; extend Recovery tests.
-3) Finish messaging nodes (SendMessage, WaitForMessage, Neighbor/Inventory readers) and add MQTT integration tests.
-4) Optional: clean build warnings (NU1510, CS0108).
+#### ProcessChain Workflow (2025-12-14)
+- **Full ProcessChain generation pipeline**: Product Agent → Dispatching Agent → Planning Agents
+- **Capability Matching**: Neo4j-based similarity matching with configurable thresholds
+- **Offer Negotiation**: 
+  - Inbox drain to capture early-arriving proposals
+  - CfP reissue for modules that register after initial dispatch
+  - Unified Offer topic: `/{Namespace}/DispatchingAgent/Offer`
+  - Configurable timeout for offer collection
+- **ProcessChain Building**: Aggregates all offers per RequiredCapability
+- **Response Handling**: consent/refusal with detailed reason codes
 
-## Preconditions — Implementation & Schritte (2025-12-09)
+#### Planning Agent (2025-12-09 onwards)
+- **Initialization**: Loads CapabilityDescription from AAS, registers with Dispatching Agent
+- **Offer Creation**:
+  - `ParseCapabilityRequest`: Extracts RequiredCapability, RequirementId, ConversationId
+  - `CapabilityMatchmaking`: Neo4j similarity scoring
+  - `FeasibilityCheck`: Validates constraints (material, tools, storage)
+  - `PlanCapabilityOffer`: Creates CapabilityOffer with Actions, Scheduling, Cost
+  - `SendCapabilityOffer`: Publishes offer or refusal
+- **Dispatch Loop**: Selects schedulable Actions from ProductionPlan, sends SkillRequests to Execution
+- **SkillResponse Handling**: Applies ActionState updates to ProductionPlan
 
-- **Ziel:** Präconditions vor Skill-Start auswerten (Standard: `Coupled`, `StartupSkill running`, `Locked`; Action-spezifisch: `InStorage`).
+#### Execution Agent (2025-12-09)
+- **Initialization**: Connects to MQTT/OPC UA, locks module, ensures coupling, starts StartupSkill
+- **Precondition System**:
+  - Standard checks: Coupled, Locked, StartupSkill running
+  - Action-specific: InStorage (SlotContentType, SlotValue)
+  - Precondition failures → requeue with exponential backoff
+  - Configurable: `PreconditionBackoffStartMs`, `MaxPreconditionRetries`
+- **SkillRequest Queue**:
+  - FIFO queue with metadata (ConversationId, ActionId, InputParameters)
+  - Queue snapshots published to `/{Namespace}/{ModuleId}/ActionQueue`
+  - Backoff window (`NextRetryUtc`) prevents busy-looping
+- **Skill Execution**: ExecuteSkill → Monitor → Reset → UpdateInventory → ActionState (DONE)
+- **Error Handling**: Refusal when module busy, failure when skill fails
 
-- **Durchgeführte Schritte:**
-	- `Preconditions`-Datenmodell erweitert in `AAS-Sharp-Client/Models/SubmodelCollections.cs` (neue `Preconditions`-Collection, `PreconditionBase`, `StoragePrecondition`).
-	- `ReadMqttSkillRequestNode` angepasst: kopiert deklarierte Precondition-SMCs in das erstellte `Action`-Objekt.
-	- `SkillPreconditionChecker` implementiert (`MAS-BT/Services/SkillPreconditionChecker.cs`) zur Evaluation von Standard- und Action-Preconditions (inkl. `InStorage`).
-	- `ExecuteSkillNode` erweitert: Evaluierung der Preconditions vor Start; bei Nichterfüllung wird die Anfrage requeued statt hart zu fehlschlagen.
-	- `ExecuteSkillNode` erweitert: Evaluierung der Preconditions vor Start; bei Nichterfüllung wird die Anfrage requeued und an das Queue-Ende verschoben (Backoff gesetzt) statt hart zu fehlschlagen. `SendSkillResponse` unterdrückt ERROR-Responses für requeued Actions, so verbleiben sie in der Queue.
-	- Unit-Tests / Hilfsparser (z.B. `SkillRequestQueueTests`) aktualisiert; Build geprüft (`dotnet build`) — grüner Build nach Anpassungen.
+#### Messaging & Serialization (2025-12-09)
+- **I4.0 Sharp Messaging**: Uses BaSyx FullSubmodelElementConverter + JsonStringEnumConverter
+- **InteractionElements**: All messages include populated `value` fields
+- **SkillRequest Parsing**: Auto-typing of parameters (string "true" → bool) to avoid OPC UA BadTypeMismatch
+- **Log Messages**: SendLogMessageNode publishes structured logs via MQTT
 
-- **Verifikation:**
-	- Beispiel-Run zeigte: SkillRequest wird geparsed, in die Queue gestellt, `CheckReadyState` prüft Lock/Errors, `ExecuteSkill` führt Precondition-Check aus und requeues wenn `InStorage` nicht erfüllt ist.
-	- Logs zeigen wiederholtes Requeue bei fehlendem Storage-Eintrag (erwartetes Verhalten).
+#### Monitoring & Inventory (2025-12-09)
+- **Inventory Updates**: 
+  - Topic: `/{Namespace}/{ModuleId}/Inventory`
+  - Payload: StorageUnits with InventorySummary (free/occupied)
+  - Debounced publishing to avoid rapid-fire updates
+- **Neighbor Information**: Published via `PublishNeighbors`
+- **Queue Snapshots**: Published on every enqueue/requeue/dequeue
 
-## Offene Execution-Agent TODOs (Analyse)
+#### Module Holon Router (2025-12)
+- Wrapper agent that combines Planning + Execution
+- Registers with Dispatching Agent
+- Routes offers/scheduling/booking between Dispatcher and sub-agents
 
-- **Hohe Priorität:**
-	- ActionUpdate Messaging: Bei jedem Preconditions-Retry soll eine `ActionUpdate` mit dem Grund `preconditions not satisfied` verschickt werden (inkl. SlotContentType/SlotValue). (nicht implementiert)
-	- Retry-Strategie / Backoff: Queue verwendet jetzt `PreconditionBackoffStartMs` (default 5000ms) und inkrementelle Retries (exponentiell). Implementiert: `MaxPreconditionRetries` (default 5) bricht nach N erfolglosen Versuchen ab und lässt die Action in einen ERROR-Zustand übergehen.
-	- Skip/Dequeue-Strategie: Dispatcher sollte nicht-startbare Jobs überspringen und die nächste startfähige Action starten; nach jedem Durchlauf blockierte Jobs erneut prüfen. (teilweise vorhanden, noch Feinschliff nötig)
+---
 
-- **Mittlere Priorität:**
-	- Integrationstests: End-to-End Tests für Precondition-Szenarios (InStorage vorhanden / fehlt, Coupling fehlt, StartupSkill halted). (nicht implementiert)
-	- Telemetrie & Queue-Metriken: Queue-Länge, älteste Wartezeit, Anzahl Requeues pro Action als Telemetrie/Log. (nicht implementiert)
-	- API für Cancel/Remove: Planning-Agent muss Queue-Einträge per ActionId/ConversationId entfernen können (Rückmeldung via ActionUpdate). (nicht implementiert)
+## Known Issues & Limitations
 
-- **Niedrige Priorität / Nice-to-have:**
-	- Standardverhalten bei fehlendem `SlotContentType`: definieren (aktuell `Unknown` — evtl. Default `ProductId`). (Diskussion/Anpassung empfohlen)
-	- Logging-Verbesserungen: prägnantere ActionUpdate-Gründe, mapping von SlotContentType-Enums in Doku.
-	- Code Cleanup: Warnings (NU1510) prüfen, ungenutzte Felder bereinigen.
+### Build Warnings
+- **NU1510**: System.Text.Json pruning warning (can be ignored)
+- **CS0108**: ProcessParametersValidNode hides Equals (harmless)
 
-Wenn du möchtest, implementiere ich als nächstes die `ActionUpdate`-Publizierung bei Preconditions-Retry und eine einfache Retry-Limit/Backoff-Strategie im `SkillRequestQueue` (empfohlen, verhindert Spam/infinite requeues). Sage mir welches Verhalten (max retries, initial backoff) du bevorzugst, dann setze ich das um.
+### OPC UA
+- KeepAlive can report transient `Bad` status → SDK reconnects automatically
+- Some skill state values from server (e.g., 17) need clearer mapping/logging
+
+### ProcessChain Negotiation (Fixed 2025-12-14)
+- ~~Proposals arriving before callback registration~~ → **Fixed**: Inbox drain implemented
+- ~~Modules registering after CfP dispatch~~ → **Fixed**: CfP reissue for late registrations
+- ~~Race conditions between CfP and module registration~~ → **Fixed**: Unified topic and correlation
+
+---
+
+## Verification & Testing
+
+### Build & Test
+```bash
+dotnet build MAS-BT.csproj -c Debug
+dotnet test MAS-BT.csproj
+```
+
+### Example Runs
+```bash
+# Dispatching Agent
+dotnet run -- configs/dispatching_agent.json
+
+# Planning Agent (P102)
+dotnet run -- configs/specific_configs/Module_configs/P102/P102_Planning_agent.json
+
+# Execution Agent (P102)
+dotnet run -- configs/specific_configs/Module_configs/P102/P102_Execution_agent.json
+
+# Product Agent
+dotnet run -- Trees/ProductAgent.bt.xml
+```
+
+### Observability
+
+**ProcessChain Logs**:
+- `CollectCapabilityOffer: drained X buffered messages from inbox for conversation {ConvId}`
+- `CollectCapabilityOffer: re-issued Y CfP(s) to late-registered module {Module}`
+- `CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability}`
+- `BuildProcessChainResponse: built process chain with {Count} requirements (success={Success})`
+
+**Execution Agent Logs**:
+- `ReadMqttSkillRequest: dequeued request for action {ActionId}`
+- `CheckSkillPreconditions: preconditions not met, requeuing with backoff {BackoffMs}ms`
+- `ExecuteSkill: starting skill {SkillName} with parameters {Params}`
+- `SendSkillResponse: published ActionState {State} for conversation {ConvId}`
+
+**Queue Monitoring**:
+```bash
+mosquitto_sub -t "/{Namespace}/{ModuleId}/ActionQueue" -v
+```
+
+**Inventory Monitoring**:
+```bash
+mosquitto_sub -t "/{Namespace}/{ModuleId}/Inventory" -v
+```
+
+---
+
+## Next Steps
+
+### High Priority
+1. **Product Agent Offer Selection**: Implement logic to select best offers from ProcessChain
+2. **ProductionPlan Creation**: Build ProductionPlan from selected offers and dispatch Actions
+3. **ActionUpdate Messaging**: Publish ActionUpdate on every precondition retry with reason
+4. **Integration Tests**: End-to-end tests for full ProcessChain → Execution workflow
+
+### Medium Priority
+1. **Manufacturing Sequence**: Implement RequestManufacturingSequence with transport planning
+2. **Booking Mechanism**: Tentative → Confirmed booking workflow
+3. **Recovery & Health Monitoring**: Continuous health checks, RecoverySequence subtrees
+4. **Transport Agent**: Separate agent for transport coordination
+5. **Telemetry & Metrics**: Queue length, oldest wait time, requeue count per action
+
+### Low Priority / Nice-to-Have
+1. **Standardize SlotContentType**: Define default behavior when missing (currently `Unknown`)
+2. **Logging Improvements**: More structured ActionUpdate reasons, enum mappings in docs
+3. **Code Cleanup**: Address build warnings (NU1510, CS0108), remove unused fields
+4. **Multi-level Dispatching**: Hierarchical Dispatching Agent structure
+5. **Advanced Scheduling Algorithms**: Minimize makespan, cost, load balancing
+
+---
 
 ## References
-- Detailed node docs: `CONFIGURATION_NODES.md`, `MONITORING_AND_SKILL_NODES.md`.
-- Roadmap and historical notes: `EXECUTION_AGENT_TODO.md`.
-- Specs: `specs.json`.
 
-## Inventory MQTT — Status (2025-12-09)
+### Core Documentation
+- **Main Documentation**: `docs/MAS-BT_DOCUMENTATION.md`
+- **Node Library**: `specs.json`
 
-- **Kurzfassung:** Storage-Änderungen werden über MQTT veröffentlicht. Das aktuelle Topic-Schema ist `/{Namespace}/{ModuleId}/Inventory`.
-- **Payload:** Inventory-Nachrichten enthalten `StorageUnits` und zusätzlich eine kompakte `InventorySummary` (free/occupied) innerhalb von `StorageUnits`.
-- **Diagnose:** Logs sollten Publishes an `/{Namespace}/{ModuleId}/Inventory` zeigen.
-- **Verifikation:**
-	- Starte das Beispiel-Tree oder den Agenten, z. B. `dotnet run -- Examples/ActionExecutionTest.bt.xml` im `MAS-BT`-Ordner.
-	- Prüfe die Agent-Logs auf Meldungen wie: `published inventory to topic /<ns>/<module>/Inventory` oder auf Warnungen über fehlende Subscriptions.
-	- Prüfe deinen MQTT-Broker (z. B. mit `mosquitto_sub`):
+### Agent Documentation
+- **Dispatching Agent**: `docs/predefined_agents/dispatching_agent/DispatchingAgent.md`
+- **ProcessChain Pattern**: `docs/predefined_agents/dispatching_agent/ProcessChainPattern.md`
+- **Module Holon**: `docs/predefined_agents/module_agent/ModuleHolon.md`
+- **Execution Agent**: `docs/predefined_agents/execution_agent/MONITORING_AND_SKILL_NODES.md`
+- **Execution TODOs**: `docs/predefined_agents/execution_agent/EXECUTION_AGENT_TODO.md`
+- **Inventory MQTT**: `docs/predefined_agents/execution_agent/InventoryMQTT.md`
 
-```bash
-# Beispiel: abonniere Inventory-Topic für Modul `P102` im Namespace `phuket`
-mosquitto_sub -t "/phuket/P102/Inventory" -v
-```
+### Configuration
+- **Configuration Nodes**: `docs/CONFIGURATION_NODES.md`
+- **Startup & MQTT**: `docs/STARTUP_AND_MQTT.md`
 
-	- Wenn keine Nachrichten ankommen: prüfe die Agent-Logs auf Publish-Fehler (Connectivity/Authentication) und die Ausgabe von `StorageMqttNotifier` (Anzahl Subscriptions, Null-Guards).
+### Capability Matching
+- **Similarity Analysis**: `docs/SimilarityAnalysisAgent.md`
+- **Neo4j Capability Matching**: `docs/CapabilityMatching_Neo4j.md`
+- **Message Flow**: `docs/SimilarityAnalysisAgent_MessageFlow.md`
 
-- **Bekannte Punkte:**
-	- Ältere Beispiele mit `/Modules/...` sind veraltet; bitte `/{Namespace}/{ModuleId}/Inventory` verwenden.
+---
 
-- **Update (Debounce & Logs):**
-	- **Coalescing / Debounce:** Storage-Änderungen sollten gebündelt werden, um schnelle Mehrfach-Publishes zu vermeiden.
+## Changelog
 
-- **Lock-Retry Diagnose:**
-	- `LockResourceNode` enthält nun zusätzliche Debug-Logs (enableRetry, TimeoutSeconds, RetryDelaySeconds, deadline, attempt). Diese helfen zu erkennen, warum beim Initialisieren kein Retry ausgelöst wurde (z. B. Modul bereits durch Dritten gelockt).
-	- Aktuelles Verhalten: `RemoteModule.LockAsync()` bleibt eine einzelne (immediate) Lock-Attempt; Retry/Backoff liegt in `LockResourceNode` (Tree-Node). Falls erwünscht, können wir `LockResourceNode` so anpassen, dass bei `null` als Ergebnis (transiente Fehler) ebenfalls Retry-Verhalten ausgeführt wird.
+### 2025-12-14: ProcessChain Negotiation Robustness
+- Implemented inbox drain in `CollectCapabilityOffer`
+- Added CfP reissue for late-registering modules
+- Unified Offer topic for CfP and proposals
+- Removed semaphore-based throttling (replaced with ConversationId correlation)
+- Improved WaitForMessage logging (debug for polling, warning for conversation-based)
+- **Result**: ProcessChain successfully built with 3 requirements in test runs
 
-- **Verifikation (aktualisiert):**
-	- Starte den Agenten mit dem Beispiel-Tree:
+### 2025-12-09: Preconditions & Queue Management
+- Extended Preconditions data model (StoragePrecondition, PreconditionBase)
+- Implemented SkillPreconditionChecker service
+- ExecuteSkill evaluates preconditions before start
+- Precondition failures → requeue with backoff (no immediate ERROR)
+- Queue snapshots published on every state change
+- MaxPreconditionRetries and PreconditionBackoffStartMs configurable
 
-```bash
-dotnet run -- Examples/ActionExecutionTest.bt.xml
-```
+### 2025-12-09: Messaging & Serialization
+- BaSyx FullSubmodelElementConverter + JsonStringEnumConverter
+- InteractionElements with populated value fields
+- SkillRequest auto-typing (string → bool/int/double)
+- Log messages with structured payloads
 
-	- Achte auf je Storage-Burst genau eine `published inventory to topic /<ns>/<module>/Inventory`-Zeile.
-	- Prüfe Lock-Diagnose-Logs bei Initialisierung, z. B. `LockResource: timeoutSeconds=...` und `LockResource: attempt=...`.
+### 2025-12-09: Inventory & Monitoring
+- Inventory published to `/{Namespace}/{ModuleId}/Inventory`
+- InventorySummary (free/occupied) included in StorageUnits
+- Debounced publishing
+- Lock-aware queue: requests wait when module unlocked
 
+### Earlier: Lock-aware Execution Queue
+- SkillRequests stay queued when module lock is missing
+- ExecuteSkill waits until lock is reacquired
+- No duplicate error responses during lock wait
 
-- **Nächste Schritte:**
-	1. Falls Logs zeigen, dass Publish-Versuche fehlschlagen: Broker-Zugangsdaten, Topic-ACLs und `MessagingClient`-Verbindung prüfen.
-	2. Optional: MQTT-Integrationstests hinzufügen, die Broker (lokal/CI) emulieren und auf `Inventory`-Nachrichten prüfen.
+### Earlier: Step Updates & Response Handling
+- Step snapshots published to `/{Namespace}/{ModuleId}/StepUpdate`
+- AwaitSkillResponse and ApplySkillResponse nodes
+- Step synchronization rules (first Action EXECUTING → Step EXECUTING, all DONE → Step DONE)
 
+---
+
+**Status Summary**: ProcessChain workflow fully operational. Planning and Execution agents tested and stable. Precondition-based queue management prevents premature failures. Next focus: Product Agent offer selection and ProductionPlan creation.

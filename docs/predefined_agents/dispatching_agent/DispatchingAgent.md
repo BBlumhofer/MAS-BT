@@ -1,5 +1,12 @@
 # Dispatching Agent - Konzept und Architektur
 
+
+## 0. Open Issues:
+
+            requiredCapability.SetRequiredCapabilityReference(CreateCapabilityReference(requirement.Capability));
+Die Capability Reference müssen wir im Offer mitschicken, das ist die Referenz auf das Verwaltungsschalen Element bestehend aus der SubmodelId, und weiteren Keys für Über Capability Set und Container auf die Capability selbst. 
+
+
 ## 1. Überblick
 
 Der **Dispatching Agent** ist ein hierarchischer Koordinationsagent im MAS-BT-System, der zwischen Produktagenten und Produktionsmodulen vermittelt. Seine Hauptaufgabe ist die **Grobplanung** und **Routing** von Produktionsaufträgen zu geeigneten Ressourcen.
@@ -308,7 +315,10 @@ Der Dispatching Agent bietet **4 zentrale Services** über MQTT Topics an:
             { "idShort": "StepId", "value": "Step_0", "valueType": "xs:string" },
             { "idShort": "AssignedModule", "value": "Module1", "valueType": "xs:string" },
             { "idShort": "PlannedStart", "value": "2025-12-15T10:00:00Z", "valueType": "xs:dateTime" },
-            { "idShort": "PlannedEnd", "value": "2025-12-15T10:15:00Z", "valueType": "xs:dateTime" },
+            { "idShort": "PlannedEnd", "value": "2025-12-15T10:15:00Z", 
+    {
+      "modelType": "SubmodelElementCollection",
+      "idShort": "TransportRequest","valueType": "xs:dateTime" },
             { "idShort": "BookingStatus", "value": "tentative", "valueType": "xs:string" }
           ]
         },
@@ -340,6 +350,25 @@ Der Dispatching Agent bietet **4 zentrale Services** über MQTT Topics an:
 3. **Transportplanung** fügt Transport-Steps zwischen Modulen ein
 4. **Tentative Booking:** Sende `ScheduleAction` (tentative) an Planning Agents der gewählten Module
 5. Falls Annahme durch Produkt → Bookings bleiben tentative bis `BookStep`
+
+### 3.1.1 Recent fixes & robustness notes (2025-12-14)
+
+- Issue: In some fast runs proposals arrived before the dispatcher had registered conversation callbacks, causing offers to be missed and premature refusals.
+- Fixes implemented:
+  - Inbox drain: `CollectCapabilityOffer` now drains the messaging client inbox by `ConversationId` on startup so early-arriving proposals are consumed.
+  - CfP re-issue: the dispatcher caches the CfPs it published and will re-publish them once (per target module) if a module registers after the initial dispatch and likely missed the publish.
+  - Unified topic: both CfP requests and module proposals use `/{Namespace}/DispatchingAgent/Offer` to simplify routing and avoid topic mismatches.
+  - WaitForMessage logging: timeouts for polling-style waits are logged as debug; conversation-based waits still warn on timeout. This reduces noisy logs in Repeat/Fallback loops.
+  - Semaphore removal: semaphore-based throttling around similarity/description requests was removed; request/response correlation uses `ConversationId` and per-request TaskCompletionSources which is sufficient and more robust.
+
+Observability:
+- Look for logs during negotiation:
+  - `CollectCapabilityOffer: drained X buffered messages from inbox for conversation {Conv}`
+  - `CollectCapabilityOffer: re-issued Y CfP(s) to late-registered module {Module} on {Topic}`
+  - `CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability}`
+  - `BuildProcessChainResponse: built process chain with {Count} requirements (success={Success})`
+
+These changes are covered by regression tests under `MAS-BT/tests` (Capability matchmaking, registration integration).
 
 ---
 
@@ -599,7 +628,7 @@ ProductAgent                DispatchingAgent           PlanningAgent(Module1)   
 
 **Topics:**
 - **Request Offer (Broadcast):** `/{Namespace}/DispatchingAgent/Offer`
-- **Offer Response:** `/{Namespace}/DispatchingAgent/Offers`
+- **Offer Response:** `/{Namespace}/DispatchingAgent/Offer`
 - **Schedule Action:** `/{Namespace}/{ModuleId}/ScheduleAction`
 - **Booking Confirmation:** `/{Namespace}/{ModuleId}/BookingConfirmation`
 

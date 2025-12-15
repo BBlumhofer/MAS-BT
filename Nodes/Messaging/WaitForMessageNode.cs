@@ -52,6 +52,17 @@ public class WaitForMessageNode : BTNode
                 return NodeStatus.Failure;
             }
 
+            // IMPORTANT: Topic filtering is only reliable via the client's inbox (it preserves the MQTT topic).
+            // MessagingClient callbacks do NOT provide the topic, so OnMessageType/OnConversation would otherwise
+            // accept messages from any subscribed topic and can cause false positives (e.g. dispatcher CfPs on /.../Offer
+            // being treated as ProcessChain requests on /.../ProcessChain).
+            var expectedTopicsResolved = ParseExpectedTopics()
+                .Select(t => ResolvePlaceholders(t))
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+            var useInboxOnlyForFiltering = expectedTopicsResolved.Count > 0;
+
             // Check if SubscribeToTopicNode already captured a matching message in CurrentMessage
             if (TryConsumeFromContext(out var contextMessage))
             {
@@ -85,6 +96,16 @@ public class WaitForMessageNode : BTNode
                     Logger.LogWarning(ex, "WaitForMessage[{Name}][{Inst}]: Failed to subscribe to topic {Topic}", Name, _instanceId, topic);
                 }
             }
+
+            // If we need topic filtering, we rely on inbox polling only.
+            // (Callbacks do not carry topic information and can enqueue wrong messages.)
+            if (useInboxOnlyForFiltering)
+            {
+                _subscribed = true;
+                _startTime = DateTime.UtcNow;
+                return NodeStatus.Running;
+            }
+
             var convToUse = ResolveConversationIdFromInput();
             if (!string.IsNullOrWhiteSpace(convToUse))
             {
@@ -218,7 +239,40 @@ public class WaitForMessageNode : BTNode
         // Check timeout
         if ((DateTime.UtcNow - _startTime).TotalSeconds > TimeoutSeconds)
         {
-            Logger.LogWarning("WaitForMessage: Timeout after {Timeout} seconds", TimeoutSeconds);
+            var expectedTypesForLog = ParseExpectedTypes();
+            var expectedTopicsForLog = ParseExpectedTopics()
+                .Select(t => ResolvePlaceholders(t))
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct(StringComparer.Ordinal)
+                .ToList();
+
+            var expectedConvForLog = ResolveConversationIdFromInput();
+
+            // Many WaitForMessage nodes are used as polling in Repeat/Fallback loops.
+            // A timeout there is normal and should not spam warnings.
+            if (!string.IsNullOrWhiteSpace(expectedConvForLog))
+            {
+                Logger.LogWarning(
+                    "WaitForMessage[{Name}][{Inst}]: Timeout after {Timeout}s (Types={Types}, Sender={Sender}, Topic={Topic}, Conv={Conv})",
+                    Name,
+                    _instanceId,
+                    TimeoutSeconds,
+                    expectedTypesForLog.Count > 0 ? string.Join(',', expectedTypesForLog) : "any",
+                    string.IsNullOrWhiteSpace(ExpectedSender) ? "any" : ExpectedSender,
+                    expectedTopicsForLog.Count > 0 ? string.Join(',', expectedTopicsForLog) : "any",
+                    expectedConvForLog);
+            }
+            else
+            {
+                Logger.LogDebug(
+                    "WaitForMessage[{Name}][{Inst}]: Poll timeout after {Timeout}s (Types={Types}, Sender={Sender}, Topic={Topic})",
+                    Name,
+                    _instanceId,
+                    TimeoutSeconds,
+                    expectedTypesForLog.Count > 0 ? string.Join(',', expectedTypesForLog) : "any",
+                    string.IsNullOrWhiteSpace(ExpectedSender) ? "any" : ExpectedSender,
+                    expectedTopicsForLog.Count > 0 ? string.Join(',', expectedTopicsForLog) : "any");
+            }
             // Reset timer so a subsequent tick can retry without being stuck in immediate timeouts
             _startTime = DateTime.UtcNow;
             return NodeStatus.Failure;

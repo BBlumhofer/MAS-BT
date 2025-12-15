@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Threading.Tasks;
+using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
@@ -22,6 +23,13 @@ public class SendCapabilityOfferNode : BTNode
         if (client == null || request == null || plan == null)
         {
             Logger.LogError("SendCapabilityOffer: missing client ({ClientMissing}) or context", client == null);
+            return NodeStatus.Failure;
+        }
+
+        var offeredCapability = plan.OfferedCapability;
+        if (offeredCapability == null)
+        {
+            Logger.LogError("SendCapabilityOffer: offered capability missing for requirement {Requirement}", request.RequirementId);
             return NodeStatus.Failure;
         }
 
@@ -47,6 +55,8 @@ public class SendCapabilityOfferNode : BTNode
         {
             builder.AddElement(CreateStringProperty("ProductId", request.ProductId));
         }
+
+        builder.AddElement(offeredCapability);
 
         var message = builder.Build();
         await client.PublishAsync(message, topic);

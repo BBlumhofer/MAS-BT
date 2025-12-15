@@ -40,13 +40,22 @@ public class InitNeo4jNode : BTNode
                 (driver, effectiveUri) = await CreateAndVerifyDriverAsync(boltUri, auth, database);
             }
 
+            
             // store driver and capability query implementation in blackboard for other nodes
             Context.Set("Neo4jDriver", driver);
             Context.Set("GraphCapabilityQuery", new Neo4jCapabilityQuery(driver, database));
             Context.Set("CapabilityPropertyQuery", new Neo4jCapabilityPropertyQuery(driver, database));
+            Context.Set("CapabilityReferenceQuery", new Neo4jCapabilityReferenceQuery(driver, database));
 
             Logger.LogInformation("InitNeo4j: Neo4j client initialized (Uri={Uri})", effectiveUri);
             return NodeStatus.Success;
+        }
+        catch (Neo4j.Driver.AuthenticationException authEx)
+        {
+            var user = Context.Get<string>("config.Neo4j.Username") ?? Environment.GetEnvironmentVariable("NEO4J_USER");
+            var uri = Context.Get<string>("config.Neo4j.Uri") ?? Environment.GetEnvironmentVariable("NEO4J_URI");
+            Logger.LogError(authEx, "InitNeo4j: Authentication failed when connecting to Neo4j at {Uri} as user {User}. Check config.Neo4j.Username/config.Neo4j.Password or env NEO4J_USER/NEO4J_PASSWORD.", uri, user);
+            return NodeStatus.Failure;
         }
         catch (Exception ex)
         {

@@ -145,8 +145,11 @@ public class NodeRegistry
         Register<EnsurePortsCoupledNode>();
         Register<LoadProductIdentificationSubmodelNode>();
         Register<LoadBillOfMaterialSubmodelNode>();
+        Register<LoadProcessChainFromShellNode>("LoadProcessChainFromShell");
         Register<LoadCapabilityDescriptionSubmodelNode>();
+        Register<CheckProcessChainRequestPolicyNode>("CheckProcessChainRequestPolicy");
         Register<ExtractCapabilityNamesNode>("ExtractCapabilityNames");
+        Register<UploadSubmodelNode>("UploadSubmodel");
         
         // Locking Nodes
         Register<LockResourceNode>("LockResource");
@@ -173,6 +176,7 @@ public class NodeRegistry
         Register<SendStateMessageNode>();
         Register<EnableStorageChangeMqttNode>();
         Register<SendProcessChainRequestNode>();
+        Register<SendManufacturingRequestNode>("SendManufacturingRequest");
 
         // Generic agent lifecycle + registration (real generic nodes)
         Register<InitializeAgentStateNode>("InitializeAgentState");

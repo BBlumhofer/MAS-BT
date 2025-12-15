@@ -68,6 +68,43 @@ RETURN submodels, shells";
                 Logger.LogWarning(ex, "RunNeo4jTest: count query failed");
             }
 
+            // 3) Fetch capability reference as stored in the graph (c.Reference)
+            var moduleShellId = Context.Get<string>("config.Agent.ModuleId")
+                                ?? Context.Get<string>("ModuleId")
+                                ?? Environment.GetEnvironmentVariable("MASBT_TEST_NEO4J_MODULE")
+                                ?? "P102";
+            var capabilityIdShort = Context.Get<string>("config.Neo4j.TestCapability")
+                                   ?? Environment.GetEnvironmentVariable("MASBT_TEST_NEO4J_CAPABILITY")
+                                   ?? "Assemble";
+
+            Logger.LogInformation(
+                "RunNeo4jTest: Querying capability reference (moduleShellId={Module}, capabilityIdShort={Capability})",
+                moduleShellId,
+                capabilityIdShort);
+
+            try
+            {
+                var qRef = @"MATCH p = (a:Asset)-[r:PROVIDES_CAPABILITY]->(c:Capability)
+WHERE a.shell_id = $moduleShellId AND c.idShort = $capabilityIdShort
+Return c.Reference as Reference";
+
+                var cursor3 = await session.RunAsync(qRef, new { moduleShellId = moduleShellId, capabilityIdShort = capabilityIdShort });
+                var rec3 = await cursor3.SingleOrDefaultAsync();
+                if (rec3 != null && rec3.Keys.Contains("Reference"))
+                {
+                    var reference = rec3["Reference"]?.ToString() ?? string.Empty;
+                    Logger.LogInformation("RunNeo4jTest: Capability reference: {Reference}", reference);
+                }
+                else
+                {
+                    Logger.LogWarning("RunNeo4jTest: Capability reference query returned no records");
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "RunNeo4jTest: reference query failed");
+            }
+
             if (createdLocalDriver && driver is not null)
             {
                 await driver.DisposeAsync();

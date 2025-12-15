@@ -6,6 +6,7 @@
     "ModuleId": "DispatchingAgent_phuket",
     "LogLevel": "Information",
     "InitializationTree": "Trees/DispatchingAgent.bt.xml",
+    "RegistrationIntervalMs": 30000,
     "HeartbeatIntervalSeconds": 30,
     "StatePublishDelayMs": 1000
   },
@@ -32,7 +33,7 @@
   "Neo4j": {
     "Uri": "bolt://192.168.178.30:7687",
     "Username": "neo4j",
-    "Password": "neo4j",
+    "Password": "testtest",
     "Database": "neo4j"
   },
   "DispatchingAgent": {

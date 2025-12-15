@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AasSharpClient.Models;
+using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging.Models;
 
@@ -228,4 +229,5 @@ public class CapabilityOfferPlan
     public TimeSpan SetupTime { get; set; } = TimeSpan.Zero;
     public TimeSpan CycleTime { get; set; } = TimeSpan.FromMinutes(1);
     public double Cost { get; set; } = 0.0;
+    public OfferedCapability? OfferedCapability { get; set; }
 }

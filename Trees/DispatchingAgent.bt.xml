@@ -6,6 +6,7 @@
       <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
       <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
       <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
+      <InitNeo4j name="InitNeo4j" />
 
       <ConnectToMessagingBroker
         name="ConnectMqtt"
@@ -53,7 +54,7 @@
                 <Sequence name="CapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
                   <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
-                  <CollectCapabilityOffer name="CollectCapabilityOffer" />
+                  <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="20" />
                   <BuildProcessChainResponse name="BuildProcessChainResponse" />
                   <SendProcessChainResponse name="SendProcessChainResponse" />
                 </Sequence>
@@ -151,7 +152,9 @@
     <Action ID="ParseProcessChainRequest" />
     <Action ID="CheckForCapabilitiesInNamespace" />
     <Action ID="DispatchCapabilityRequests" />
-    <Action ID="CollectCapabilityOffer" />
+    <Action ID="CollectCapabilityOffer">
+      <input_port name="TimeoutSeconds" default="5" />
+    </Action>
     <Action ID="BuildProcessChainResponse" />
     <Action ID="SendProcessChainResponse" />
     <Action ID="HandleManufacturingSequenceRequest" />

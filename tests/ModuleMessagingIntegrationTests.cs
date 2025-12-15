@@ -203,6 +203,22 @@ public class ModuleMessagingIntegrationTests : IDisposable
         Assert.NotNull(proposal);
         Assert.Equal(I40MessageTypes.PROPOSAL, proposal!.Frame?.Type);
         Assert.Equal(conversationId, proposal.Frame?.ConversationId);
+
+        var offered = proposal.InteractionElements
+            .OfType<SubmodelElementCollection>()
+            .FirstOrDefault(smc => string.Equals(smc.IdShort, "OfferedCapability", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(offered);
+
+        var actions = offered!.Values?.OfType<SubmodelElementList>()
+            .FirstOrDefault(list => string.Equals(list.IdShort, "Actions", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(actions);
+        Assert.True(actions!.Any(), "OfferedCapability.Actions must not be empty");
+
+        var firstAction = actions.OfType<SubmodelElementCollection>().FirstOrDefault();
+        Assert.NotNull(firstAction);
+        var inputParameters = firstAction!.Values?.OfType<SubmodelElementCollection>()
+            .FirstOrDefault(smc => string.Equals(smc.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(inputParameters);
     }
 
     [Fact]
@@ -273,6 +289,22 @@ public class ModuleMessagingIntegrationTests : IDisposable
 
         Assert.Equal(I40MessageTypes.PROPOSAL, proposal!.Frame?.Type);
         Assert.Equal(cfp.Frame?.ConversationId, proposal.Frame?.ConversationId);
+
+        var offered = proposal.InteractionElements
+            .OfType<SubmodelElementCollection>()
+            .FirstOrDefault(smc => string.Equals(smc.IdShort, "OfferedCapability", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(offered);
+
+        var actions = offered!.Values?.OfType<SubmodelElementList>()
+            .FirstOrDefault(list => string.Equals(list.IdShort, "Actions", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(actions);
+        Assert.True(actions!.Any(), "OfferedCapability.Actions must not be empty");
+
+        var firstAction = actions.OfType<SubmodelElementCollection>().FirstOrDefault();
+        Assert.NotNull(firstAction);
+        var inputParameters = firstAction!.Values?.OfType<SubmodelElementCollection>()
+            .FirstOrDefault(smc => string.Equals(smc.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(inputParameters);
     }
 
     private async Task<(List<I40Message> Offers, ProcessChainNegotiationContext Ctx, I40Message OriginalRequest)> DispatchProcessChainAsync()
@@ -301,6 +333,17 @@ public class ModuleMessagingIntegrationTests : IDisposable
                            ?? throw new InvalidOperationException("Negotiation context missing after parse");
         var expectedCount = negotiation.Requirements.Count;
         Assert.True(expectedCount > 0, "Process chain did not contain requirements");
+
+        // Seed at least one registered module so DispatchCapabilityRequests can actually emit CfPs.
+        // The dispatch node selects candidate modules from DispatchingState; without it, no CfPs are published.
+        var state = context.Get<DispatchingState>("DispatchingState") ?? new DispatchingState();
+        var caps = negotiation.Requirements
+            .Select(r => r.Capability)
+            .Where(c => !string.IsNullOrWhiteSpace(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToList();
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "P102", Capabilities = caps });
+        context.Set("DispatchingState", state);
 
         var offers = new List<I40Message>();
         var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);

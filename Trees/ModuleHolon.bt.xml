@@ -28,7 +28,7 @@
             <Sequence name="HandleOffer">
               <ForwardCapabilityRequests name="ForwardOffer" TargetTopicTemplate="/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest" />
               <WaitForInternalResponse name="AwaitOfferResp" TimeoutSeconds="10" />
-              <ReplyToDispatcher name="ReplyOffer" ResponseTopicTemplate="/{Namespace}/DispatchingAgent/Offers" />
+              <ReplyToDispatcher name="ReplyOffer" ResponseTopicTemplate="/{Namespace}/DispatchingAgent/Offer" />
               <Wait name="OfferIdle" DelayMs="150" />
             </Sequence>
             <Wait name="OfferBackoff" DelayMs="200" />

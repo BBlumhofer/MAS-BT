@@ -1,0 +1,146 @@
+opic: /phuket/P102/PlanningAgent/OfferRequestQoS: 0
+
+{
+  "frame": {
+    "sender": {
+      "identification": {
+        "id": "DispatchingAgent_phuket"
+      },
+      "role": {
+        "name": "DispatchingAgent"
+      }
+    },
+    "receiver": {
+      "identification": {
+        "id": "P102"
+      },
+      "role": {
+        "name": "ModuleHolon"
+      }
+    },
+    "type": "callForProposal",
+    "conversationId": "f412ce25-6155-4f51-a393-372c5443f58b"
+  },
+  "interactionElements": [
+    {
+      "idShort": "Capability",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "Assemble"
+    },
+    {
+      "idShort": "RequirementId",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "b033280a-7e88-4b9f-a798-7b57d09c4e88"
+    },
+    {
+      "idShort": "ProductId",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "https://smartfactory.de/shells/LG3JsASu4_"
+    },
+    {
+      "idShort": "AssembleContainer",
+      "kind": "Instance",
+      "modelType": "SubmodelElementCollection",
+      "semanticId": {
+        "type": "ExternalReference",
+        "keys": [
+          {
+            "type": "GlobalReference",
+            "value": "https://admin-shell.io/idta/CapabilityDescription/CapabilityContainer/1/0"
+          }
+        ]
+      },
+      "value": [
+        {
+          "idShort": "Assemble",
+          "kind": "Instance",
+          "modelType": "Capability",
+          "semanticId": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://wiki.eclipse.org/BaSyx_/_Documentation_/_Submodels_/_Capability#Capability"
+              }
+            ]
+          }
+        },
+        {
+          "idShort": "PropertySet",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://admin-shell.io/idta/CapabilityDescription/PropertySet/1/0"
+              }
+            ]
+          },
+          "value": [
+            {
+              "idShort": "GripForceContainer",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://admin-shell.io/idta/CapabilityDescription/PropertyContainer/1/0"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "GripForce",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "valueType": "double",
+                  "value": "15.1"
+                }
+              ]
+            },
+            {
+              "idShort": "ProductWeightContainer",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://admin-shell.io/idta/CapabilityDescription/PropertyContainer/1/0"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "ProductWeight",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "valueType": "double",
+                  "value": "1.1"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "idShort": "CapabilityDescription",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "Here is the precise, technically neutral description:\n\nElement: {\"value\": \"Assemble\"}\nMeaning: Manufacturing capability for assembling components into a final product.\nClassification: CapabilityKind within the manufacturing data model.\nSemantic meaning: Represents an operational action enabling the combination of individual parts to form a functional whole.\nOperational relevance: Facilitates the assembly process in manufacturing and automation systems, allowing for efficient creation of end-products."
+    }
+  ]
+}
