@@ -49,12 +49,14 @@
           <Fallback name="ProcessChainOrIdle">
             <Sequence name="HandleProcessChain">
               <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="10" />
+              <SetBlackboardValue name="BindProcessChainRequestType" Key="ProcessChain.RequestType" Value="ProcessChain" />
               <ParseProcessChainRequest name="ParseProcessChainRequest" />
               <Fallback name="CapabilityMatchmaking">
                 <Sequence name="CapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
                   <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
                   <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="20" />
+                  <DispatchTransportRequests name="DispatchTransportRequests" />
                   <BuildProcessChainResponse name="BuildProcessChainResponse" />
                   <SendProcessChainResponse name="SendProcessChainResponse" />
                 </Sequence>
@@ -71,8 +73,22 @@
         <Repeat name="ManufacturingSequenceLoop" num_cycles="-1">
           <Fallback name="MfgSeqOrIdle">
             <Sequence name="HandleMfgSeq">
-              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="requestManufacturingSequence,manufacturingSequenceRequest" TimeoutSeconds="10" />
-              <HandleManufacturingSequenceRequest name="HandleManufacturingSequenceRequest" />
+              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="requestManufacturingSequence,manufacturingSequenceRequest" ExpectedTopic="/{Namespace}/ManufacturingSequenceRequest" TimeoutSeconds="10" />
+              <SetBlackboardValue name="BindManufacturingRequestType" Key="ProcessChain.RequestType" Value="ManufacturingSequence" />
+              <ParseProcessChainRequest name="ParseManufacturingSequenceRequest" />
+              <Fallback name="MfgCapabilityMatchmaking">
+                <Sequence name="MfgCapabilitiesAvailable">
+                  <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespaceMfg" />
+                  <DispatchCapabilityRequests name="DispatchCapabilityRequestsMfg" />
+                  <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="20" />
+                  <DispatchTransportRequests name="DispatchTransportRequestsMfg" />
+                  <BuildProcessChainResponse name="BuildManufacturingSequenceResponse" />
+                  <SendProcessChainResponse name="SendManufacturingSequenceResponse" />
+                </Sequence>
+                <Sequence name="MfgCapabilitiesMissing">
+                  <SendProcessChainResponse name="SendManufacturingSequenceRefusal" />
+                </Sequence>
+              </Fallback>
               <Wait name="MfgIdle" DelayMs="300" />
             </Sequence>
             <Wait name="MfgBackoff" DelayMs="300" />
@@ -155,9 +171,11 @@
     <Action ID="CollectCapabilityOffer">
       <input_port name="TimeoutSeconds" default="5" />
     </Action>
+    <Action ID="DispatchTransportRequests">
+      <input_port name="ResponseTimeoutSeconds" default="15" />
+    </Action>
     <Action ID="BuildProcessChainResponse" />
     <Action ID="SendProcessChainResponse" />
-    <Action ID="HandleManufacturingSequenceRequest" />
     <Action ID="HandleBookStepRequest" />
     <Action ID="HandleTransportPlanRequest" />
     <Action ID="Wait">

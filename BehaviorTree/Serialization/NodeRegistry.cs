@@ -147,6 +147,7 @@ public class NodeRegistry
         Register<LoadBillOfMaterialSubmodelNode>();
         Register<LoadProcessChainFromShellNode>("LoadProcessChainFromShell");
         Register<LoadCapabilityDescriptionSubmodelNode>();
+        Register<CheckConfigFlagNode>("CheckConfigFlag");
         Register<CheckProcessChainRequestPolicyNode>("CheckProcessChainRequestPolicy");
         Register<ExtractCapabilityNamesNode>("ExtractCapabilityNames");
         Register<UploadSubmodelNode>("UploadSubmodel");
@@ -200,6 +201,7 @@ public class NodeRegistry
         Register<CheckForCapabilitiesInNamespaceNode>("CheckForCapabilitiesInNamespace");
         Register<DispatchCapabilityRequestsNode>("DispatchCapabilityRequests");
         Register<CollectCapabilityOfferNode>("CollectCapabilityOffer");
+        Register<DispatchTransportRequestsNode>("DispatchTransportRequests");
         Register<BuildProcessChainResponseNode>("BuildProcessChainResponse");
         Register<SendProcessChainResponseNode>("SendProcessChainResponse");
         Register<PublishAgentStateNode>("PublishAgentState");

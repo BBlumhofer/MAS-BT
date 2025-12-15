@@ -35,8 +35,6 @@
                   <ParseCapabilityRequest name="ParseCapabilityRequest" />
                   <CapabilityMatchmaking name="ExecuteCapabilityMatchmaking" RequiredCapability="{RequiredCapability}" />
                   <CheckConstraints name="CheckConstraints" />
-                  <RequestTransport name="RequestTransport" FromStation="{ModuleId}" ToStation="{TransportTarget}" />
-                  <EvaluateRequestTransportResponse name="EvaluateTransportResponse" />
                   <FeasibilityCheck name="FeasibilityCheck" />
                   <PlanCapabilityOffer name="PlanCapabilityOffer" />
                   <SendCapabilityOffer name="SendCapabilityOffer" />
@@ -142,11 +140,6 @@
     <Action ID="PlanCapabilityOffer" />
     <Action ID="SendCapabilityOffer" />
     <Action ID="ReceiveOfferMessage"/>
-    <Action ID="RequestTransport">
-      <input_port name="FromStation"/>
-      <input_port name="ToStation"/>
-    </Action>
-    <Action ID="EvaluateRequestTransportResponse"/>
     <Action ID="CheckScheduleFeasibility"/>
     <Action ID="AwaitOfferDecision">
       <input_port name="TimeoutMs" default="2000"/>

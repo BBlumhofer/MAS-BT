@@ -3,7 +3,8 @@
     "AgentId": "https://smartfactory.de/shells/LG3JsASu4_",
     "Role": "ProductHolon",
     "AgentType": "ProductHolon",
-    "LogLevel": "Information"
+    "LogLevel": "Information",
+    "RequestProcessChainOnly": false
   },
   "ProductAgent": {
     "Enabled": true,

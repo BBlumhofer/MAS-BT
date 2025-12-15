@@ -96,14 +96,14 @@ Physical Machines
 3. **Planning Agents** perform capability matching and create Offers
 4. **Dispatching Agent** collects Offers and builds ProcessChain
 5. **Product Agent** receives ProcessChain with all available Offers per Requirement
-6. **Product Agent** uploads the ProcessChain to its AAS (or reuses an existing ProcessChain stored there) and sends a ManufacturingRequest referencing that ProcessChain to trigger scheduling
+6. **Product Agent** uploads the ProcessChain to its AAS (or reuses an existing ProcessChain stored there) and sends a ManufacturingSequence request (set `Agent.RequestProcessChainOnly=true` to stop after the ProcessChain stage)
 
 Key Features:
 - Neo4j-based capability similarity matching
 - Inbox drain for early-arriving proposals
 - CfP reissue for late-registering modules
 - Timeout handling with configurable wait times
-- Automatic ManufacturingRequest publishing once the ProcessChain is stored in the product shell (set `Agent.ForceProcessChainRequest=true` to always request a fresh ProcessChain)
+- Automatic ManufacturingSequence request publishing once the ProcessChain is stored in the product shell (set `Agent.ForceProcessChainRequest=true` to always request a fresh ProcessChain; set `Agent.RequestProcessChainOnly=true` to skip the ManufacturingSequence phase)
 
 ---
 

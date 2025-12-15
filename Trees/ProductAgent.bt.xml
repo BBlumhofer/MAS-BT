@@ -51,12 +51,15 @@
                                 Value="{Submodel.LastUploadedId}" />
           </Sequence>
         </Fallback>
-        <SendManufacturingRequest name="SendManufacturingRequest"
-                                  ProcessChainContextKey="ProcessChain.Result"
-                                  ProcessChainSubmodelIdKey="ProcessChain.SubmodelId"
-                                  SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
-                                  Topic="/{Namespace}/ManufacturingSequenceRequest"
-                                  MessageType="requestManufacturingSequence" />
+        <Fallback name="MaybeSendManufacturingSequence">
+          <CheckConfigFlag name="SkipManufacturingSequence"
+                           ConfigPath="Agent.RequestProcessChainOnly"
+                           ExpectedValue="true"
+                           DefaultValue="false" />
+          <SendManufacturingRequest name="SendManufacturingRequest"
+                                    Topic="/{Namespace}/ManufacturingSequenceRequest"
+                                    MessageType="requestManufacturingSequence" />
+        </Fallback>
       </Sequence>
     </Sequence>
   </BehaviorTree>
@@ -130,11 +133,13 @@
       <input_port name="DefaultForceRequest" />
     </Action>
     <Action ID="SendManufacturingRequest">
-      <input_port name="ProcessChainContextKey" />
-      <input_port name="ProcessChainSubmodelIdKey" />
-      <input_port name="SubmodelRepositoryEndpoint" />
       <input_port name="Topic" />
       <input_port name="MessageType" />
+    </Action>
+    <Action ID="CheckConfigFlag">
+      <input_port name="ConfigPath" />
+      <input_port name="ExpectedValue" />
+      <input_port name="DefaultValue" />
     </Action>
   </TreeNodesModel>
 </root>
