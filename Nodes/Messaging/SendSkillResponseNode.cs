@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using MAS_BT.Services;
+using MAS_BT.Nodes.Common;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
@@ -13,7 +14,7 @@ namespace MAS_BT.Nodes.Messaging;
 
 /// <summary>
 /// SendSkillResponse - Sendet ActionState Update an Planning Agent
-/// Topic: /Modules/{ModuleID}/SkillResponse/
+/// Topic: /{namespace}/{parent_agent}/{subagent}/SkillResponse
 /// Uses I40MessageTypes: consent, refusal (before start), inform (updates), failure (errors during execution)
 /// </summary>
 public class SendSkillResponseNode : BTNode
@@ -187,7 +188,7 @@ public class SendSkillResponseNode : BTNode
             
             var message = messageBuilder.Build();
             
-            var topic = $"/Modules/{ModuleId}/SkillResponse/";
+            var topic = TopicHelper.BuildTopic(Context, "SkillResponse");
             await client.PublishAsync(message, topic);
             
             Logger.LogInformation("SendSkillResponse: Sent ActionState '{ActionState}' (FrameType: {FrameType}) to '{Receiver}' on topic '{Topic}'", 

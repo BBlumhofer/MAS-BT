@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;

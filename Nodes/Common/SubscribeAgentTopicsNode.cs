@@ -50,8 +50,8 @@ namespace MAS_BT.Nodes.Common
                     // Offer request/response topics (CfP broadcast + module proposals)
                     $"/{ns}/DispatchingAgent/Offer",
 
-                    $"/{ns}/DispatchingAgent/register",
-                    $"/{ns}/DispatchingAgent/Register",
+                    $"/{ns}/register",
+                    $"/{ns}/Register",
                     $"/{ns}/DispatchingAgent/ModuleRegistration/",
                     $"/DispatchingAgent/{ns}/ModuleRegistration/",
 

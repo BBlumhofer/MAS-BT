@@ -64,7 +64,7 @@ public class SendStateMessageNode : BTNode
                 .AddElement(stateMessage)
                 .Build();
             
-            var topic = $"/Modules/{ModuleId}/State/";
+            var topic = TopicHelper.BuildTopic(Context, "State");
             await client.PublishAsync(message, topic);
             
             Logger.LogInformation("SendStateMessage: Published module state to topic '{Topic}'", topic);

@@ -42,7 +42,7 @@ public class AwaitSkillResponseNode : BTNode
 
         if (!_subscribed)
         {
-            var topic = $"/Modules/{ModuleId}/SkillResponse/";
+            var topic = TopicHelper.BuildTopic(Context, "SkillResponse");
             try
             {
                 await client.SubscribeAsync(topic);

@@ -1,6 +1,7 @@
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using MAS_BT.Services;
+using MAS_BT.Nodes.Common;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using I40Sharp.Messaging.Core;
@@ -21,7 +22,7 @@ namespace MAS_BT.Nodes.Messaging;
 
 /// <summary>
 /// ReadMqttSkillRequest - Liest Action von Planning Agent via MQTT
-/// Topic: /Modules/{ModuleID}/SkillRequest/
+/// Topic: /{namespace}/{parent_agent}/{subagent}/SkillRequest
 /// </summary>
 public class ReadMqttSkillRequestNode : BTNode
 {
@@ -62,7 +63,7 @@ public class ReadMqttSkillRequestNode : BTNode
 
         if (!_subscribed)
         {
-            var topic = $"/Modules/{ModuleId}/SkillRequest/";
+            var topic = TopicHelper.BuildTopic(Context, "SkillRequest");
 
             try
             {
@@ -1010,7 +1011,7 @@ public class ReadMqttSkillRequestNode : BTNode
             {
                 try
                 {
-                    var topic = $"/Modules/{ModuleId}/SkillRequest/";
+                    var topic = TopicHelper.BuildTopic(Context, "SkillRequest");
                     await client.UnsubscribeAsync(topic);
                     Logger.LogInformation("ReadMqttSkillRequest: Unsubscribed from topic");
                 }

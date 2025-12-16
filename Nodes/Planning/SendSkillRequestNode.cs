@@ -48,7 +48,7 @@ public class SendSkillRequestNode : BTNode
             .AddElement(action);
 
         var message = builder.Build();
-        var topic = $"/Modules/{machineName}/SkillRequest/";
+        var topic = TopicHelper.BuildTopic(Context, "SkillRequest");
         Logger.LogInformation("SendSkillRequest: publishing to topic {Topic}", topic);
         await client.PublishAsync(message, topic);
 

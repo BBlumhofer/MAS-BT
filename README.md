@@ -273,7 +273,7 @@ docker compose up -d
 
 ### ProcessChain Negotiation Fails
 - Verify Planning Agents are running
-- Check module registration: `/{Namespace}/DispatchingAgent/register`
+- Check module registration: `/{Namespace}/register`
 - Monitor CfP topics with `mosquitto_sub`
 - Review Capability matching Neo4j logs
 

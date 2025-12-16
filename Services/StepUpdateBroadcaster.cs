@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
@@ -32,7 +33,7 @@ public static class StepUpdateBroadcaster
                 .WithConversationId(Guid.NewGuid().ToString())
                 .AddElement(step);
 
-            var topic = $"/Modules/{moduleId}/StepUpdate/";
+            var topic = TopicHelper.BuildTopic(context, "StepUpdate");
             await client.PublishAsync(builder.Build(), topic);
         }
         catch (Exception)

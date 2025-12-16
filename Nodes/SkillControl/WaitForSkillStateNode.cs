@@ -1,4 +1,5 @@
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using Microsoft.Extensions.Logging;
 using UAClient.Client;
 using UAClient.Common;
@@ -191,7 +192,7 @@ public class WaitForSkillStateNode : BTNode
                 .AddElement(timestampProp as BaSyx.Models.AdminShell.SubmodelElement)
                 .Build();
             
-            var topic = $"/Modules/{moduleId}/Errors/";
+            var topic = TopicHelper.BuildTopic(Context, "Errors");
             await client.PublishAsync(message, topic);
             
             Logger.LogInformation("WaitForSkillState: Error message sent to {Topic}", topic);
