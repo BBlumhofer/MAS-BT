@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
@@ -325,22 +326,22 @@ public sealed class SkillPreconditionChecker
             {
                 if (string.Equals(stringProp.IdShort, "ConditionType", StringComparison.OrdinalIgnoreCase))
                 {
-                    conditionType = stringProp.Value?.Value?.ToString();
+                    conditionType = stringProp.GetText();
                 }
                 else if (string.Equals(stringProp.IdShort, "ConditionValue", StringComparison.OrdinalIgnoreCase))
                 {
-                    conditionValue = stringProp.Value?.Value?.ToString();
+                    conditionValue = stringProp.GetText();
                 }
             }
             else if (element is IProperty property)
             {
                 if (string.Equals(property.IdShort, "ConditionType", StringComparison.OrdinalIgnoreCase))
                 {
-                    conditionType = property.Value?.Value?.ToString();
+                    conditionType = property.GetText();
                 }
                 else if (string.Equals(property.IdShort, "ConditionValue", StringComparison.OrdinalIgnoreCase))
                 {
-                    conditionValue = property.Value?.Value?.ToString();
+                    conditionValue = property.GetText();
                 }
             }
             else if (element is SubmodelElementCollection nested &&
@@ -350,11 +351,11 @@ public sealed class SkillPreconditionChecker
                 {
                     if (string.Equals(nestedElement.IdShort, "SlotContentType", StringComparison.OrdinalIgnoreCase))
                     {
-                        slotContentType = nestedElement.Value?.Value?.ToString();
+                        slotContentType = nestedElement.GetText();
                     }
                     else if (string.Equals(nestedElement.IdShort, "SlotValue", StringComparison.OrdinalIgnoreCase))
                     {
-                        conditionValue = nestedElement.Value?.Value?.ToString();
+                        conditionValue = nestedElement.GetText();
                     }
                 }
             }

@@ -31,13 +31,15 @@ public class SpawnSubHolonsNode : BTNode
 
             var moduleId = ModuleContextHelper.ResolveModuleId(Context);
             var parentConfigPath = Context.Get<string>("config.Path");
-            if (string.IsNullOrWhiteSpace(parentConfigPath))
+            var baseDir = string.IsNullOrWhiteSpace(parentConfigPath)
+                ? (Context.Get<string>("config.Directory") ?? string.Empty)
+                : (Path.GetDirectoryName(parentConfigPath) ?? string.Empty);
+
+            if (string.IsNullOrWhiteSpace(baseDir))
             {
-                Logger.LogWarning("SpawnSubHolons: parent config path missing; cannot resolve sub-holons");
+                Logger.LogWarning("SpawnSubHolons: parent config path/directory missing; cannot resolve sub-holons");
                 return NodeStatus.Failure;
             }
-
-            var baseDir = Path.GetDirectoryName(parentConfigPath) ?? Directory.GetCurrentDirectory();
 
             var useTerminal = Context.Get<bool?>("SpawnSubHolonsInTerminal") ?? false;
             var launcher = Context.Get<ISubHolonLauncher>("SubHolonLauncher")

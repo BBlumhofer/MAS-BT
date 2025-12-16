@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
 using AasSharpClient.Models.ManufacturingSequence;
 using BaSyx.Models.AdminShell;
@@ -131,7 +132,7 @@ public class BuildProcessChainResponseNode : BTNode
                 return;
             }
 
-            var id = cap.InstanceIdentifier.Value?.Value?.ToString() ?? string.Empty;
+            var id = cap.InstanceIdentifier.GetText() ?? string.Empty;
             if (!added.Add(id))
             {
                 return;
@@ -210,7 +211,7 @@ public class BuildProcessChainResponseNode : BTNode
 
     private static bool IsPostPlacement(OfferedCapability capability)
     {
-        var placement = capability?.SequencePlacement?.Value?.Value?.ToString();
+        var placement = capability?.SequencePlacement?.GetText();
         if (string.IsNullOrWhiteSpace(placement))
         {
             return false;

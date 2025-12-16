@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
@@ -331,7 +332,7 @@ public class PlanCapabilityOfferNode : BTNode
                     continue;
                 }
 
-                yield return (key, ExtractElementValue(property.Value?.Value));
+                yield return (key, ExtractElementValue(property.Value));
             }
 
             foreach (var range in values.OfType<RangeElement>())
@@ -367,7 +368,7 @@ public class PlanCapabilityOfferNode : BTNode
                     }
 
                     var finalKey = index > 0 ? $"{key}.{index}" : key;
-                    yield return (finalKey, ExtractElementValue(element.Value?.Value));
+                    yield return (finalKey, ExtractElementValue(element.Value));
                     index++;
                 }
             }
@@ -463,7 +464,7 @@ public class PlanCapabilityOfferNode : BTNode
     private static Property CloneProperty(Property source)
     {
         var semanticId = source.SemanticId as Reference;
-        var created = AasSubmodelElementFactory.CreateProperty(source.IdShort, ExtractElementValue(source.Value?.Value), semanticId);
+        var created = AasSubmodelElementFactory.CreateProperty(source.IdShort, ExtractElementValue(source.Value), semanticId);
         if (created is Property property)
         {
             return property;
@@ -543,7 +544,7 @@ public class PlanCapabilityOfferNode : BTNode
 
     private static object? ExtractElementValue(object? value)
     {
-        return value is IValue nested ? nested.Value : value;
+        return AasValueUnwrap.Unwrap(value);
     }
 
     private static string ConvertPlacement(TransportPlacement placement)
@@ -553,7 +554,7 @@ public class PlanCapabilityOfferNode : BTNode
 
     private static string? GetStringValue(Property? property)
     {
-        var raw = ExtractElementValue(property?.Value?.Value);
+        var raw = ExtractElementValue(property?.Value);
         return raw?.ToString();
     }
 }

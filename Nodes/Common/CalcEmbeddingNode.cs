@@ -6,6 +6,7 @@ using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using I40Sharp.Messaging.Core;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 
 namespace MAS_BT.Nodes.Common;
@@ -116,52 +117,17 @@ public class CalcEmbeddingNode : BTNode
 
     private string ExtractTextFromElement(ISubmodelElement element)
     {
-        // Try Property<string> first
-        if (element is Property<string> stringProperty && stringProperty.Value != null)
+        if (element is IProperty property)
         {
-            return stringProperty.Value.Value?.ToString() ?? string.Empty;
-        }
-
-        // Try generic Property with reflection
-        if (element is BaSyx.Models.AdminShell.Property property)
-        {
-            try
-            {
-                static object? GetParameterlessProperty(object obj, string name)
-                {
-                    // Some BaSyx types expose multiple members named "Value" (e.g., hiding in generics),
-                    // which can cause AmbiguousMatchException when using GetProperty("Value").
-                    var props = obj.GetType().GetProperties()
-                        .Where(p => string.Equals(p.Name, name, StringComparison.Ordinal)
-                                    && p.GetIndexParameters().Length == 0)
-                        .ToArray();
-
-                    return props.Length == 1 ? props[0].GetValue(obj) : props.FirstOrDefault()?.GetValue(obj);
-                }
-
-                var value = GetParameterlessProperty(property, "Value");
-                if (value != null)
-                {
-                    var innerValue = GetParameterlessProperty(value, "Value");
-                    return innerValue?.ToString() ?? value.ToString() ?? string.Empty;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "CalcEmbedding: Failed to extract value via reflection from {Type}", property.GetType().Name);
-            }
+            return property.GetText() ?? string.Empty;
         }
 
         if (element is SubmodelElementCollection collection)
         {
             var texts = new List<string>();
-            var collectionValue = collection.Value;
-            if (collectionValue?.Value != null)
+            foreach (var child in collection.Values ?? Array.Empty<ISubmodelElement>())
             {
-                foreach (var child in collectionValue.Value)
-                {
-                    texts.Add(ExtractTextFromElement(child));
-                }
+                texts.Add(ExtractTextFromElement(child));
             }
             return string.Join(" ", texts);
         }

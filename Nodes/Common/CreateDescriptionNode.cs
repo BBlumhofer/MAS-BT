@@ -4,6 +4,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using MAS_BT.Core;
 using I40Sharp.Messaging.Models;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 
 namespace MAS_BT.Nodes.Common;
@@ -134,36 +135,9 @@ public class CreateDescriptionNode : BTNode
             return null;
         }
 
-        if (element is Property<string> stringProperty && stringProperty.Value != null)
+        if (element is IProperty property)
         {
-            return stringProperty.Value.Value?.ToString();
-        }
-
-        if (element is BaSyx.Models.AdminShell.Property property)
-        {
-            try
-            {
-                static object? GetParameterlessProperty(object obj, string name)
-                {
-                    var props = obj.GetType().GetProperties()
-                        .Where(p => string.Equals(p.Name, name, StringComparison.Ordinal)
-                                    && p.GetIndexParameters().Length == 0)
-                        .ToArray();
-
-                    return props.Length == 1 ? props[0].GetValue(obj) : props.FirstOrDefault()?.GetValue(obj);
-                }
-
-                var value = GetParameterlessProperty(property, "Value");
-                if (value != null)
-                {
-                    var innerValue = GetParameterlessProperty(value, "Value");
-                    return innerValue?.ToString() ?? value.ToString();
-                }
-            }
-            catch
-            {
-                // ignore; caller will fall back
-            }
+            return property.GetText();
         }
 
         return null;
@@ -222,36 +196,9 @@ public class CreateDescriptionNode : BTNode
 
     private string ExtractTextFromElement(ISubmodelElement element)
     {
-        if (element is Property<string> stringProperty && stringProperty.Value != null)
+        if (element is IProperty property)
         {
-            return stringProperty.Value.Value?.ToString() ?? string.Empty;
-        }
-
-        if (element is BaSyx.Models.AdminShell.Property property)
-        {
-            try
-            {
-                static object? GetParameterlessProperty(object obj, string name)
-                {
-                    var props = obj.GetType().GetProperties()
-                        .Where(p => string.Equals(p.Name, name, StringComparison.Ordinal)
-                                    && p.GetIndexParameters().Length == 0)
-                        .ToArray();
-
-                    return props.Length == 1 ? props[0].GetValue(obj) : props.FirstOrDefault()?.GetValue(obj);
-                }
-
-                var value = GetParameterlessProperty(property, "Value");
-                if (value != null)
-                {
-                    var innerValue = GetParameterlessProperty(value, "Value");
-                    return innerValue?.ToString() ?? value.ToString() ?? string.Empty;
-                }
-            }
-            catch (Exception ex)
-            {
-                Logger.LogWarning(ex, "CreateDescription: Failed to extract value via reflection from {Type}", property.GetType().Name);
-            }
+            return property.GetText() ?? string.Empty;
         }
 
         return element.IdShort ?? string.Empty;

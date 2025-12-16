@@ -6,6 +6,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using RangeElement = BaSyx.Models.AdminShell.Range;
 using MAS_BT.Core;
@@ -809,7 +810,7 @@ internal sealed class CapabilityPropertyDescriptor
 
         if (section.Property is Property property)
         {
-            var value = property.Value?.Value?.ToString();
+            var value = (property as IProperty).GetText();
             return new CapabilityPropertyDescriptor(
                 section.Source.IdShort ?? property.IdShort ?? string.Empty,
                 property.IdShort ?? string.Empty,
@@ -827,8 +828,8 @@ internal sealed class CapabilityPropertyDescriptor
 
         if (section.Range is RangeElement range && range.Value != null)
         {
-            var min = TryParseDouble(range.Value.Min?.Value?.ToString());
-            var max = TryParseDouble(range.Value.Max?.Value?.ToString());
+            var min = TryParseDouble(AasValueUnwrap.UnwrapToString(range.Value.Min));
+            var max = TryParseDouble(AasValueUnwrap.UnwrapToString(range.Value.Max));
             return new CapabilityPropertyDescriptor(
                 section.Source.IdShort ?? range.IdShort ?? string.Empty,
                 range.IdShort ?? string.Empty,
@@ -849,9 +850,13 @@ internal sealed class CapabilityPropertyDescriptor
             var values = new List<string>();
             foreach (var item in list)
             {
-                if (item is Property entry && entry.Value?.Value != null)
+                if (item is IProperty entry)
                 {
-                    values.Add(entry.Value.Value.ToString() ?? string.Empty);
+                    var text = entry.GetText();
+                    if (text != null)
+                    {
+                        values.Add(text);
+                    }
                 }
             }
 
@@ -970,12 +975,12 @@ internal sealed class CapabilityPropertyDescriptor
             return null;
         }
 
-        foreach (var element in source.Value.Value)
+        foreach (var element in AasValueUnwrap.UnwrapToEnumerable<ISubmodelElement>(source.Value))
         {
             if (element is Property property &&
                 string.Equals(property.IdShort, "embedding", StringComparison.OrdinalIgnoreCase))
             {
-                var raw = property.Value?.Value?.ToString();
+                var raw = (property as IProperty).GetText();
                 return Neo4jCapabilityPropertyQuery.TryParseEmbedding(raw);
             }
         }

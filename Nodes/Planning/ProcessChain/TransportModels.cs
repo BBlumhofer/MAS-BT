@@ -21,6 +21,10 @@ public sealed class TransportRequirement
     public string Target { get; set; } = string.Empty;
     public TransportPlacement Placement { get; set; } = TransportPlacement.BeforeCapability;
     public string? SourceId { get; set; }
+    // Optional placeholder coming from the StorageConstraint (e.g. "*" or a literal ProductId)
+    public string? ProductIdPlaceholder { get; set; }
+    // Optional resolved product id after binding
+    public string? ResolvedProductId { get; set; }
 }
 
 /// <summary>

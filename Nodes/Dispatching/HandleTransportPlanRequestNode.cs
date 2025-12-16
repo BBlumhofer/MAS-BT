@@ -2,6 +2,8 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
+using AasSharpClient.Models.Messages;
 using AasSharpClient.Models.ProcessChain;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
@@ -26,25 +28,60 @@ namespace MAS_BT.Nodes.Dispatching
                 return NodeStatus.Failure;
             }
 
+            I40Message incomingMessage = incoming;
+
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
             var topic = $"/{ns}/TransportPlan";
-            var conversationId = incoming.Frame?.ConversationId ?? Guid.NewGuid().ToString();
-            var requesterId = incoming.Frame?.Sender?.Identification?.Id ?? "Unknown";
+            var conversationId = incomingMessage.Frame?.ConversationId ?? Guid.NewGuid().ToString();
+            var requesterId = incomingMessage.Frame?.Sender?.Identification?.Id ?? "Unknown";
 
             try
             {
-                var responseElement = BuildResponseElement(incoming, out var transportOffer);
+                // Diagnostic logging: inspect incoming InteractionElements and children
+                if (incomingMessage.InteractionElements != null)
+                {
+                    Logger.LogInformation("HandleTransportPlanRequest: incoming InteractionElements count={Count}", incomingMessage.InteractionElements.Count);
+                    foreach (var el in incomingMessage.InteractionElements)
+                    {
+                        Logger.LogInformation("HandleTransportPlanRequest: element IdShort={Id} Type={Type} ToString={Str}", el?.IdShort, el?.GetType().FullName, el?.ToString());
+                        if (el is SubmodelElementCollection coll)
+                        {
+                            foreach (var child in coll)
+                            {
+                                var childVal = "";
+                                try { childVal = UnwrapValueFromElement(child); } catch { childVal = "<unavailable>"; }
+                                Logger.LogInformation("  Child: IdShort={Id} Type={Type} Value={Val}", child?.IdShort, child?.GetType().FullName, childVal);
+                            }
+                        }
+                    }
+                }
+
+                // If the incoming message contains a SubmodelElementCollection as first interaction element,
+                // parse it directly into a TransportRequestMessage and build the response from that.
+                TransportRequestMessage? parsedRequest = null;
+                if (incomingMessage.InteractionElements != null && incomingMessage.InteractionElements.Count > 0)
+                {
+                    parsedRequest = incomingMessage.InteractionElements.FirstOrDefault() as SubmodelElementCollection is SubmodelElementCollection smc
+                        ? new TransportRequestMessage(smc)
+                        : null;
+                }
+
+                OfferedCapability transportOffer;
+                TransportRequestMessage responseElement;
+                if (parsedRequest != null)
+                {
+                    responseElement = BuildResponseElement(parsedRequest, out transportOffer);
+                }
+                else
+                {
+                    responseElement = BuildResponseElement(incomingMessage, out transportOffer);
+                }
                 var builder = new I40MessageBuilder()
                     .From(Context.AgentId, string.IsNullOrWhiteSpace(Context.AgentRole) ? "DispatchingAgent" : Context.AgentRole)
                     .To(requesterId, null)
                     .WithType(I40MessageTypes.CONSENT, I40MessageTypeSubtypes.TransportRequest)
                     .WithConversationId(conversationId)
                     .AddElement(responseElement);
-
-                if (transportOffer != null)
-                {
-                    builder.AddElement(transportOffer);
-                }
 
                 var response = builder.Build();
                 var publishedAt = DateTimeOffset.UtcNow;
@@ -63,28 +100,80 @@ namespace MAS_BT.Nodes.Dispatching
             }
         }
 
-        private SubmodelElementCollection BuildResponseElement(I40Message incoming, out OfferedCapability transportOffer)
+        private TransportRequestMessage BuildResponseElement(I40Message incoming, out OfferedCapability transportOffer)
         {
-            var element = new SubmodelElementCollection("TransportResponse");
-            var goal = ExtractValue(incoming, "TransportGoalStation") ?? "Unknown";
-            var identifierValue = ExtractValue(incoming, "IdentifierValue") ?? string.Empty;
-            var identifierType = ExtractValue(incoming, "IdentifierType") ?? "ProductId";
-            var amount = ExtractValue(incoming, "Amount") ?? "1";
+            // Try to find an existing SubmodelElementCollection in the incoming message to construct the request from
+            SubmodelElementCollection? incomingCollection = null;
+            if (incoming.InteractionElements != null)
+            {
+                // Prefer the first element if it already is a SubmodelElementCollection (common case)
+                incomingCollection = incoming.InteractionElements.FirstOrDefault() as SubmodelElementCollection
+                                     ?? incoming.InteractionElements.OfType<SubmodelElementCollection>().FirstOrDefault();
+            }
 
-            element.Add(CreateStringProperty("TransportStartStation", "Storage"));
-            element.Add(CreateStringProperty("TransportGoalStation", goal));
-            element.Add(CreateStringProperty("IdentifierType", identifierType));
-            element.Add(CreateStringProperty("IdentifierValue", identifierValue));
-            element.Add(CreateStringProperty("Amount", amount));
+            TransportRequestMessage req;
+            if (incomingCollection != null)
+            {
+                req = new TransportRequestMessage(incomingCollection);
+            }
+            else
+            {
+                // fallback: construct from extracted values
+                var goal = ExtractValue(incoming, "TransportGoalStation") ?? "Unknown";
+                var identifierValue = ExtractValue(incoming, "IdentifierValue") ??  "Unknown";
+                var identifierType = ExtractValue(incoming, "IdentifierType") ?? "Unknown";
+                var amount = ExtractValue(incoming, "Amount") ?? "1";
 
-            transportOffer = BuildTransportOffer(goal, identifierValue, identifierType, amount);
-            var sequence = new SubmodelElementList("CapabilitySequence");
-            sequence.Add(transportOffer);
-            element.Add(sequence);
-            return element;
+                req = new TransportRequestMessage("TransportRequest");
+                // Instance identifier - use a generated id
+                req.InstanceIdentifier.Value = new PropertyValue<string>($"transportreq_{Guid.NewGuid():N}");
+                req.TransportStartStation.Value = new PropertyValue<string>("Storage");
+                req.TransportGoalStation.Value = new PropertyValue<string>(goal);
+                req.IdentifierType.Value = new PropertyValue<string>(identifierType);
+                req.IdentifierValue.Value = new PropertyValue<string>(identifierValue);
+                if (int.TryParse(amount, out var amt)) req.SetAmount(amt);
+            }
+
+            // Ensure InstanceIdentifier exists
+            if (req.InstanceIdentifier.IsNullOrWhiteSpace())
+            {
+                req.InstanceIdentifier.Value = new PropertyValue<string>($"transportreq_{Guid.NewGuid():N}");
+            }
+
+            // Build transport offer based on the resolved goal/identifier/type
+            var resolvedGoal = req.TransportGoalStationText ?? "Unknown";
+            var resolvedIdentifierValue = req.IdentifierValueText ?? "Unknown";
+            var resolvedIdentifierType = req.IdentifierTypeText ?? "Unknown";
+
+            transportOffer = BuildTransportOffer(resolvedGoal, resolvedIdentifierValue, resolvedIdentifierType);
+            req.CapabilitiesSequence.AddCapability(transportOffer);
+
+            return req;
         }
 
-        private OfferedCapability BuildTransportOffer(string goal, string identifierValue, string identifierType, string amountText)
+        private TransportRequestMessage BuildResponseElement(TransportRequestMessage incomingRequest, out OfferedCapability transportOffer)
+        {
+            var req = incomingRequest ?? new TransportRequestMessage("TransportRequest");
+
+            // Ensure InstanceIdentifier exists
+            if (req.InstanceIdentifier.IsNullOrWhiteSpace())
+            {
+                req.InstanceIdentifier.Value = new PropertyValue<string>($"transportreq_{Guid.NewGuid():N}");
+            }
+
+            var resolvedGoal = req.TransportGoalStationText ?? "Unknown";
+            var resolvedIdentifierValue = req.IdentifierValueText ?? "Unknown";
+            var resolvedIdentifierType = req.IdentifierTypeText ?? "Unknown";
+
+            transportOffer = BuildTransportOffer(resolvedGoal, resolvedIdentifierValue, resolvedIdentifierType);
+
+            // Avoid duplicating offers if already present
+            req.CapabilitiesSequence.AddCapability(transportOffer);
+
+            return req;
+        }
+
+        private OfferedCapability BuildTransportOffer(string goal, string identifierValue, string identifierType)
         {
             var offer = new OfferedCapability(string.Empty);
             var offerId = $"transport_{Guid.NewGuid():N}";
@@ -113,12 +202,23 @@ namespace MAS_BT.Nodes.Dispatching
                 skillReference: null,
                 machineName: goal ?? "Transport");
 
-            action.InputParameters.SetParameter("IdentifierType", identifierType ?? string.Empty);
-            action.InputParameters.SetParameter("IdentifierValue", identifierValue ?? string.Empty);
-            action.InputParameters.SetParameter("Amount", string.IsNullOrWhiteSpace(amountText) ? "1" : amountText);
+            // Response requirement: return only the extracted identifier as a single input parameter.
+            // Use the key format: "ProductID: https://..." (cosmetic normalization handled in message helper).
+            var identifierKey = $"{reqKey(identifierType)}: {identifierValue}";
+            action.InputParameters.SetParameter(identifierKey, string.Empty);
             offer.AddAction(action);
 
             return offer;
+        }
+
+        private static string reqKey(string identifierType)
+        {
+            if (string.IsNullOrWhiteSpace(identifierType)) return "Identifier";
+            if (identifierType.EndsWith("Id", StringComparison.Ordinal) && identifierType.Length > 2)
+            {
+                return identifierType[..^2] + "ID";
+            }
+            return identifierType;
         }
 
         private static Property<string> CreateStringProperty(string idShort, string value)
@@ -129,7 +229,7 @@ namespace MAS_BT.Nodes.Dispatching
             };
         }
 
-        private static string? ExtractValue(I40Message message, string idShort)
+        private static string? ExtractValue(I40Message? message, string idShort)
         {
             if (message?.InteractionElements == null)
             {
@@ -141,8 +241,7 @@ namespace MAS_BT.Nodes.Dispatching
                 if (element is SubmodelElementCollection collection)
                 {
                     var prop = collection.FirstOrDefault(e => string.Equals(e.IdShort, idShort, StringComparison.OrdinalIgnoreCase)) as Property<string>;
-                    var raw = prop?.Value?.Value;
-                    var data = raw?.ToString();
+                    var data = prop.GetText();
                     if (!string.IsNullOrWhiteSpace(data))
                     {
                         return data;
@@ -151,6 +250,27 @@ namespace MAS_BT.Nodes.Dispatching
             }
 
             return null;
+        }
+
+        private static string UnwrapValueFromElement(ISubmodelElement element)
+        {
+            if (element == null) return "<null>";
+
+            // If it's a Property, try to extract nested values
+            if (element is Property prop)
+            {
+                try
+                {
+                    return AasValueUnwrap.UnwrapToString(prop.Value) ?? "<null>";
+                }
+                catch
+                {
+                    return "<error>";
+                }
+            }
+
+            // For other element types, fallback to ToString()
+            return element.ToString() ?? "<null>";
         }
     }
 }

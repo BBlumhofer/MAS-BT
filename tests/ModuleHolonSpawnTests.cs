@@ -75,8 +75,14 @@ internal class TestSubHolonLauncher : ISubHolonLauncher
     {
         LaunchedSpecs.Add(spec);
 
+        var roleName = spec.ConfigPath.Contains("Planning", StringComparison.OrdinalIgnoreCase)
+            ? "PlanningHolon"
+            : spec.ConfigPath.Contains("Execution", StringComparison.OrdinalIgnoreCase)
+                ? "ExecutionHolon"
+                : "SubHolonTest";
+
         var builder = new I40MessageBuilder()
-            .From(spec.AgentId ?? $"{spec.ModuleId}_SubHolon", "SubHolonTest")
+            .From(spec.AgentId ?? $"{spec.ModuleId}_SubHolon", roleName)
             .To($"{spec.ModuleId}_ModuleHolon", null)
             .WithType("subHolonRegister")
             .WithConversationId(Guid.NewGuid().ToString());
@@ -84,6 +90,6 @@ internal class TestSubHolonLauncher : ISubHolonLauncher
         builder.AddElement(new Property<string>("ModuleId") { Value = new PropertyValue<string>(spec.ModuleId) });
 
         var message = builder.Build();
-        await _client.PublishAsync(message, $"/phuket/{spec.ModuleId}/register", cancellationToken);
+        await _client.PublishAsync(message, $"/_PHUKET/{spec.ModuleId}/register", cancellationToken);
     }
 }

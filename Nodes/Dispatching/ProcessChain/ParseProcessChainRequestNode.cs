@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
@@ -147,7 +148,7 @@ public class ParseProcessChainRequestNode : BTNode
         switch (element)
         {
             case Property property when IsCapabilityProperty(property.IdShort):
-                var parsed = TryExtractString(property.Value?.Value);
+                var parsed = property.GetText();
                 if (!string.IsNullOrWhiteSpace(parsed))
                 {
                     sink.Add(parsed!);
@@ -243,7 +244,7 @@ public class ParseProcessChainRequestNode : BTNode
         if (element is Property prop && ProductIdentifierCandidates.Any(candidate =>
                 string.Equals(candidate, prop.IdShort, StringComparison.OrdinalIgnoreCase)))
         {
-            return TryExtractString(prop.Value?.Value);
+            return prop.GetText();
         }
 
         if (element is SubmodelElementCollection collection && collection.Values != null)
@@ -445,20 +446,8 @@ public class ParseProcessChainRequestNode : BTNode
             .OfType<Property>()
             .FirstOrDefault(prop => string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
 
-        if (property?.Value?.Value == null)
-        {
-            return null;
-        }
-
-        try
-        {
-            var extracted = property.Value.Value.ToObject<string>();
-            return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
-        }
-        catch
-        {
-            return TryExtractString(property.Value.Value.ToString());
-        }
+        var extracted = property?.GetText();
+        return string.IsNullOrWhiteSpace(extracted) ? null : extracted;
     }
 
     private static Reference? ExtractReference(SubmodelElementCollection collection, string idShort)
@@ -472,7 +461,8 @@ public class ParseProcessChainRequestNode : BTNode
             .OfType<ReferenceElement>()
             .FirstOrDefault(r => string.Equals(r.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
 
-        return CloneReference(referenceElement?.Value?.Value);
+        var reference = AasValueUnwrap.Unwrap(referenceElement?.Value) as IReference;
+        return CloneReference(reference);
     }
 
     private static Reference? CloneReference(IReference? reference)

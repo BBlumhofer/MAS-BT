@@ -6,11 +6,13 @@ using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Messages;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using Microsoft.Extensions.Logging;
 using ActionModel = AasSharpClient.Models.Action;
 
@@ -70,6 +72,7 @@ public class CollectCapabilityOfferNode : BTNode
             }
 
             Logger.LogInformation("CollectCapabilityOffer: waiting for responses from {Count} modules", _expectedModules);
+            Logger.LogInformation("CollectCapabilityOffer: started at {StartUtc:o} TimeoutSeconds={TimeoutSeconds}", _startTime, TimeoutSeconds);
         }
 
         // Drain buffered messages that may have arrived before the conversation callback was registered.
@@ -177,7 +180,7 @@ public class CollectCapabilityOfferNode : BTNode
         if (string.IsNullOrWhiteSpace(topic))
         {
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            topic = $"/{ns}/DispatchingAgent/Offer";
+            topic = TopicHelper.BuildNamespaceTopic(Context, "Offer");
         }
 
         DateTime dispatchUtc;
@@ -264,6 +267,9 @@ public class CollectCapabilityOfferNode : BTNode
         var messageType = message.Frame?.Type ?? string.Empty;
         var sender = message.Frame?.Sender?.Identification?.Id;
         var senderModuleId = NormalizeModuleId(sender);
+        var now = DateTime.UtcNow;
+        var sinceStartMs = (_startTime == default) ? 0.0 : (now - _startTime).TotalMilliseconds;
+        Logger.LogInformation("CollectCapabilityOffer: processing incoming {Type} from {SenderModule} at {Now:o} (+{SinceStart:F1}ms since start)", messageType, senderModuleId ?? "<unknown>", now, sinceStartMs);
         if (string.Equals(messageType, I40MessageTypes.PROPOSAL, StringComparison.OrdinalIgnoreCase))
         {
             if (!string.IsNullOrWhiteSpace(senderModuleId))
@@ -275,7 +281,7 @@ public class CollectCapabilityOfferNode : BTNode
             var incomingOfferId = ExtractProperty(message, "OfferId") ?? string.Empty;
             if (!string.IsNullOrWhiteSpace(incomingOfferId)
                 && requirement.CapabilityOffers.Any(o =>
-                    string.Equals(o.InstanceIdentifier?.Value?.Value?.ToString() ?? string.Empty, incomingOfferId, StringComparison.OrdinalIgnoreCase)))
+                    string.Equals(o.InstanceIdentifier?.GetText() ?? string.Empty, incomingOfferId, StringComparison.OrdinalIgnoreCase)))
             {
                 Logger.LogDebug("CollectCapabilityOffer: ignored duplicate offer {OfferId} for capability {Capability}", incomingOfferId, requirement.Capability);
                 return;
@@ -299,8 +305,8 @@ public class CollectCapabilityOfferNode : BTNode
                     continue;
                 }
                 requirement.AddOffer(offer);
-                var offerId = offer.InstanceIdentifier.Value?.Value?.ToString() ?? "<unknown>";
-                Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability}", offerId, requirement.Capability);
+                var offerId = offer.InstanceIdentifier.GetText() ?? "<unknown>";
+                Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability} (received at {Now:o}, +{SinceStart:F1}ms)", offerId, requirement.Capability, now, sinceStartMs);
             }
         }
         else if (string.Equals(messageType, I40MessageTypes.REFUSE_PROPOSAL, StringComparison.OrdinalIgnoreCase) ||
@@ -409,7 +415,7 @@ public class CollectCapabilityOfferNode : BTNode
 
     private static void EnsureOfferDefaults(CapabilityRequirement requirement, I40Message message, OfferedCapability offer)
     {
-        var offerId = offer.InstanceIdentifier.Value?.Value?.ToString();
+        var offerId = offer.InstanceIdentifier.GetText();
         if (string.IsNullOrWhiteSpace(offerId))
         {
             offerId = ExtractProperty(message, "OfferId");
@@ -420,7 +426,7 @@ public class CollectCapabilityOfferNode : BTNode
             offer.InstanceIdentifier.Value = new PropertyValue<string>(offerId);
         }
 
-        var station = offer.Station.Value?.Value?.ToString();
+        var station = offer.Station.GetText();
         if (string.IsNullOrWhiteSpace(station))
         {
             station = ExtractProperty(message, "Station") ?? message.Frame?.Sender?.Identification?.Id ?? string.Empty;
@@ -467,7 +473,7 @@ public class CollectCapabilityOfferNode : BTNode
             offer.SetEarliestScheduling(start.Value, end.Value, setup.Value, cycle.Value);
         }
 
-        var cost = ExtractDouble(offer.Cost.Value?.Value);
+        var cost = AasValueUnwrap.UnwrapToDouble(offer.Cost.Value) ?? 0;
         if (cost <= 0)
         {
             var parsedCost = ParseDouble(ExtractProperty(message, "Cost"));
@@ -554,24 +560,24 @@ public class CollectCapabilityOfferNode : BTNode
                     offer.OfferedCapabilityReference.Value = reference.Value;
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.InstanceIdentifierIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.InstanceIdentifier.Value = new PropertyValue<string>(TryExtractString(prop.Value?.Value) ?? string.Empty);
+                    offer.InstanceIdentifier.Value = new PropertyValue<string>(prop.GetText() ?? string.Empty);
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.StationIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.Station.Value = new PropertyValue<string>(TryExtractString(prop.Value?.Value) ?? string.Empty);
+                    offer.Station.Value = new PropertyValue<string>(prop.GetText() ?? string.Empty);
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.MatchingScoreIdShort, StringComparison.OrdinalIgnoreCase):
-                    var score = ExtractDouble(prop.Value?.Value);
+                    var score = AasValueUnwrap.UnwrapToDouble(prop.Value) ?? 0;
                     offer.MatchingScore.Value = new PropertyValue<double>(score);
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.CostIdShort, StringComparison.OrdinalIgnoreCase):
-                    var detectedCost = ExtractDouble(prop.Value?.Value);
+                    var detectedCost = AasValueUnwrap.UnwrapToDouble(prop.Value) ?? 0;
                     if (detectedCost > 0)
                     {
                         offer.SetCost(detectedCost);
                     }
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.SequencePlacementIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.SequencePlacement.Value = new PropertyValue<string>(TryExtractString(prop.Value?.Value) ?? string.Empty);
+                    offer.SequencePlacement.Value = new PropertyValue<string>(prop.GetText() ?? string.Empty);
                     break;
                 case SubmodelElementCollection collection when string.Equals(collection.IdShort, OfferedCapability.EarliestSchedulingInformationIdShort, StringComparison.OrdinalIgnoreCase):
                     CopySchedulingFromCollection(offer, collection);
@@ -619,7 +625,7 @@ public class CollectCapabilityOfferNode : BTNode
         var elements = collection.Values ?? Array.Empty<ISubmodelElement>();
         foreach (var element in elements.OfType<Property>())
         {
-            var value = TryExtractString(element.Value?.Value);
+            var value = element.GetText();
             switch (element.IdShort)
             {
                 case "StartDateTime":
@@ -826,7 +832,7 @@ public class CollectCapabilityOfferNode : BTNode
         {
             if (element is Property prop && string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
             {
-                return TryExtractString(prop.Value?.Value);
+                return prop.GetText();
             }
         }
 

@@ -30,6 +30,7 @@ public class ReadConfigNode : BTNode
 
             // store the resolved path for downstream consumers (e.g., sub-holon spawning)
             Context.Set("config.Path", Path.GetFullPath(resolvedPath));
+            Context.Set("config.Directory", Path.GetDirectoryName(Path.GetFullPath(resolvedPath)) ?? string.Empty);
 
             if (!File.Exists(resolvedPath))
             {
@@ -39,6 +40,7 @@ public class ReadConfigNode : BTNode
                     Logger.LogInformation("ReadConfig: Falling back to {Fallback} for missing config {ConfigPath}", fallback, resolvedPath);
                     resolvedPath = fallback;
                     Context.Set("config.Path", Path.GetFullPath(resolvedPath));
+                    Context.Set("config.Directory", Path.GetDirectoryName(Path.GetFullPath(resolvedPath)) ?? string.Empty);
                 }
             }
 
@@ -54,6 +56,11 @@ public class ReadConfigNode : BTNode
             if (config.ValueKind == JsonValueKind.Object)
             {
                 FlattenObject(config, "config");
+
+                // Preserve the reserved path key for downstream consumers (FlattenObject may overwrite it
+                // if the JSON contains a top-level "Path" field).
+                Context.Set("config.Path", Path.GetFullPath(resolvedPath));
+                Context.Set("config.Directory", Path.GetDirectoryName(Path.GetFullPath(resolvedPath)) ?? string.Empty);
             }
             else
             {

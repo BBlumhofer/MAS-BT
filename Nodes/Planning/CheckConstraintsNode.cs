@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
 using MAS_BT.Nodes.Planning.ProcessChain;
@@ -35,13 +36,14 @@ public class CheckConstraintsNode : BTNode
 
         if (requirements.Count == 0 && request?.CapabilityContainer != null)
         {
-            if (TryDetectStorageConstraint(request.CapabilityContainer, out var constraintTarget))
+            if (TryDetectStorageConstraint(request.CapabilityContainer, out var constraintTarget, out var constraintProductPlaceholder))
             {
                 requirements.Add(new TransportRequirement
                 {
                     Target = string.IsNullOrWhiteSpace(constraintTarget) ? (request.Capability ?? string.Empty) : constraintTarget!,
                     Placement = TransportPlacement.BeforeCapability,
-                    SourceId = request.RequestedInstanceIdentifier ?? request.RequirementId
+                    SourceId = request.RequestedInstanceIdentifier ?? request.RequirementId,
+                    ProductIdPlaceholder = string.IsNullOrWhiteSpace(constraintProductPlaceholder) ? null : constraintProductPlaceholder
                 });
             }
         }
@@ -94,12 +96,21 @@ public class CheckConstraintsNode : BTNode
             }
 
             var target = ExtractStorageTarget(collection);
-            yield return new TransportRequirement
+            var req = new TransportRequirement
             {
                 Placement = placement,
                 Target = target ?? string.Empty,
                 SourceId = collection.IdShort
             };
+
+            // Capture ProductId placeholder if present in the constraint (e.g., "*" or a concrete id)
+            var pid = FindPropertyValue(collection, "ProductId") ?? FindPropertyValue(collection, "ProductID");
+            if (!string.IsNullOrWhiteSpace(pid))
+            {
+                req.ProductIdPlaceholder = pid;
+            }
+
+            yield return req;
         }
     }
 
@@ -126,9 +137,10 @@ public class CheckConstraintsNode : BTNode
         return null;
     }
 
-    private static bool TryDetectStorageConstraint(CapabilityContainer container, out string? target)
+    private static bool TryDetectStorageConstraint(CapabilityContainer container, out string? target, out string? productIdPlaceholder)
     {
         target = null;
+        productIdPlaceholder = null;
         foreach (var constraint in container.Constraints)
         {
             if (ConstraintIndicatesStorage(constraint, out target))
@@ -137,6 +149,24 @@ public class CheckConstraintsNode : BTNode
                 {
                     target = container.GetCapabilityName();
                 }
+
+                // try to read ProductId/ProductID from the CustomConstraint section if present
+                try
+                {
+                    var custom = constraint.CustomConstraint;
+                    if (custom != null && custom.Properties != null)
+                    {
+                        var prop = custom.Properties.FirstOrDefault(p => string.Equals(p.IdShort, "ProductId", StringComparison.OrdinalIgnoreCase)
+                                                                        || string.Equals(p.IdShort, "ProductID", StringComparison.OrdinalIgnoreCase));
+                        var pid = prop?.GetText();
+                        if (!string.IsNullOrWhiteSpace(pid))
+                        {
+                            productIdPlaceholder = pid;
+                        }
+                    }
+                }
+                catch { /* best-effort */ }
+
                 return true;
             }
         }
@@ -149,8 +179,8 @@ public class CheckConstraintsNode : BTNode
         target = null;
 
         if (!ContainsStorageKeyword(constraint.Source.IdShort) &&
-            !ContainsStorageKeyword(constraint.ConstraintType?.Value?.Value?.ToString()) &&
-            !ContainsStorageKeyword(constraint.ConditionalType?.Value?.Value?.ToString()) &&
+            !ContainsStorageKeyword(constraint.ConstraintType?.GetText()) &&
+            !ContainsStorageKeyword(constraint.ConditionalType?.GetText()) &&
             !ConstraintCustomSectionContainsStorage(constraint, out target))
         {
             return false;
@@ -158,8 +188,8 @@ public class CheckConstraintsNode : BTNode
 
         if (string.IsNullOrWhiteSpace(target))
         {
-            target = constraint.CustomConstraint?.GetProperty("SlotValue")?.Value?.Value?.ToString()
-                     ?? constraint.CustomConstraint?.GetProperty("TargetStation")?.Value?.Value?.ToString();
+            target = constraint.CustomConstraint?.GetProperty("SlotValue")?.GetText()
+                     ?? constraint.CustomConstraint?.GetProperty("TargetStation")?.GetText();
         }
 
         return true;
@@ -176,9 +206,9 @@ public class CheckConstraintsNode : BTNode
 
         foreach (var prop in custom.Properties)
         {
-            if (ContainsStorageKeyword(prop.IdShort) || ContainsStorageKeyword(prop.Value?.Value?.ToString()))
+            if (ContainsStorageKeyword(prop.IdShort) || ContainsStorageKeyword(prop.GetText()))
             {
-                target = prop.Value?.Value?.ToString();
+                target = prop.GetText();
                 return true;
             }
         }
@@ -214,7 +244,7 @@ public class CheckConstraintsNode : BTNode
             if (element is Property property)
             {
                 if (ContainsStorageKeyword(property.IdShort) ||
-                    ContainsStorageKeyword(TryExtractString(property.Value?.Value)))
+                    ContainsStorageKeyword(property.GetText()))
                 {
                     return true;
                 }
@@ -265,7 +295,7 @@ public class CheckConstraintsNode : BTNode
         {
             if (element is Property prop && string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
             {
-                return TryExtractString(prop.Value?.Value);
+                return prop.GetText();
             }
 
             if (element is SubmodelElementCollection nested)
@@ -279,15 +309,5 @@ public class CheckConstraintsNode : BTNode
         }
 
         return null;
-    }
-
-    private static string? TryExtractString(object? value)
-    {
-        if (value is IValue nested)
-        {
-            return nested.Value?.ToString();
-        }
-
-        return value?.ToString();
     }
 }

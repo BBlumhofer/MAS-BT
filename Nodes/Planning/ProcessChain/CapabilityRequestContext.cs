@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging.Models;
@@ -125,21 +126,11 @@ public class CapabilityRequestContext
         {
             if (element is Property prop && string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
             {
-                return TryExtractString(prop.Value?.Value);
+                return prop.GetText();
             }
         }
 
         return null;
-    }
-
-    private static string? TryExtractString(object? value)
-    {
-        if (value is string literal)
-        {
-            return literal;
-        }
-
-        return value?.ToString();
     }
 
     private static SubmodelElementCollection? FindCapabilityContainer(I40Message message, string? capabilityName)
@@ -270,7 +261,7 @@ public class CapabilityRequestContext
             .OfType<Property>()
             .FirstOrDefault(prop => string.Equals(prop.IdShort, RequiredCapability.InstanceIdentifierIdShort, StringComparison.OrdinalIgnoreCase));
 
-        return property?.Value?.Value?.ToString();
+        return property?.GetText();
     }
 
     private static Reference? ExtractCapabilityReference(SubmodelElementCollection collection)
@@ -284,7 +275,8 @@ public class CapabilityRequestContext
             .OfType<ReferenceElement>()
             .FirstOrDefault(r => string.Equals(r.IdShort, RequiredCapability.RequiredCapabilityReferenceIdShort, StringComparison.OrdinalIgnoreCase));
 
-        return CloneReference(referenceElement?.Value?.Value);
+        var reference = AasValueUnwrap.Unwrap(referenceElement?.Value) as IReference;
+        return CloneReference(reference);
     }
 
     private static Reference? CloneReference(IReference? reference)

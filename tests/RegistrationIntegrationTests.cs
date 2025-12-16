@@ -1,6 +1,7 @@
 using System;
 using System.Threading.Tasks;
 using AAS_Sharp_Client.Models.Messages;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
@@ -319,11 +320,12 @@ public class RegistrationIntegrationTests
             .FirstOrDefault(c => string.Equals(c.IdShort, "InventorySummary", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(summary);
 
-        var freeProp = summary!.Value.Value.OfType<Property>().First(p => string.Equals(p.IdShort, "free", StringComparison.OrdinalIgnoreCase));
-        var occupiedProp = summary.Value.Value.OfType<Property>().First(p => string.Equals(p.IdShort, "occupied", StringComparison.OrdinalIgnoreCase));
+        var summaryElements = AasValueUnwrap.UnwrapToEnumerable<ISubmodelElement>(summary!.Value);
+        var freeProp = summaryElements.OfType<Property>().First(p => string.Equals(p.IdShort, "free", StringComparison.OrdinalIgnoreCase));
+        var occupiedProp = summaryElements.OfType<Property>().First(p => string.Equals(p.IdShort, "occupied", StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(5, freeProp.Value.Value.ToObject<int>());
-        Assert.Equal(5, occupiedProp.Value.Value.ToObject<int>());
+        Assert.Equal(5, AasValueUnwrap.UnwrapToInt(freeProp.Value));
+        Assert.Equal(5, AasValueUnwrap.UnwrapToInt(occupiedProp.Value));
     }
 
     [Fact]
@@ -407,11 +409,12 @@ public class RegistrationIntegrationTests
             .FirstOrDefault(c => string.Equals(c.IdShort, "InventorySummary", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(summary);
 
-        var freeProp = summary!.Value.Value.OfType<Property>().First(p => string.Equals(p.IdShort, "free", StringComparison.OrdinalIgnoreCase));
-        var occupiedProp = summary.Value.Value.OfType<Property>().First(p => string.Equals(p.IdShort, "occupied", StringComparison.OrdinalIgnoreCase));
+        var summaryElements = AasValueUnwrap.UnwrapToEnumerable<ISubmodelElement>(summary!.Value);
+        var freeProp = summaryElements.OfType<Property>().First(p => string.Equals(p.IdShort, "free", StringComparison.OrdinalIgnoreCase));
+        var occupiedProp = summaryElements.OfType<Property>().First(p => string.Equals(p.IdShort, "occupied", StringComparison.OrdinalIgnoreCase));
 
-        Assert.Equal(1, freeProp.Value.Value.ToObject<int>());
-        Assert.Equal(2, occupiedProp.Value.Value.ToObject<int>());
+        Assert.Equal(1, AasValueUnwrap.UnwrapToInt(freeProp.Value));
+        Assert.Equal(2, AasValueUnwrap.UnwrapToInt(occupiedProp.Value));
     }
 
     [Fact]

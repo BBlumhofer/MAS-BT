@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 
@@ -42,8 +43,8 @@ public class SelectNextActionNode : BTNode
         Context.Set("CurrentPlanAction", nextAction.Action);
         Context.Set("CurrentPlanStep", nextAction.Step);
         Context.Set("ConversationId", conversationId);
-        Context.Set("MachineName", nextAction.Action.MachineName.Value.Value?.ToString() ?? string.Empty);
-        Context.Set("ActionTitle", nextAction.Action.ActionTitle.Value.Value?.ToString() ?? string.Empty);
+            Context.Set("MachineName", nextAction.Action.MachineName.GetText() ?? string.Empty);
+            Context.Set("ActionTitle", nextAction.Action.ActionTitle.GetText() ?? string.Empty);
 
         Logger.LogInformation("SelectNextAction: Selected {ActionId} on step {StepId} for machine {Machine}",
             nextAction.Action.IdShort,

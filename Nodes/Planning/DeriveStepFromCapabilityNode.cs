@@ -5,6 +5,7 @@ using Microsoft.Extensions.Logging;
 using AasSharpClient.Models;
 using ActionModel = AasSharpClient.Models.Action;
 using StepModel = AasSharpClient.Models.Step;
+using AasSharpClient.Models.Helpers;
 
 namespace MAS_BT.Nodes.Planning;
 
@@ -36,7 +37,7 @@ public class DeriveStepFromCapabilityNode : BTNode
             matched,
             StepStatusEnum.OPEN,
             action,
-            action.MachineName.Value.Value?.ToString() ?? string.Empty,
+            action.MachineName.GetText() ?? string.Empty,
             new SchedulingContainer(DateTime.UtcNow.ToString("o"), DateTime.UtcNow.AddMinutes(1).ToString("o"), "PT0S", "PT60S"),
             "Enterprise",
             "WorkCenter");

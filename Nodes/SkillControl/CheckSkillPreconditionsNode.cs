@@ -6,6 +6,7 @@ using AasSharpClient.Models;
 using AasSharpClient.Models.Messages;
 using MAS_BT.Core;
 using MAS_BT.Services;
+using MAS_BT.Nodes.Common;
 using MAS_BT.Nodes.Messaging;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;

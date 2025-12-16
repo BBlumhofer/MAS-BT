@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.Messages;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
@@ -12,6 +13,7 @@ using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
+using UAClient.Client;
 
 namespace MAS_BT.Nodes.Planning;
 
@@ -164,7 +166,103 @@ public class RequestTransportNode : BTNode
         element.OfferedCapabilityIdentifier.Value = new PropertyValue<string>($"{Context.AgentId}:{instanceIdentifier}");
         element.TransportGoalStation.Value = new PropertyValue<string>(target ?? string.Empty);
         element.SetIdentifierType(TransportRequestMessage.IdentifierTypeEnum.ProductId);
+        // Determine IdentifierValue: prefer request.ProductId, then constraint placeholder resolution, then fallback to requirement id
         var identifierValue = string.IsNullOrWhiteSpace(request.ProductId) ? request.RequirementId : request.ProductId;
+
+        if (!string.IsNullOrWhiteSpace(requirement?.ProductIdPlaceholder))
+        {
+            var placeholder = requirement.ProductIdPlaceholder!.Trim();
+            if (!string.Equals(placeholder, "*", StringComparison.Ordinal))
+            {
+                // literal provided in constraint
+                identifierValue = placeholder;
+                requirement.ResolvedProductId = identifierValue;
+            }
+            else
+            {
+                // wildcard: try resolve from request, ModuleInventory, or RemoteServer
+                string? resolved = null;
+
+                // 1) request.ProductId already used above; if it exists, take it
+                if (!string.IsNullOrWhiteSpace(request.ProductId)) resolved = request.ProductId;
+
+                // 2) try ModuleInventory snapshot in context
+                if (string.IsNullOrWhiteSpace(resolved))
+                {
+                    var storageUnits = Context.Get<List<StorageUnit>>("ModuleInventory");
+                    if (storageUnits != null)
+                    {
+                        // prefer storage with matching name/target
+                        var match = storageUnits.FirstOrDefault(s => string.Equals(s.Name, requirement.Target, StringComparison.OrdinalIgnoreCase));
+                        if (match == null)
+                        {
+                            // fallback: first non-empty product id anywhere
+                            foreach (var su in storageUnits)
+                            {
+                                var slot = su.Slots?.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Content?.ProductID));
+                                if (slot != null && !string.IsNullOrWhiteSpace(slot.Content?.ProductID))
+                                {
+                                    resolved = slot.Content.ProductID;
+                                    break;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var slot = match.Slots?.FirstOrDefault(s => !string.IsNullOrWhiteSpace(s.Content?.ProductID));
+                            if (slot != null) resolved = slot.Content.ProductID;
+                        }
+                    }
+                }
+
+                // 3) try RemoteServer model
+                if (string.IsNullOrWhiteSpace(resolved))
+                {
+                    try
+                    {
+                        var server = Context.Get<RemoteServer>("RemoteServer");
+                        if (server?.Modules != null)
+                        {
+                            foreach (var modKv in server.Modules)
+                            {
+                                var storages = modKv.Value?.Storages;
+                                if (storages == null) continue;
+                                foreach (var st in storages)
+                                {
+                                    var sKey = st.Key;
+                                    var sVal = st.Value;
+                                    if (!string.Equals(sKey, requirement.Target, StringComparison.OrdinalIgnoreCase) && !string.Equals(sVal?.Name, requirement.Target, StringComparison.OrdinalIgnoreCase))
+                                        continue;
+
+                                    if (sVal?.Slots != null)
+                                    {
+                                        foreach (var slot in sVal.Slots.Values)
+                                        {
+                                            if (!string.IsNullOrWhiteSpace(slot.ProductId))
+                                            {
+                                                resolved = slot.ProductId;
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    if (!string.IsNullOrWhiteSpace(resolved)) break;
+                                }
+
+                                if (!string.IsNullOrWhiteSpace(resolved)) break;
+                            }
+                        }
+                    }
+                    catch { /* best-effort */ }
+                }
+
+                if (!string.IsNullOrWhiteSpace(resolved))
+                {
+                    identifierValue = resolved;
+                    requirement.ResolvedProductId = resolved;
+                }
+            }
+        }
         element.IdentifierValue.Value = new PropertyValue<string>(identifierValue);
         element.SetAmount(1);
         return element;
@@ -260,8 +358,7 @@ public class RequestTransportNode : BTNode
 
         foreach (var offer in offers)
         {
-            var id = offer.InstanceIdentifier.Value?.Value?.ToString();
-            if (string.IsNullOrWhiteSpace(id))
+            if (offer.InstanceIdentifier.IsNullOrWhiteSpace())
             {
                 offer.InstanceIdentifier.Value = new PropertyValue<string>($"transport_{Guid.NewGuid():N}");
             }
@@ -336,19 +433,19 @@ public class RequestTransportNode : BTNode
                     offer.OfferedCapabilityReference.Value = reference.Value;
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.InstanceIdentifierIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.InstanceIdentifier.Value = new PropertyValue<string>(TryExtractString(prop.Value?.Value) ?? string.Empty);
+                    offer.InstanceIdentifier.SetText(AasValueUnwrap.UnwrapToString(prop.Value) ?? string.Empty);
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.StationIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.Station.Value = new PropertyValue<string>(TryExtractString(prop.Value?.Value) ?? string.Empty);
+                    offer.Station.SetText(AasValueUnwrap.UnwrapToString(prop.Value) ?? string.Empty);
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.MatchingScoreIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.MatchingScore.Value = new PropertyValue<double>(ParseDouble(prop.Value?.Value));
+                    offer.MatchingScore.Value = new PropertyValue<double>(ParseDouble(AasValueUnwrap.Unwrap(prop.Value)));
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.CostIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.SetCost(ParseDouble(prop.Value?.Value));
+                    offer.SetCost(ParseDouble(AasValueUnwrap.Unwrap(prop.Value)));
                     break;
                 case Property prop when string.Equals(prop.IdShort, OfferedCapability.SequencePlacementIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.SequencePlacement.Value = new PropertyValue<string>(TryExtractString(prop.Value?.Value) ?? string.Empty);
+                    offer.SequencePlacement.SetText(AasValueUnwrap.UnwrapToString(prop.Value) ?? string.Empty);
                     break;
                 case SubmodelElementCollection collection when string.Equals(collection.IdShort, OfferedCapability.EarliestSchedulingInformationIdShort, StringComparison.OrdinalIgnoreCase):
                     CopyScheduling(collection, offer);
@@ -395,7 +492,7 @@ public class RequestTransportNode : BTNode
 
         foreach (var property in properties)
         {
-            var value = TryExtractString(property.Value?.Value);
+            var value = AasValueUnwrap.UnwrapToString(property.Value);
             if (string.IsNullOrWhiteSpace(value))
             {
                 continue;
@@ -434,11 +531,6 @@ public class RequestTransportNode : BTNode
         {
             offer.SetEarliestScheduling(start.Value, end.Value, setup.Value, cycle.Value);
         }
-    }
-
-    private static string? TryExtractString(object? value)
-    {
-        return value?.ToString();
     }
 
     private static double ParseDouble(object? value)

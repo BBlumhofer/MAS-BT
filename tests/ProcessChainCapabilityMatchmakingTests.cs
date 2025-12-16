@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
@@ -318,7 +319,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
             if (element is BaSyx.Models.AdminShell.Property prop &&
                 string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
             {
-                return prop.Value?.Value?.ToString();
+                return prop.GetText();
             }
         }
 

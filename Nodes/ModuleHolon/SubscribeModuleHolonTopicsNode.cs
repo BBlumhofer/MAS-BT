@@ -29,7 +29,7 @@ public class SubscribeModuleHolonTopicsNode : BTNode
         var moduleIdentifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
         var topics = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            $"/{ns}/DispatchingAgent/Offer"
+            $"/{ns}/Offer"
         };
 
         foreach (var moduleId in moduleIdentifiers)

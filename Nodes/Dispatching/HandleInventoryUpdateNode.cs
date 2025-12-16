@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
@@ -97,7 +98,7 @@ namespace MAS_BT.Nodes.Dispatching
 
             if (storageUnits != null)
             {
-                var summary = (storageUnits.Value?.Value ?? Enumerable.Empty<ISubmodelElement>())
+                var summary = AasValueUnwrap.UnwrapToEnumerable<ISubmodelElement>(storageUnits.Value)
                     .OfType<SubmodelElementCollection>()
                     .FirstOrDefault(c => string.Equals(c.IdShort, "InventorySummary", StringComparison.OrdinalIgnoreCase));
 
@@ -125,18 +126,13 @@ namespace MAS_BT.Nodes.Dispatching
             free = 0;
             occupied = 0;
 
-            var values = summary.Value?.Value ?? Enumerable.Empty<ISubmodelElement>();
+            var values = AasValueUnwrap.UnwrapToEnumerable<ISubmodelElement>(summary.Value);
 
             static int? ReadInt(Property p)
             {
                 try
                 {
-                    // Prefer typed value
-                    var obj = p.Value?.Value;
-                    if (obj == null) return null;
-
-                    var asInt = obj.ToObject<int>();
-                    return asInt;
+                    return AasValueUnwrap.UnwrapToInt(p.Value);
                 }
                 catch
                 {

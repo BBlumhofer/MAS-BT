@@ -34,6 +34,32 @@ public class ModuleInitializationTestRunner
 
         var config = LoadConfig(providedConfigPath);
 
+        // Store full parsed JSON root in BTContext under key "config" so XmlTreeDeserializer
+        // can resolve placeholders like {config.DispatchingAgent.OfferCollectionTimeoutSeconds}.
+        try
+        {
+            var raw = File.ReadAllText(providedConfigPath);
+            using var doc = JsonDocument.Parse(raw);
+            // RootElement is a JsonElement struct; store it directly
+            var configRoot = doc.RootElement.Clone();
+            // We'll set this into the context later once the context exists; temporarily stash on a local variable.
+            // Note: we need to keep the value until Context is created below.
+            // To pass it into the existing flow, we'll attach it after creating the BTContext.
+            // Save to a temp file-local variable via closure below.
+            // Use a simple local variable to carry the JsonElement.
+            // (Named configRoot and used later.)
+            // Replace the config variable usage below where appropriate.
+            // We'll assign it into the BTContext after it's created.
+            // For clarity: the variable remains in scope for the rest of the method.
+            
+            // assign to a new variable in outer scope by shadowing
+            var _parsedConfigRoot = configRoot;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"⚠️ Fehler beim Parsen der Config JSON: {ex.Message}");
+        }
+
         if (TryGetAgentList(config, out var agentList) && agentList.Count > 0)
         {
             await SpawnAgentsAsync(providedConfigPath, agentList, spawnSubHolonsInTerminal);
@@ -100,6 +126,20 @@ public class ModuleInitializationTestRunner
             AgentId = agentId,
             AgentRole = agentRole
         };
+
+        // If we parsed the config root above, expose it as JsonElement under key "config"
+        try
+        {
+            // Re-parse to obtain JsonElement in case the earlier parse was skipped due to scope
+            var raw2 = File.ReadAllText(providedConfigPath);
+            using var doc2 = JsonDocument.Parse(raw2);
+            var configRoot2 = doc2.RootElement.Clone();
+            context.Set("config", configRoot2);
+        }
+        catch (Exception)
+        {
+            // best-effort: if parsing fails, continue — interpolation will fall back to individual keys
+        }
 
         context.Set("config.Path", Path.GetFullPath(providedConfigPath));
         
@@ -171,7 +211,7 @@ public class ModuleInitializationTestRunner
             Console.WriteLine();
             
             var registry = new NodeRegistry(loggerFactory.CreateLogger<NodeRegistry>());
-            var deserializer = new XmlTreeDeserializer(registry, loggerFactory.CreateLogger<XmlTreeDeserializer>());
+            var deserializer = new XmlTreeDeserializer(registry, loggerFactory);
             
             var rootNode = deserializer.Deserialize(btFilePath, context);
             

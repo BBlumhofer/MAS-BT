@@ -2,6 +2,7 @@ using System;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 
@@ -53,10 +54,10 @@ public class SelectSchedulableActionNode : BTNode
 
         Context.Set("CurrentPlanStep", candidate.step);
         Context.Set("CurrentPlanAction", candidate.action);
-        var actionTitle = candidate.action.ActionTitle.Value.Value?.ToString() ?? candidate.action.IdShort;
+        var actionTitle = candidate.action.ActionTitle.GetText() ?? candidate.action.IdShort;
         Context.Set("ActionTitle", actionTitle);
-        var machineName = candidate.action.MachineName.Value.Value?.ToString()
-            ?? candidate.step.Station?.Value?.Value?.ToString()
+        var machineName = candidate.action.MachineName.GetText()
+            ?? candidate.step.Station?.GetText()
             ?? Context.Get<string>("MachineName")
             ?? string.Empty;
         Context.Set("MachineName", machineName);

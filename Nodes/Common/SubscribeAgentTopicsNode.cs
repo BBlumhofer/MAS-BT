@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.Messages;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
@@ -48,12 +49,11 @@ namespace MAS_BT.Nodes.Common
                     $"/{ns}/TransportPlan",
 
                     // Offer request/response topics (CfP broadcast + module proposals)
-                    $"/{ns}/DispatchingAgent/Offer",
+                    $"/{ns}/Offer",
 
                     $"/{ns}/register",
                     $"/{ns}/Register",
-                    $"/{ns}/DispatchingAgent/ModuleRegistration/",
-                    $"/DispatchingAgent/{ns}/ModuleRegistration/",
+                    $"/{ns}/ModuleRegistration",
 
                     // Inventory updates are published per module: /{ns}/{moduleId}/Inventory
                     // Use MQTT wildcard subscription so the dispatcher can aggregate inventories.
@@ -134,7 +134,7 @@ namespace MAS_BT.Nodes.Common
             var moduleIdentifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
             var moduleTopics = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
-                $"/{ns}/DispatchingAgent/Offer",
+                $"/{ns}/Offer",
                 $"/{ns}/TransportPlan"
             };
 
@@ -227,7 +227,7 @@ namespace MAS_BT.Nodes.Common
 
             if (storageUnits != null)
             {
-                var summary = (storageUnits.Value?.Value ?? Enumerable.Empty<ISubmodelElement>())
+                    var summary = AasValueUnwrap.UnwrapToEnumerable<ISubmodelElement>(storageUnits.Value)
                     .OfType<SubmodelElementCollection>()
                     .FirstOrDefault(c => string.Equals(c.IdShort, "InventorySummary", StringComparison.OrdinalIgnoreCase));
 
@@ -255,7 +255,7 @@ namespace MAS_BT.Nodes.Common
             free = 0;
             occupied = 0;
 
-            var values = summary.Value?.Value ?? Enumerable.Empty<ISubmodelElement>();
+                var values = AasValueUnwrap.UnwrapToEnumerable<ISubmodelElement>(summary.Value);
             foreach (var el in values.OfType<Property>())
             {
                 if (string.Equals(el.IdShort, "free", StringComparison.OrdinalIgnoreCase))
@@ -275,9 +275,7 @@ namespace MAS_BT.Nodes.Common
         {
             try
             {
-                var obj = p.Value?.Value;
-                if (obj == null) return null;
-                return obj.ToObject<int>();
+                 return AasValueUnwrap.UnwrapToInt(p.Value);
             }
             catch
             {

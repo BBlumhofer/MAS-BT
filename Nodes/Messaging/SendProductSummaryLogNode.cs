@@ -3,9 +3,11 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
 using AasSharpClient.Models.Messages;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using BaSyx.Models.Extensions;
 using I40Sharp.Messaging;
@@ -209,10 +211,26 @@ public class SendProductSummaryLogNode : BTNode
             return null;
         }
 
-        return submodel.SubmodelElements.Values
+        var property = submodel.SubmodelElements.Values
             .OfType<IProperty>()
-            .FirstOrDefault(p => string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase))?
-            .Value?.Value?.ToObject<string>();
+            .FirstOrDefault(p => string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
+
+        var raw = AasValueUnwrap.Unwrap(property?.Value);
+        if (raw is JsonElement je)
+        {
+            return je.ValueKind switch
+            {
+                JsonValueKind.String => je.GetString(),
+                JsonValueKind.Number => je.ToString(),
+                JsonValueKind.True => bool.TrueString,
+                JsonValueKind.False => bool.FalseString,
+                JsonValueKind.Null => null,
+                JsonValueKind.Undefined => null,
+                _ => je.ToString()
+            };
+        }
+
+        return raw?.ToString();
     }
 
     private static IEnumerable<string> CollectChildProductIds(Submodel submodel)
@@ -257,10 +275,26 @@ public class SendProductSummaryLogNode : BTNode
 
     private static string? GetEntityStatementValue(Entity entity, string idShort)
     {
-        return entity.Values
+        var property = entity.Values
             .OfType<IProperty>()
-            .FirstOrDefault(p => string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase))?
-            .Value?.Value?.ToObject<string>();
+            .FirstOrDefault(p => string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
+
+        var raw = AasValueUnwrap.Unwrap(property?.Value);
+        if (raw is JsonElement je)
+        {
+            return je.ValueKind switch
+            {
+                JsonValueKind.String => je.GetString(),
+                JsonValueKind.Number => je.ToString(),
+                JsonValueKind.True => bool.TrueString,
+                JsonValueKind.False => bool.FalseString,
+                JsonValueKind.Null => null,
+                JsonValueKind.Undefined => null,
+                _ => je.ToString()
+            };
+        }
+
+        return raw?.ToString();
     }
 
     private static IEnumerable<string> ExtractCapabilityNames(CapabilityDescriptionSubmodel? capabilityDescription)

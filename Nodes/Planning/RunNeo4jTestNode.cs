@@ -138,6 +138,35 @@ RETURN
                 Logger.LogWarning(ex, "RunNeo4jTest: position query failed");
             }
 
+            // 5) Query current storage slot contents per Agent
+            Logger.LogInformation("RunNeo4jTest: Querying storage slot contents for all agents");
+            try
+            {
+                var qSlots = @"MATCH (n:Agent)-[r:HAS_STORAGE]->(s:Storage)-[l:HAS_SLOT]->(sl:Slot)
+RETURN n.agentId AS ID, sl.productId AS ProductID, sl.productType as ProductType, sl.carrierId as CarrierID, sl.carrierType as CarrierType, sl.isEmpty as IsEmpty";
+
+                var cursor5 = await session.RunAsync(qSlots);
+                var records = await cursor5.ToListAsync();
+                Logger.LogInformation("RunNeo4jTest: Found {Count} slot entries", records.Count);
+
+                foreach (var r in records)
+                {
+                    var id = r["ID"]?.ToString() ?? string.Empty;
+                    var productId = r["ProductID"]?.ToString() ?? string.Empty;
+                    var productType = r["ProductType"]?.ToString() ?? string.Empty;
+                    var carrierId = r["CarrierID"]?.ToString() ?? string.Empty;
+                    var carrierType = r["CarrierType"]?.ToString() ?? string.Empty;
+                    var isEmpty = r["IsEmpty"]?.ToString() ?? string.Empty;
+
+                    Logger.LogInformation("RunNeo4jTest: SlotRow -> Agent={Agent}, ProductID={ProductID}, ProductType={ProductType}, CarrierID={CarrierID}, CarrierType={CarrierType}, IsEmpty={IsEmpty}",
+                        id, productId, productType, carrierId, carrierType, isEmpty);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "RunNeo4jTest: slot query failed");
+            }
+
             if (createdLocalDriver && driver is not null)
             {
                 await driver.DisposeAsync();

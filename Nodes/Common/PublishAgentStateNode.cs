@@ -52,7 +52,7 @@ namespace MAS_BT.Nodes.Common
             }
 
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            var topic = $"/{ns}/DispatchingAgent/logs";
+            var topic = TopicHelper.BuildTopic(Context, "logs");
 
             var snapshot = state.Modules
                 .Where(m => m != null)

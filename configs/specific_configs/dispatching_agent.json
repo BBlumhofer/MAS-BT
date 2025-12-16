@@ -37,7 +37,7 @@
     "Database": "neo4j"
   },
   "DispatchingAgent": {
-    "AgentTimeoutSeconds": 60,
+    "AgentTimeoutSeconds": 120,
     "UseSimilarityFiltering": true,
     "CapabilitySimilarityThreshold": 0.75,
     "DescriptionTimeoutMs": 30000,
@@ -45,8 +45,8 @@
     "SimilarityAgentId": "SimilarityAnalysisAgent_phuket",
     "CalcSimilarityConcurrency": 20,
     "CreateDescriptionConcurrency":20,
-    "CfPTimeoutSeconds": 30,
-    "OfferCollectionTimeoutSeconds": 40,
+    "CfPTimeoutSeconds": 60,
+    "OfferCollectionTimeoutSeconds": 60,
     "ProcessChainIdleDelayMs": 200,
     "ProcessChainBackoffDelayMs": 200,
     "ManufacturingIdleDelayMs": 300,

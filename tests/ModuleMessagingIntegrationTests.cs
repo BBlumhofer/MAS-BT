@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ManufacturingSequence;
 using AasSharpClient.Models.ProcessChain;
 using MAS_BT.Core;
@@ -432,25 +433,25 @@ public class ModuleMessagingIntegrationTests : IDisposable
         Assert.Equal(expectedRequirements, requiredCapabilities.Count);
 
         var drillEntry = requiredCapabilities.First(rc => string.Equals(
-            rc.InstanceIdentifier.Value?.Value?.ToString(),
+            rc.InstanceIdentifier.GetText(),
             "req-drill",
             StringComparison.OrdinalIgnoreCase));
 
         var drillSequence = drillEntry.GetSequences()
             .Select(seq => seq.GetCapabilities().ToList())
-            .First(seq => seq.Any(cap => string.Equals(cap.InstanceIdentifier.Value?.Value?.ToString(), "P101-Drill", StringComparison.OrdinalIgnoreCase)));
+            .First(seq => seq.Any(cap => string.Equals(cap.InstanceIdentifier.GetText(), "P101-Drill", StringComparison.OrdinalIgnoreCase)));
         Assert.Equal(3, drillSequence.Count);
-        Assert.Equal("transport-pre-drill", drillSequence[0].InstanceIdentifier.Value?.Value?.ToString());
-        Assert.Equal("P101-Drill", drillSequence[1].InstanceIdentifier.Value?.Value?.ToString());
-        Assert.Equal("transport-post-drill", drillSequence[2].InstanceIdentifier.Value?.Value?.ToString());
+        Assert.Equal("transport-pre-drill", drillSequence[0].InstanceIdentifier.GetText());
+        Assert.Equal("P101-Drill", drillSequence[1].InstanceIdentifier.GetText());
+        Assert.Equal("transport-post-drill", drillSequence[2].InstanceIdentifier.GetText());
 
         var assembleEntry = requiredCapabilities.First(rc => string.Equals(
-            rc.InstanceIdentifier.Value?.Value?.ToString(),
+            rc.InstanceIdentifier.GetText(),
             "req-assemble",
             StringComparison.OrdinalIgnoreCase));
         var assembleSequence = assembleEntry.GetSequences().First().GetCapabilities().ToList();
         Assert.Single(assembleSequence);
-        Assert.Equal("P102-Assemble", assembleSequence[0].InstanceIdentifier.Value?.Value?.ToString());
+        Assert.Equal("P102-Assemble", assembleSequence[0].InstanceIdentifier.GetText());
 
         Assert.True(context.Get<bool>("ProcessChain.Success"));
         Assert.True(context.Get<bool>("ManufacturingSequence.Success"));
@@ -584,7 +585,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         OfferedCapability offeredCapability,
         string ns)
     {
-        var capability = ExtractProperty(cfp, "Capability") ?? offeredCapability.InstanceIdentifier.Value?.Value?.ToString() ?? "Capability";
+        var capability = ExtractProperty(cfp, "Capability") ?? offeredCapability.InstanceIdentifier.GetText() ?? "Capability";
         var requirementId = ExtractProperty(cfp, "RequirementId") ?? Guid.NewGuid().ToString();
 
         var message = new I40MessageBuilder()
@@ -670,7 +671,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         {
             if (element is Property prop && string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
             {
-                return prop.Value?.Value?.ToString();
+                return prop.GetText();
             }
         }
 

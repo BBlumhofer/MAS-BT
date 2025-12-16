@@ -5,6 +5,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Messages;
+using AasSharpClient.Models.Helpers;
 using MAS_BT.Core;
 using MAS_BT.Services.Graph;
 using Microsoft.Extensions.Logging;
@@ -594,7 +595,7 @@ namespace MAS_BT.Nodes.Dispatching
             {
                 if (element is Property p && string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
                 {
-                    var raw = (object?)p.Value?.Value;
+                    var raw = AasValueUnwrap.Unwrap(p.Value);
                     if (raw is string s)
                     {
                         value = s;
@@ -619,7 +620,7 @@ namespace MAS_BT.Nodes.Dispatching
             {
                 if (element is Property p && string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
                 {
-                    var raw = (object?)p.Value?.Value;
+                    var raw = AasValueUnwrap.Unwrap(p.Value);
                     if (raw is double d)
                     {
                         value = d;
@@ -662,20 +663,17 @@ namespace MAS_BT.Nodes.Dispatching
 
             foreach (var element in message.InteractionElements)
             {
-                if (element is Property prop)
+                if (element is IProperty prop)
                 {
-                    var text = TryExtractString(prop.Value?.Value);
+                    var text = prop.GetText();
                     if (!string.IsNullOrWhiteSpace(text)) yield return text!;
                 }
                 else if (element is SubmodelElementCollection coll)
                 {
-                    foreach (var child in coll.Values)
+                    foreach (var child in coll.Values?.OfType<IProperty>() ?? Enumerable.Empty<IProperty>())
                     {
-                        if (child is Property childProp)
-                        {
-                            var text = TryExtractString(childProp.Value?.Value);
-                            if (!string.IsNullOrWhiteSpace(text)) yield return text!;
-                        }
+                        var text = child.GetText();
+                        if (!string.IsNullOrWhiteSpace(text)) yield return text!;
                     }
                 }
             }

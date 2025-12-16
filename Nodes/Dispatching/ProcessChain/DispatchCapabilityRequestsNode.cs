@@ -3,11 +3,13 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Dispatching.ProcessChain;
@@ -47,7 +49,7 @@ public class DispatchCapabilityRequestsNode : BTNode
         }
 
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var topic = $"/{ns}/DispatchingAgent/Offer";
+        var topic = TopicHelper.BuildNamespaceTopic(Context, "Offer");
         var requestMode = GetRequestMode();
         var subtype = string.Equals(requestMode, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase)
             ? I40MessageTypeSubtypes.ManufacturingSequence
@@ -484,8 +486,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 {
                     if (el is Property p && string.Equals(p.IdShort, "Description_Result", StringComparison.OrdinalIgnoreCase))
                     {
-                        var raw = p.Value?.Value;
-                        var str = raw?.ToString();
+                        var str = (p as IProperty).GetText();
                         if (!string.IsNullOrWhiteSpace(str))
                         {
                             state.SetCapabilityDescription(capability, str);
@@ -555,7 +556,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 {
                     if (el is Property p && string.Equals(p.IdShort, "CosineSimilarity", StringComparison.OrdinalIgnoreCase))
                     {
-                        var raw = p.Value?.Value;
+                        var raw = AasValueUnwrap.Unwrap(p.Value);
                         if (raw != null && double.TryParse(raw.ToString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed))
                         {
                             return parsed;

@@ -4,6 +4,7 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging.Core;
@@ -40,7 +41,7 @@ public class PlanCapabilityOfferNodeTests
         var plan = context.Get<CapabilityOfferPlan>("Planning.CapabilityOffer");
         Assert.NotNull(plan);
         Assert.NotNull(plan!.OfferedCapability);
-        Assert.NotNull(plan.OfferedCapability!.OfferedCapabilityReference.Value?.Value);
+        Assert.NotNull(plan.OfferedCapability!.OfferedCapabilityReference.GetReference());
 
         var action = plan.OfferedCapability.Actions.OfType<ActionModel>().Single();
 
@@ -54,7 +55,7 @@ public class PlanCapabilityOfferNodeTests
 
         var conditionProperties = conditionValue
             .OfType<Property>()
-            .ToDictionary(prop => prop.IdShort ?? string.Empty, prop => prop.Value?.Value?.ToString() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
+            .ToDictionary(prop => prop.IdShort ?? string.Empty, prop => prop.GetText() ?? string.Empty, StringComparer.OrdinalIgnoreCase);
 
         Assert.Equal("StorageConstraint", conditionProperties["ConstraintName"]);
         Assert.Equal("*", conditionProperties["ProductId"]);
@@ -63,7 +64,7 @@ public class PlanCapabilityOfferNodeTests
         Assert.True(action.InputParameters.Parameters.ContainsKey("GripForce"));
         Assert.True(action.InputParameters.Parameters.ContainsKey("ProductWeight"));
 
-        var skillReference = action.SkillReference.Value?.Value;
+        var skillReference = AasValueUnwrap.Unwrap(action.SkillReference.Value) as IReference;
         Assert.NotNull(skillReference);
         Assert.Contains(skillReference!.Keys, key => !string.Equals(key.Value, "EMPTY", StringComparison.OrdinalIgnoreCase));
     }
@@ -90,7 +91,7 @@ public class PlanCapabilityOfferNodeTests
         var offered = plan!.OfferedCapability;
         Assert.NotNull(offered);
 
-        var reference = offered!.OfferedCapabilityReference.Value?.Value;
+        var reference = offered!.OfferedCapabilityReference.GetReference();
         Assert.NotNull(reference);
         Assert.Equal(ReferenceType.ModelReference, reference!.Type);
 
@@ -136,11 +137,11 @@ public class PlanCapabilityOfferNodeTests
         var sequence = offeredCapability!.CapabilitySequence.OfType<OfferedCapability>().ToList();
         Assert.Equal(2, sequence.Count);
 
-        Assert.Equal("transport_before", sequence[0].InstanceIdentifier.Value?.Value?.ToString());
-        Assert.Equal("pre", sequence[0].SequencePlacement.Value?.Value?.ToString());
+        Assert.Equal("transport_before", sequence[0].InstanceIdentifier.GetText());
+        Assert.Equal("pre", sequence[0].SequencePlacement.GetText());
 
-        Assert.Equal("transport_after", sequence[1].InstanceIdentifier.Value?.Value?.ToString());
-        Assert.Equal("post", sequence[1].SequencePlacement.Value?.Value?.ToString());
+        Assert.Equal("transport_after", sequence[1].InstanceIdentifier.GetText());
+        Assert.Equal("post", sequence[1].SequencePlacement.GetText());
 
         Assert.Equal(2, plan.SupplementalCapabilities.Count);
     }

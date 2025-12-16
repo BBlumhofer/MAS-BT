@@ -3,6 +3,7 @@ using System.Linq;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
+using System.Text.Json;
 
 namespace MAS_BT.Serialization;
 
@@ -12,14 +13,16 @@ namespace MAS_BT.Serialization;
 public class XmlTreeDeserializer
 {
     private readonly NodeRegistry _registry;
+    private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger _logger;
     private Dictionary<string, XElement> _behaviorTrees = new(StringComparer.OrdinalIgnoreCase);
     private readonly Stack<string> _subTreeStack = new();
     
-    public XmlTreeDeserializer(NodeRegistry registry, ILogger logger)
+    public XmlTreeDeserializer(NodeRegistry registry, ILoggerFactory loggerFactory)
     {
         _registry = registry;
-        _logger = logger;
+        _loggerFactory = loggerFactory;
+        _logger = _loggerFactory.CreateLogger<XmlTreeDeserializer>();
     }
     
     /// <summary>
@@ -185,8 +188,43 @@ public class XmlTreeDeserializer
                 break;
             
             var placeholder = result.Substring(openBrace + 1, closeBrace - openBrace - 1);
-            var replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
-            
+
+            string replacement;
+            // Support config.<path> traversal from JSON config stored in context["config"]
+            if (placeholder.StartsWith("config.", System.StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var configRoot = context.Get<System.Text.Json.JsonElement>("config");
+                    if (configRoot.ValueKind != System.Text.Json.JsonValueKind.Undefined && configRoot.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    {
+                        var segments = placeholder.Substring("config.".Length).Split('.', System.StringSplitOptions.RemoveEmptyEntries);
+                        var resolved = TraverseJsonElement(configRoot, segments);
+                        if (resolved != null)
+                        {
+                            replacement = resolved;
+                        }
+                        else
+                        {
+                            // Fallback: allow callers to have set individual flattened keys like "config.Path" in the BT context
+                            replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+                        }
+                    }
+                    else
+                    {
+                        replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+                    }
+                }
+                catch
+                {
+                    replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+                }
+            }
+            else
+            {
+                replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+            }
+
             result = result.Substring(0, openBrace) + replacement + result.Substring(closeBrace + 1);
             startIndex = openBrace + replacement.Length;
             
@@ -217,6 +255,36 @@ public class XmlTreeDeserializer
             return long.Parse(value);
         
         return value;
+    }
+
+    /// <summary>
+    /// Traversiert ein <see cref="JsonElement"/> anhand von Segmenten und gibt den Wert als String zurück.
+    /// </summary>
+    private string? TraverseJsonElement(JsonElement root, string[] segments)
+    {
+        var current = root;
+
+        foreach (var seg in segments)
+        {
+            if (current.ValueKind == JsonValueKind.Object && current.TryGetProperty(seg, out var prop))
+            {
+                current = prop;
+            }
+            else
+            {
+                return null;
+            }
+        }
+
+        return current.ValueKind switch
+        {
+            JsonValueKind.String => current.GetString(),
+            JsonValueKind.Number => current.GetRawText(),
+            JsonValueKind.True => current.GetRawText(),
+            JsonValueKind.False => current.GetRawText(),
+            JsonValueKind.Null => null,
+            _ => JsonSerializer.Serialize(current),
+        };
     }
     
     /// <summary>
@@ -261,7 +329,16 @@ public class XmlTreeDeserializer
         // Setze Name, Context und Logger
         node.Name = nodeName;
         node.Context = context;
-        node.SetLogger(_logger);
+        // Create a node-specific logger so log entries are categorized by node type
+        try
+        {
+            var nodeLogger = _loggerFactory.CreateLogger(node.GetType().FullName ?? node.GetType().Name);
+            node.SetLogger(nodeLogger);
+        }
+        catch
+        {
+            node.SetLogger(_logger);
+        }
         
         // Setze Properties aus XML Attributen
         SetPropertiesFromAttributes(node, element);

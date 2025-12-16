@@ -15,6 +15,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using BaSyx.Models.Extensions;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Helpers;
 using UAClient.Client;
 using ActionModel = AasSharpClient.Models.Action;
 
@@ -299,9 +300,9 @@ public class ReadMqttSkillRequestNode : BTNode
             if (actionCollection != null)
             {
                 actionModel = CreateActionFromCollection(actionCollection);
-                actionTitle = actionModel.ActionTitle.Value.Value?.ToString() ?? string.Empty;
+                actionTitle = actionModel.ActionTitle.GetText() ?? string.Empty;
                 status = actionModel.State.ToString();
-                machineName = actionModel.MachineName.Value.Value?.ToString() ?? string.Empty;
+                machineName = actionModel.MachineName.GetText() ?? string.Empty;
                 actionIdShort = actionCollection.IdShort ?? "Action001";
                 inputParams = ExtractInputParametersDictionary(actionModel);
             }
@@ -797,14 +798,9 @@ public class ReadMqttSkillRequestNode : BTNode
         var property = Elements(coll)
             .FirstOrDefault(e => string.Equals(e.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
 
-        if (property is Property<string> stringProp)
+        if (property is IProperty prop)
         {
-            return stringProp.Value?.Value?.ToString() ?? fallback;
-        }
-
-        if (property is IProperty prop && prop.Value?.Value is not null)
-        {
-            return prop.Value.Value.ToString() ?? fallback;
+            return prop.GetText() ?? fallback;
         }
 
         return fallback;
@@ -815,11 +811,7 @@ public class ReadMqttSkillRequestNode : BTNode
         var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         foreach (var element in Elements(collection).OfType<IProperty>())
         {
-            object? raw = element.Value?.Value;
-            if (raw is IValue inner)
-            {
-                raw = inner.Value;
-            }
+            object? raw = AasValueUnwrap.Unwrap(element.Value);
 
             if (raw != null)
             {
@@ -893,11 +885,7 @@ public class ReadMqttSkillRequestNode : BTNode
         var dict = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
         foreach (var element in Elements(action.InputParameters).OfType<IProperty>())
         {
-            object? raw = element.Value?.Value;
-            if (raw is IValue inner)
-            {
-                raw = inner.Value;
-            }
+            object? raw = AasValueUnwrap.Unwrap(element.Value);
 
             if (raw != null)
             {
