@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models.Messages;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
@@ -40,7 +41,7 @@ public static class ActionQueueBroadcaster
                 .WithConversationId(Guid.NewGuid().ToString())
                 .AddElement(queueElement);
 
-            var topic = $"/Modules/{moduleId}/ActionQueue/";
+            var topic = TopicHelper.BuildTopic(context, "ActionQueue");
             await client.PublishAsync(builder.Build(), topic);
         }
         catch (Exception ex)

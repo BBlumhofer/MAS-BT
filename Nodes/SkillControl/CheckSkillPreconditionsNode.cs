@@ -91,7 +91,7 @@ public class CheckSkillPreconditionsNode : BTNode
                             requeueReason,
                             currentRequest.RetryAttempts,
                             currentRequest.NextRetryUtc);
-                        await client.PublishAsync(actionUpdateMsg, $"/Modules/{module.Name}/SkillResponse/");
+                        await client.PublishAsync(actionUpdateMsg, TopicHelper.BuildTopic(Context, "SkillResponse"));
                         Logger.LogInformation(
                             "CheckSkillPreconditions: Published ActionUpdate precondition retry for conversation {ConversationId}",
                             currentRequest.ConversationId);
@@ -153,7 +153,7 @@ public class CheckSkillPreconditionsNode : BTNode
                 builder.AddElement(response);
 
                 var message = builder.Build();
-                var topic = $"/Modules/{moduleName}/SkillResponse/";
+                var topic = TopicHelper.BuildTopic(Context, "SkillResponse");
                 await client.PublishAsync(message, topic);
                 Logger.LogInformation(
                     "CheckSkillPreconditions: Sent FAILURE after exhausting retries for conversation {ConversationId}",

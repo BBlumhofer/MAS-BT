@@ -447,7 +447,7 @@ public class RegistrationIntegrationTests
             .AddElement(reg.ToSubmodelElementCollection())
             .Build();
 
-        await publisher.PublishAsync(msg, $"/{ns}/DispatchingAgent/register");
+        await publisher.PublishAsync(msg, $"/{ns}/register");
 
         // callbacks are synchronous in the in-memory transport, but give it a short breath
         await Task.Delay(50);
