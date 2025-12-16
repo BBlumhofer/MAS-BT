@@ -1,10 +1,12 @@
 using System;
-using System.Globalization;
+using System.Linq;
 using System.Threading.Tasks;
+using AasSharpClient.Models.Helpers;
+using AasSharpClient.Models.ManufacturingSequence;
+using AasSharpClient.Models.Messages;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
-using I40Sharp.Messaging.Core;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
 
@@ -33,42 +35,81 @@ public class SendCapabilityOfferNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var moduleId = Context.Get<string>("ModuleId") ?? Context.Get<string>("config.Agent.ModuleName") ?? Context.AgentId;
-        var topic = $"/{ns}/{moduleId}/PlanningAgent/OfferResponse";
-
-        var builder = new I40MessageBuilder()
-            .From(Context.AgentId, string.IsNullOrWhiteSpace(Context.AgentRole) ? "PlanningAgent" : Context.AgentRole)
-            .To(request.RequesterId, null)
-            .WithType(I40Sharp.Messaging.Models.I40MessageTypes.PROPOSAL)
-            .WithConversationId(request.ConversationId)
-            .AddElement(CreateStringProperty("Capability", request.Capability))
-            .AddElement(CreateStringProperty("RequirementId", request.RequirementId))
-            .AddElement(CreateStringProperty("OfferId", plan.OfferId))
-            .AddElement(CreateStringProperty("Station", plan.StationId))
-            .AddElement(CreateStringProperty("EarliestStartUtc", plan.StartTimeUtc.ToString("o")))
-            .AddElement(CreateStringProperty("CycleTimeMinutes", plan.CycleTime.TotalMinutes.ToString("0.###", CultureInfo.InvariantCulture)))
-            .AddElement(CreateStringProperty("SetupTimeMinutes", plan.SetupTime.TotalMinutes.ToString("0.###", CultureInfo.InvariantCulture)))
-            .AddElement(CreateStringProperty("Cost", plan.Cost.ToString("0.##", CultureInfo.InvariantCulture)));
-
-        if (!string.IsNullOrWhiteSpace(request.ProductId))
+        var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace");
+        if (string.IsNullOrWhiteSpace(ns))
         {
-            builder.AddElement(CreateStringProperty("ProductId", request.ProductId));
+            Logger.LogError("SendCapabilityOffer: missing namespace (config.Namespace/Namespace)");
+            return NodeStatus.Failure;
         }
 
-        builder.AddElement(offeredCapability);
+        var moduleId = Context.Get<string>("ModuleId") ?? Context.Get<string>("config.Agent.ModuleId");
+        if (string.IsNullOrWhiteSpace(moduleId))
+        {
+            Logger.LogError("SendCapabilityOffer: missing module id (ModuleId/config.Agent.ModuleId)");
+            return NodeStatus.Failure;
+        }
 
-        var message = builder.Build();
-        await client.PublishAsync(message, topic);
+        var topic = $"/{ns}/{moduleId}/PlanningAgent/OfferResponse";
+
+        // IMPORTANT: The offer sequence is modeled explicitly (OfferedCapabilitySequence).
+        // Do not embed nested sequences inside OfferedCapability.
+        var offeredSequence = new ManufacturingOfferedCapabilitySequence();
+
+        var pre = plan.SupplementalCapabilities
+            .Where(c => c != null && !IsPostPlacement(c))
+            .ToList();
+        var post = plan.SupplementalCapabilities
+            .Where(c => c != null && IsPostPlacement(c))
+            .ToList();
+
+        foreach (var cap in pre)
+        {
+            offeredSequence.AddCapability(cap);
+        }
+
+        offeredSequence.AddCapability(offeredCapability);
+
+        foreach (var cap in post)
+        {
+            offeredSequence.AddCapability(cap);
+        }
+
+        var proposal = new CapabilityOfferProposalMessage(
+            capability: request.Capability,
+            requirementId: request.RequirementId,
+            offerId: plan.OfferId,
+            station: plan.StationId,
+            earliestStartUtc: plan.StartTimeUtc,
+            cycleTime: plan.CycleTime,
+            setupTime: plan.SetupTime,
+            cost: plan.Cost,
+            offeredCapabilitySequence: offeredSequence,
+            productId: request.ProductId);
+
+        await proposal.PublishAsync(
+            client,
+            topic,
+            senderId: Context.AgentId,
+            senderRole: string.IsNullOrWhiteSpace(Context.AgentRole) ? "PlanningAgent" : Context.AgentRole,
+            receiverId: request.RequesterId,
+            receiverRole: null,
+            conversationId: request.ConversationId).ConfigureAwait(false);
+
         Logger.LogInformation("SendCapabilityOffer: sent proposal {OfferId} for requirement {Requirement}", plan.OfferId, request.RequirementId);
         return NodeStatus.Success;
     }
 
-    private static Property<string> CreateStringProperty(string idShort, string value)
+    private static bool IsPostPlacement(OfferedCapability capability)
     {
-        return new Property<string>(idShort)
+        var placement = capability?.SequencePlacement?.GetText();
+        if (string.IsNullOrWhiteSpace(placement))
         {
-            Value = new PropertyValue<string>(value ?? string.Empty)
-        };
+            return false;
+        }
+
+        return placement.Equals("post", StringComparison.OrdinalIgnoreCase)
+               || placement.Equals("after", StringComparison.OrdinalIgnoreCase)
+               || placement.Equals("afterCapability", StringComparison.OrdinalIgnoreCase);
     }
+
 }

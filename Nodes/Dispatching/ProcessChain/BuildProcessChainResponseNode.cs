@@ -104,109 +104,28 @@ public class BuildProcessChainResponseNode : BTNode
             requiredCapability.SetInstanceIdentifier(requirement.RequirementId);
             requiredCapability.SetRequiredCapabilityReference(CreateCapabilityReference(requirement, negotiation));
 
-            foreach (var offer in requirement.CapabilityOffers)
+            if (requirement.OfferedCapabilitySequences.Count > 0)
             {
-                var offeredSequence = new ManufacturingOfferedCapabilitySequence();
-                AppendCapabilitySequence(offeredSequence, offer);
-                requiredCapability.AddSequence(offeredSequence);
+                foreach (var offeredSequence in requirement.OfferedCapabilitySequences)
+                {
+                    requiredCapability.AddSequence(offeredSequence);
+                }
+            }
+            else
+            {
+                // Backward compatibility: if only single offers exist, wrap each into a sequence.
+                foreach (var offer in requirement.CapabilityOffers)
+                {
+                    var offeredSequence = new ManufacturingOfferedCapabilitySequence();
+                    offeredSequence.AddCapability(offer);
+                    requiredCapability.AddSequence(offeredSequence);
+                }
             }
 
             sequence.AddRequiredCapability(requiredCapability);
         }
 
         return sequence;
-    }
-
-    private void AppendCapabilitySequence(ManufacturingOfferedCapabilitySequence targetSequence, OfferedCapability offeredCapability)
-    {
-        if (targetSequence == null || offeredCapability == null)
-        {
-            return;
-        }
-
-        var added = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        void TryAdd(OfferedCapability cap)
-        {
-            if (cap == null)
-            {
-                return;
-            }
-
-            var id = cap.InstanceIdentifier.GetText() ?? string.Empty;
-            if (!added.Add(id))
-            {
-                return;
-            }
-
-            targetSequence.AddCapability(cap);
-        }
-
-        var pre = new List<OfferedCapability>();
-        var post = new List<OfferedCapability>();
-        var nestedCapabilities = new List<OfferedCapability>();
-        foreach (var element in offeredCapability.CapabilitySequence)
-        {
-            if (element is OfferedCapability nested)
-            {
-                nestedCapabilities.Add(nested);
-                if (IsPostPlacement(nested))
-                {
-                    post.Add(nested);
-                }
-                else
-                {
-                    pre.Add(nested);
-                }
-            }
-        }
-        offeredCapability.CapabilitySequence.Clear();
-        foreach (var nested in nestedCapabilities)
-        {
-            StripCapabilitySequence(nested);
-        }
-        RemoveCapabilitySequenceContainer(offeredCapability);
-
-        foreach (var nested in pre)
-        {
-            TryAdd(nested);
-        }
-
-        TryAdd(offeredCapability);
-
-        foreach (var nested in post)
-        {
-            TryAdd(nested);
-        }
-    }
-
-    private static void StripCapabilitySequence(OfferedCapability capability)
-    {
-        if (capability == null)
-        {
-            return;
-        }
-
-        if (capability.CapabilitySequence.Count > 0)
-        {
-            foreach (var child in capability.CapabilitySequence.OfType<OfferedCapability>())
-            {
-                StripCapabilitySequence(child);
-            }
-        }
-
-        capability.CapabilitySequence.Clear();
-        RemoveCapabilitySequenceContainer(capability);
-    }
-
-    private static void RemoveCapabilitySequenceContainer(OfferedCapability capability)
-    {
-        if (capability == null)
-        {
-            return;
-        }
-
-        capability.CapabilitySequence.Clear();
-        capability.Remove(OfferedCapability.CapabilitySequenceIdShort);
     }
 
     private static bool IsPostPlacement(OfferedCapability capability)

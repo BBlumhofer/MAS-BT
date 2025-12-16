@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using AasSharpClient.Messages;
 using AasSharpClient.Models;
 using AasSharpClient.Models.Helpers;
+using AasSharpClient.Models.ManufacturingSequence;
 using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
@@ -23,6 +24,8 @@ public class CollectCapabilityOfferNode : BTNode
     private readonly ConcurrentQueue<I40Message> _incoming = new();
     private readonly HashSet<string> _respondedModules = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _reissuedCfPs = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _processedOfferInstanceIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _reissueTimestamps = new();
     private bool _subscribed;
     private DateTime _startTime;
     private int _expectedModules;
@@ -145,6 +148,7 @@ public class CollectCapabilityOfferNode : BTNode
         _incoming.Clear();
         _respondedModules.Clear();
         _reissuedCfPs.Clear();
+        _processedOfferInstanceIds.Clear();
         _subscribed = false;
         _expectedModules = 0;
         _expectedModuleIds = null;
@@ -204,6 +208,15 @@ public class CollectCapabilityOfferNode : BTNode
             if (string.IsNullOrWhiteSpace(expected)) continue;
             if (_respondedModules.Contains(expected)) continue;
             if (_reissuedCfPs.Contains(expected)) continue;
+            // Respect recent reissue cooldown to avoid repeated CfP floods when modules re-register frequently.
+            const int ReissueCooldownSeconds = 15;
+            if (_reissueTimestamps.TryGetValue(expected, out var lastReissue))
+            {
+                if ((DateTime.UtcNow - lastReissue).TotalSeconds < ReissueCooldownSeconds)
+                {
+                    continue;
+                }
+            }
 
             var module = state.Modules.FirstOrDefault(m => string.Equals(NormalizeModuleId(m.ModuleId), expected, StringComparison.OrdinalIgnoreCase));
             if (module == null)
@@ -249,8 +262,8 @@ public class CollectCapabilityOfferNode : BTNode
                     // best-effort
                 }
             }
-
             _reissuedCfPs.Add(expected);
+            _reissueTimestamps[expected] = DateTime.UtcNow;
             Logger.LogInformation("CollectCapabilityOffer: re-issued {Count} CfP(s) to late-registered module {Module} on {Topic}", cfps.Count, expected, topic);
         }
     }
@@ -260,7 +273,21 @@ public class CollectCapabilityOfferNode : BTNode
         var requirement = ResolveRequirement(ctx, message);
         if (requirement == null)
         {
-            Logger.LogDebug("CollectCapabilityOffer: received message that does not match any requirement");
+            Logger.LogWarning("CollectCapabilityOffer: received message that does not match any requirement. Conv={Conv} Type={Type} Sender={Sender}",
+                message?.Frame?.ConversationId ?? "<none>",
+                message?.Frame?.Type ?? "<none>",
+                message?.Frame?.Sender?.Identification?.Id ?? "<none>");
+
+            // Dump interaction elements for debugging
+            if (message?.InteractionElements != null)
+            {
+                try
+                {
+                    var elems = string.Join(", ", message.InteractionElements.Select(e => (e as ISubmodelElement)?.IdShort ?? e.GetType().Name));
+                    Logger.LogDebug("CollectCapabilityOffer: InteractionElements for conv {Conv}: {Elems}", message.Frame?.ConversationId ?? "<none>", elems);
+                }
+                catch { }
+            }
             return;
         }
 
@@ -272,41 +299,89 @@ public class CollectCapabilityOfferNode : BTNode
         Logger.LogInformation("CollectCapabilityOffer: processing incoming {Type} from {SenderModule} at {Now:o} (+{SinceStart:F1}ms since start)", messageType, senderModuleId ?? "<unknown>", now, sinceStartMs);
         if (string.Equals(messageType, I40MessageTypes.PROPOSAL, StringComparison.OrdinalIgnoreCase))
         {
+            var requestType = Context.Get<string>("ProcessChain.RequestType") ?? string.Empty;
+            var isManufacturing = string.Equals(requestType, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase);
+
             if (!string.IsNullOrWhiteSpace(senderModuleId))
             {
                 _respondedModules.Add(senderModuleId);
             }
 
             // De-dup: callbacks/conversation routing can deliver the same proposal more than once.
-            var incomingOfferId = ExtractProperty(message, "OfferId") ?? string.Empty;
-            if (!string.IsNullOrWhiteSpace(incomingOfferId)
-                && requirement.CapabilityOffers.Any(o =>
-                    string.Equals(o.InstanceIdentifier?.GetText() ?? string.Empty, incomingOfferId, StringComparison.OrdinalIgnoreCase)))
+            // Prefer explicit top-level OfferId, otherwise try to extract nested InstanceIdentifier from the offered capability.
+            var topLevelOfferId = ExtractProperty(message, "OfferId");
+            var nestedInstanceId = ExtractInstanceIdentifierFromMessage(message);
+            var incomingOfferId = !string.IsNullOrWhiteSpace(topLevelOfferId) ? topLevelOfferId : nestedInstanceId ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(incomingOfferId))
             {
-                Logger.LogDebug("CollectCapabilityOffer: ignored duplicate offer {OfferId} for capability {Capability}", incomingOfferId, requirement.Capability);
-                return;
+                // Already recorded under this requirement?
+                var existsInRequirement = requirement.CapabilityOffers.Any(o =>
+                    string.Equals(o.InstanceIdentifier?.GetText() ?? string.Empty, incomingOfferId, StringComparison.OrdinalIgnoreCase));
+
+                if (existsInRequirement || _processedOfferInstanceIds.Contains(incomingOfferId))
+                {
+                    Logger.LogDebug("CollectCapabilityOffer: ignored duplicate offer {OfferId} (Conv={Conv}) for capability {Capability}", incomingOfferId, message.Frame?.ConversationId ?? "<none>", requirement.Capability);
+                    return;
+                }
+
+                // Mark as processed to avoid duplicates across ticks/callbacks
+                _processedOfferInstanceIds.Add(incomingOfferId);
             }
 
-            IList<OfferedCapability> offers;
             try
             {
-                offers = BuildCapabilityOffers(requirement, message);
+                if (isManufacturing)
+                {
+                    var sequences = BuildOfferedCapabilitySequences(requirement, message);
+                    foreach (var sequence in sequences)
+                    {
+                        requirement.AddSequence(sequence);
+                        Logger.LogInformation(
+                            "CollectCapabilityOffer: recorded offered capability sequence (items={Count}) for capability {Capability} (received at {Now:o}, +{SinceStart:F1}ms)",
+                            sequence.GetCapabilities().Count(),
+                            requirement.Capability,
+                            now,
+                            sinceStartMs);
+                    }
+
+                    // Populate legacy offers list with the first element (for non-manufacturing consumers).
+                    var first = sequences.SelectMany(s => s.GetCapabilities()).FirstOrDefault();
+                    if (first != null)
+                    {
+                        requirement.AddOffer(first);
+                    }
+                }
+                else
+                {
+                    var offers = BuildCapabilityOffers(requirement, message);
+                    foreach (var offer in offers)
+                    {
+                        if (offer == null)
+                        {
+                            continue;
+                        }
+                        requirement.AddOffer(offer);
+                        var offerId = offer.InstanceIdentifier.GetText() ?? "<unknown>";
+                        Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability} (received at {Now:o}, +{SinceStart:F1}ms)", offerId, requirement.Capability, now, sinceStartMs);
+                    }
+                }
             }
             catch (Exception ex)
             {
-                Logger.LogError(ex, "CollectCapabilityOffer: invalid proposal received (cannot extract OfferedCapability)");
-                throw;
-            }
-
-            foreach (var offer in offers)
-            {
-                if (offer == null)
+                Logger.LogError(ex, "CollectCapabilityOffer: invalid proposal received (cannot extract offer payload) Conv={Conv} Type={Type}", message?.Frame?.ConversationId ?? "<none>", message?.Frame?.Type ?? "<none>");
+                // Log raw interaction elements for investigation
+                try
                 {
-                    continue;
+                    if (message?.InteractionElements != null)
+                    {
+                        foreach (var el in message.InteractionElements)
+                        {
+                            Logger.LogDebug("CollectCapabilityOffer: Element Type={Type} IdShort={IdShort}", el.GetType().Name, (el as ISubmodelElement)?.IdShort ?? "");
+                        }
+                    }
                 }
-                requirement.AddOffer(offer);
-                var offerId = offer.InstanceIdentifier.GetText() ?? "<unknown>";
-                Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability} (received at {Now:o}, +{SinceStart:F1}ms)", offerId, requirement.Capability, now, sinceStartMs);
+                catch { }
+                throw;
             }
         }
         else if (string.Equals(messageType, I40MessageTypes.REFUSE_PROPOSAL, StringComparison.OrdinalIgnoreCase) ||
@@ -411,6 +486,138 @@ public class CollectCapabilityOfferNode : BTNode
         }
 
         return provided;
+    }
+
+    private static IList<ManufacturingOfferedCapabilitySequence> BuildOfferedCapabilitySequences(CapabilityRequirement requirement, I40Message message)
+    {
+        var sequences = ExtractOfferedCapabilitySequences(message);
+        if (sequences.Count == 0)
+        {
+            // Backward compatibility: allow a proposal that only contains a single OfferedCapability.
+            var offers = ExtractOfferedCapabilities(message);
+            if (offers.Count == 0)
+            {
+                var details = BuildMissingOfferedCapabilityDetails(requirement, message);
+                throw new InvalidOperationException(details);
+            }
+
+            var fallback = new ManufacturingOfferedCapabilitySequence();
+            foreach (var offer in offers)
+            {
+                EnsureSequenceOfferDefaults(requirement, message, offer, allowOfferIdFallback: offers.Count == 1);
+                EnsureOfferHasInputParameters(requirement, message, offer);
+                fallback.AddCapability(offer);
+            }
+
+            sequences.Add(fallback);
+            return sequences;
+        }
+
+        foreach (var seq in sequences)
+        {
+            var offers = seq.GetCapabilities().ToList();
+            if (offers.Count == 0)
+            {
+                var details = BuildMissingOfferedCapabilityDetails(requirement, message);
+                throw new InvalidOperationException(details);
+            }
+
+            foreach (var offer in offers)
+            {
+                EnsureSequenceOfferDefaults(requirement, message, offer, allowOfferIdFallback: offers.Count == 1);
+                EnsureOfferHasInputParameters(requirement, message, offer);
+            }
+        }
+
+        return sequences;
+    }
+
+    private static void EnsureSequenceOfferDefaults(CapabilityRequirement requirement, I40Message message, OfferedCapability offer, bool allowOfferIdFallback)
+    {
+        var offerId = offer.InstanceIdentifier.GetText();
+        if (string.IsNullOrWhiteSpace(offerId))
+        {
+            if (!allowOfferIdFallback)
+            {
+                throw new InvalidOperationException(BuildMissingOfferedCapabilityDetails(requirement, message, missingFields: new[] { "OfferedCapability.InstanceIdentifier" }));
+            }
+
+            offerId = ExtractProperty(message, "OfferId");
+            if (string.IsNullOrWhiteSpace(offerId))
+            {
+                throw new InvalidOperationException(BuildMissingOfferedCapabilityDetails(requirement, message, missingFields: new[] { "OfferedCapability.InstanceIdentifier / OfferId" }));
+            }
+
+            offer.InstanceIdentifier.Value = new PropertyValue<string>(offerId);
+        }
+
+        // Apply standard defaults.
+        EnsureOfferDefaults(requirement, message, offer);
+    }
+
+    private static List<ManufacturingOfferedCapabilitySequence> ExtractOfferedCapabilitySequences(I40Message message)
+    {
+        var sequences = new List<ManufacturingOfferedCapabilitySequence>();
+        if (message?.InteractionElements == null)
+        {
+            return sequences;
+        }
+
+        foreach (var element in message.InteractionElements)
+        {
+            CollectOfferedCapabilitySequences(element, sequences);
+        }
+
+        return sequences;
+    }
+
+    private static void CollectOfferedCapabilitySequences(ISubmodelElement element, IList<ManufacturingOfferedCapabilitySequence> sink)
+    {
+        if (element == null)
+        {
+            return;
+        }
+
+        switch (element)
+        {
+            case ManufacturingOfferedCapabilitySequence typed:
+                sink.Add(typed);
+                break;
+            case SubmodelElementList list when string.Equals(list.IdShort, "OfferedCapabilitySequence", StringComparison.OrdinalIgnoreCase):
+                sink.Add(MaterializeOfferedCapabilitySequence(list));
+                break;
+            case SubmodelElementCollection collection when collection.Values != null:
+                foreach (var child in collection.Values)
+                {
+                    CollectOfferedCapabilitySequences(child, sink);
+                }
+                break;
+            case SubmodelElementList list:
+                foreach (var child in list)
+                {
+                    CollectOfferedCapabilitySequences(child, sink);
+                }
+                break;
+        }
+    }
+
+    private static ManufacturingOfferedCapabilitySequence MaterializeOfferedCapabilitySequence(SubmodelElementList list)
+    {
+        var seq = new ManufacturingOfferedCapabilitySequence(list?.IdShort ?? "OfferedCapabilitySequence");
+        if (list == null)
+        {
+            return seq;
+        }
+
+        foreach (var item in list)
+        {
+            if (TryMaterializeOfferedCapability(item, out var offer))
+            {
+                seq.AddCapability(offer);
+            }
+        }
+
+        return seq;
     }
 
     private static void EnsureOfferDefaults(CapabilityRequirement requirement, I40Message message, OfferedCapability offer)
@@ -526,9 +733,6 @@ public class CollectCapabilityOfferNode : BTNode
                     CollectOfferedCapabilities(child, sink);
                 }
                 break;
-            case SubmodelElementList list when string.Equals(list.IdShort, OfferedCapability.CapabilitySequenceIdShort, StringComparison.OrdinalIgnoreCase):
-                // Capability sequences are handled when materializing the parent offer; do not treat entries as standalone offers.
-                break;
             case SubmodelElementList list:
                 foreach (var child in list)
                 {
@@ -592,20 +796,6 @@ public class CollectCapabilityOfferNode : BTNode
                         else if (actionElement is ISubmodelElement element)
                         {
                             offer.Actions.Add(EnsureListChildHasNoIdShort(element));
-                        }
-                    }
-                    break;
-                case SubmodelElementList list when string.Equals(list.IdShort, OfferedCapability.CapabilitySequenceIdShort, StringComparison.OrdinalIgnoreCase):
-                    offer.CapabilitySequence.Clear();
-                    foreach (var seqElement in list)
-                    {
-                        if (TryMaterializeOfferedCapability(seqElement, out var nestedCap))
-                        {
-                            offer.CapabilitySequence.Add(nestedCap);
-                        }
-                        else
-                        {
-                            offer.CapabilitySequence.Add(EnsureListChildHasNoIdShort(seqElement));
                         }
                     }
                     break;
@@ -833,6 +1023,56 @@ public class CollectCapabilityOfferNode : BTNode
             if (element is Property prop && string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
             {
                 return prop.GetText();
+            }
+        }
+
+        return null;
+    }
+
+    private static string? ExtractInstanceIdentifierFromMessage(I40Message? message)
+    {
+        if (message?.InteractionElements == null)
+        {
+            return null;
+        }
+
+        foreach (var element in message.InteractionElements)
+        {
+            var found = FindInstanceIdentifierInElement(element);
+            if (!string.IsNullOrWhiteSpace(found))
+            {
+                return found;
+            }
+        }
+
+        return null;
+    }
+
+    private static string? FindInstanceIdentifierInElement(ISubmodelElement? element)
+    {
+        if (element == null) return null;
+
+        if (element is Property prop && string.Equals(prop.IdShort, "InstanceIdentifier", StringComparison.OrdinalIgnoreCase))
+        {
+            return prop.GetText();
+        }
+
+        if (element is SubmodelElementCollection coll)
+        {
+            var children = coll.Values ?? Array.Empty<ISubmodelElement>();
+            foreach (var child in children)
+            {
+                var found = FindInstanceIdentifierInElement(child);
+                if (!string.IsNullOrWhiteSpace(found)) return found;
+            }
+        }
+
+        if (element is SubmodelElementList list)
+        {
+            foreach (var child in list)
+            {
+                var found = FindInstanceIdentifierInElement(child);
+                if (!string.IsNullOrWhiteSpace(found)) return found;
             }
         }
 

@@ -264,7 +264,7 @@ public class NodeRegistry
         Register<CapabilityMatchmakingNode>("CapabilityMatchmaking");
         Register<SchedulingExecuteNode>("SchedulingExecute");
         Register<CalculateOfferNode>("CalculateOffer");
-        Register<SendOfferNode>("SendOffer");
+        //Register<SendOfferNode>("SendOffer");
         Register<UpdateMachineScheduleNode>("UpdateMachineSchedule");
         Register<RequestTransportNode>("RequestTransport");
         Register<DeriveStepFromCapabilityNode>("DeriveStepFromCapability");

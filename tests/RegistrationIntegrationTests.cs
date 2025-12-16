@@ -550,7 +550,7 @@ public class RegistrationIntegrationTests
             .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>("req-1") })
             .Build();
 
-        await publisher.PublishAsync(msg, $"/{ns}/DispatchingAgent/Offer");
+        await publisher.PublishAsync(msg, $"/{ns}/Offer");
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(1)));
         Assert.Same(tcs.Task, completed);

@@ -50,7 +50,7 @@ namespace MAS_BT.Nodes.Dispatching
                             {
                                 var childVal = "";
                                 try { childVal = UnwrapValueFromElement(child); } catch { childVal = "<unavailable>"; }
-                                Logger.LogInformation("  Child: IdShort={Id} Type={Type} Value={Val}", child?.IdShort, child?.GetType().FullName, childVal);
+                                //Logger.LogInformation("  Child: IdShort={Id} Type={Type} Value={Val}", child?.IdShort, child?.GetType().FullName, childVal);
                             }
                         }
                     }

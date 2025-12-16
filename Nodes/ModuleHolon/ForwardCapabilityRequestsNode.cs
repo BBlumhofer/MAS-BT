@@ -14,7 +14,7 @@ namespace MAS_BT.Nodes.ModuleHolon;
 public class ForwardCapabilityRequestsNode : BTNode
 {
     public string TargetTopicTemplate { get; set; } = "/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest";
-    public string ExpectedSenderRole { get; set; } = "DispatchingAgent";
+    public string ExpectedSenderRole { get; set; } = "Dispatching";
 
     private readonly ConcurrentQueue<I40Message> _pendingMessages = new();
     private bool _listenerRegistered;
@@ -114,37 +114,21 @@ public class ForwardCapabilityRequestsNode : BTNode
         {
             return false;
         }
-
-        var senderRole = message.Frame.Sender?.Role?.Name ?? string.Empty;
-        var receiverRole = message.Frame.Receiver?.Role?.Name ?? string.Empty;
-        var receiverId = message.Frame.Receiver?.Identification?.Id ?? string.Empty;
-        var identifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
-
-        if (!string.IsNullOrWhiteSpace(ExpectedSenderRole) &&
-            !string.Equals(senderRole, ExpectedSenderRole, StringComparison.OrdinalIgnoreCase))
+        // Accept only ManufacturingSequence CfP messages, regardless of sender/receiver
+        var msgType = message.Frame.Type ?? string.Empty;
+        // Accept generic callForProposal and any callForProposal subtypes (e.g., ProcessChain, ManufacturingSequence)
+        if (string.Equals(msgType, I40MessageTypes.CALL_FOR_PROPOSAL, StringComparison.OrdinalIgnoreCase))
         {
-            return false;
+            return true;
         }
 
-        // If the dispatcher targeted a specific ModuleId (receiver identification), accept only
-        // when it matches one of our known identifiers. Otherwise accept broadcast CfPs where the
-        // receiver role is ModuleHolon.
-        if (!string.IsNullOrWhiteSpace(receiverId))
+        var prefix = I40MessageTypes.CALL_FOR_PROPOSAL + "/";
+        if (msgType.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
         {
-            if (IsBroadcast(receiverId))
-            {
-                return string.Equals(receiverRole, "ModuleHolon", StringComparison.OrdinalIgnoreCase);
-            }
-
-            return identifiers.Contains(receiverId);
+            return true;
         }
 
-        if (!string.Equals(receiverRole, "ModuleHolon", StringComparison.OrdinalIgnoreCase))
-        {
-            return false;
-        }
-
-        return true;
+        return false;
     }
 
     private static bool IsBroadcast(string receiverId)

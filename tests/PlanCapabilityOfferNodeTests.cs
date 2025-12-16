@@ -134,16 +134,18 @@ public class PlanCapabilityOfferNodeTests
         var offeredCapability = plan!.OfferedCapability;
         Assert.NotNull(offeredCapability);
 
-        var sequence = offeredCapability!.CapabilitySequence.OfType<OfferedCapability>().ToList();
-        Assert.Equal(2, sequence.Count);
-
-        Assert.Equal("transport_before", sequence[0].InstanceIdentifier.GetText());
-        Assert.Equal("pre", sequence[0].SequencePlacement.GetText());
-
-        Assert.Equal("transport_after", sequence[1].InstanceIdentifier.GetText());
-        Assert.Equal("post", sequence[1].SequencePlacement.GetText());
-
         Assert.Equal(2, plan.SupplementalCapabilities.Count);
+        var before = plan.SupplementalCapabilities.Single(c => string.Equals(c.InstanceIdentifier.GetText(), "transport_before", StringComparison.OrdinalIgnoreCase));
+        var after = plan.SupplementalCapabilities.Single(c => string.Equals(c.InstanceIdentifier.GetText(), "transport_after", StringComparison.OrdinalIgnoreCase));
+        Assert.Equal("pre", before.SequencePlacement.GetText());
+        Assert.Equal("post", after.SequencePlacement.GetText());
+
+        var beforeAction = before.Actions.OfType<ActionModel>().FirstOrDefault();
+        var afterAction = after.Actions.OfType<ActionModel>().FirstOrDefault();
+        Assert.NotNull(beforeAction);
+        Assert.NotNull(afterAction);
+        Assert.NotNull(beforeAction!.InputParameters);
+        Assert.NotNull(afterAction!.InputParameters);
     }
 
     private static BTContext CreatePlanningContext()
@@ -157,7 +159,12 @@ public class PlanCapabilityOfferNodeTests
         context.Set("config.Namespace", "phuket");
         context.Set("Namespace", "phuket");
         context.Set("config.Agent.ModuleName", "P102");
+        context.Set("config.Agent.ModuleId", "P102");
         context.Set("ModuleId", "P102");
+
+        // PlanCapabilityOfferNode requires capability references via ICapabilityReferenceQuery.
+        var defaultNeo4jRefJson = "[{\"type\": \"Submodel\", \"value\": \"urn:test:capability-submodel\"}, {\"type\": \"SubmodelElementCollection\", \"value\": \"CapabilitySet\"}, {\"type\": \"SubmodelElementCollection\", \"value\": \"AssembleContainer\"}, {\"type\": \"Capability\", \"value\": \"Assemble\"}]";
+        context.Set("CapabilityReferenceQuery", new FakeCapabilityReferenceQuery(defaultNeo4jRefJson));
 
         var capabilityDescription = BuildCapabilityDescriptionSubmodel();
         context.Set("CapabilityDescriptionSubmodel", capabilityDescription);

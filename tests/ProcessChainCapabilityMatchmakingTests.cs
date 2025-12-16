@@ -23,6 +23,7 @@ namespace MAS_BT.Tests;
 public class ProcessChainCapabilityMatchmakingTests : IDisposable
 {
     private static readonly MessageSerializer Serializer = new();
+    private readonly InMemoryTransport _transport = new();
     private readonly List<MessagingClient> _clients = new();
 
     private static string ResolveTestFile(string name)
@@ -37,7 +38,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
 
     private async Task<MessagingClient> CreateClientAsync(string defaultTopic)
     {
-        IMessagingTransport transport = new InMemoryTransport();
+        IMessagingTransport transport = _transport;
         var client = new MessagingClient(transport, defaultTopic);
         await client.ConnectAsync();
         _clients.Add(client);
@@ -69,6 +70,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         };
         context.Set("config.Namespace", ns);
         context.Set("Namespace", ns);
+        context.Set("config.DispatchingAgent.SimilarityAgentId", $"SimilarityAnalysisAgent_{ns}");
         context.Set("LastReceivedMessage", processChain);
         context.Set("GraphCapabilityQuery", new FakeGraphQuery(true));
 
@@ -77,13 +79,28 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         state.Upsert(new DispatchingModuleInfo { ModuleId = "Module_Assemble", Capabilities = new List<string> { "Assemble" } });
         state.Upsert(new DispatchingModuleInfo { ModuleId = "Module_Drill", Capabilities = new List<string> { "Drill" } });
         state.Upsert(new DispatchingModuleInfo { ModuleId = "Module_Screw", Capabilities = new List<string> { "Screw" } });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = $"SimilarityAnalysisAgent_{ns}", Capabilities = new List<string>() });
+
+        // Seed descriptions/similarity so DispatchCapabilityRequestsNode does not issue similarity requests in this test.
+        var caps = new[] { "Assemble", "Drill", "Screw" };
+        foreach (var cap in caps)
+        {
+            state.SetCapabilityDescription(cap, $"{cap} description");
+        }
+        foreach (var a in caps)
+        {
+            foreach (var b in caps)
+            {
+                state.SetCapabilitySimilarity(a, b, string.Equals(a, b, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.0);
+            }
+        }
         context.Set("DispatchingState", state);
 
         var dispatchClient = await CreateClientAsync("dispatch/logs");
         context.Set("MessagingClient", dispatchClient);
 
         var moduleClient = await CreateClientAsync("module/logs");
-        var offerTopic = $"/{ns}/DispatchingAgent/Offer";
+        var offerTopic = $"/{ns}/Offer";
         await moduleClient.SubscribeAsync(offerTopic);
 
         var parseNode = new ParseProcessChainRequestNode { Context = context };
@@ -137,7 +154,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         await moduleClient.ConnectAsync();
 
         // Dispatcher subscribes to the shared Offer topic.
-        await dispatchingClient.SubscribeAsync($"/{ns}/DispatchingAgent/Offer");
+        await dispatchingClient.SubscribeAsync($"/{ns}/Offer");
 
         // Publish proposals BEFORE CollectCapabilityOffer registers its conversation callback.
         var offeredA = new OfferedCapability("OfferedCapability");
@@ -192,8 +209,8 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
             .AddElement(offeredB)
             .Build();
 
-        await moduleClient.PublishAsync(msgA, $"/{ns}/DispatchingAgent/Offer");
-        await moduleClient.PublishAsync(msgB, $"/{ns}/DispatchingAgent/Offer");
+        await moduleClient.PublishAsync(msgA, $"/{ns}/Offer");
+        await moduleClient.PublishAsync(msgB, $"/{ns}/Offer");
 
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {

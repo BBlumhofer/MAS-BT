@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using AasSharpClient.Models.Helpers;
+using AasSharpClient.Models.Messages;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
@@ -48,7 +49,13 @@ public class DispatchCapabilityRequestsNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
+        var ns = Context.Get<string>("config.Namespace");
+        if (string.IsNullOrWhiteSpace(ns))
+        {
+            Logger.LogError("DispatchCapabilityRequests: missing config.Namespace");
+            return NodeStatus.Failure;
+        }
+
         var topic = TopicHelper.BuildNamespaceTopic(Context, "Offer");
         var requestMode = GetRequestMode();
         var subtype = string.Equals(requestMode, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase)
@@ -63,10 +70,18 @@ public class DispatchCapabilityRequestsNode : BTNode
         var cfpsByTarget = new Dictionary<string, List<I40Message>>(StringComparer.OrdinalIgnoreCase);
         var cfpDispatchUtc = DateTime.UtcNow;
 
-        var similarityAgentId = Context.Get<string>("config.DispatchingAgent.SimilarityAgentId") ?? $"SimilarityAnalysisAgent_{ns}";
-        var similarityAgentRole = Context.Get<string>("config.DispatchingAgent.SimilarityAgentRole");
-        var descriptionTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.DescriptionTimeoutMs", defaultValue: 30000), 500, 5000);
-        var similarityTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.SimilarityTimeoutMs", defaultValue: 30000), 500, 5000);
+        var similarityAgentId = Context.Get<string>("config.DispatchingAgent.SimilarityAgentId");
+        if (string.IsNullOrWhiteSpace(similarityAgentId))
+        {
+            Logger.LogError("DispatchCapabilityRequests: missing config.DispatchingAgent.SimilarityAgentId");
+            return NodeStatus.Failure;
+        }
+
+        var useSimilarityFiltering = GetConfigBool("config.DispatchingAgent.UseSimilarityFiltering", defaultValue: true);
+
+        // Do not clamp 30s configured timeouts down to 5s; LLM-backed description generation often needs >5s.
+        var descriptionTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.DescriptionTimeoutMs", defaultValue: 30000), 500, 300000);
+        var similarityTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.SimilarityTimeoutMs", defaultValue: 30000), 500, 300000);
         var threshold = GetConfigDouble("config.DispatchingAgent.CapabilitySimilarityThreshold", fallbackKey: "config.SimilarityAnalysis.MinSimilarityThreshold", defaultValue: 0.75);
 
         var logSimilarityMatrix = GetConfigInt("config.DispatchingAgent.LogSimilarityMatrix", defaultValue: 0) != 0;
@@ -78,19 +93,32 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         // Ensure we have response handlers/subscriptions for CreateDescription/CalcSimilarity
         await EnsureResponseHandlerRegisteredAsync(client).ConfigureAwait(false);
-        await EnsureCreateDescriptionResponseListenerAsync(client, ns, similarityAgentId, similarityAgentRole).ConfigureAwait(false);
-        await EnsureCalcSimilarityResponseListenerAsync(client, ns, similarityAgentId, similarityAgentRole).ConfigureAwait(false);
+        await EnsureCreateDescriptionResponseListenerAsync(client, similarityAgentId).ConfigureAwait(false);
+        await EnsureCalcSimilarityResponseListenerAsync(client, similarityAgentId).ConfigureAwait(false);
 
         // Ensure descriptions for all registered + requested capabilities are present (cache them)
         var state = Context.Get<DispatchingState>("DispatchingState") ?? new DispatchingState();
         // Store once; state is mutated in-place and uses concurrent dictionaries internally.
         Context.Set("DispatchingState", state);
 
-        // Similarity agent may be optional or might register late. If it's not available, fall back to exact name matching.
+        // Similarity agent must be available.
         var similarityAgentAvailable = state.Modules.Any(m =>
             !string.IsNullOrWhiteSpace(m.ModuleId)
             && string.Equals(m.ModuleId, similarityAgentId, StringComparison.OrdinalIgnoreCase));
-        var allowSimilarity = similarityAgentAvailable && IsSimilarityEnabled();
+
+        var canUseSimilarity = useSimilarityFiltering && similarityAgentAvailable && IsSimilarityEnabled();
+        if (!useSimilarityFiltering)
+        {
+            Logger.LogInformation("DispatchCapabilityRequests: similarity filtering disabled by config; falling back to direct matching");
+        }
+        else if (!similarityAgentAvailable)
+        {
+            Logger.LogWarning("DispatchCapabilityRequests: Similarity agent not registered: {SimilarityAgentId}. Falling back to direct matching.", similarityAgentId);
+        }
+        else if (!IsSimilarityEnabled())
+        {
+            Logger.LogWarning("DispatchCapabilityRequests: Similarity temporarily disabled. Falling back to direct matching.");
+        }
 
         var capabilitiesToDescribe = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var cap in state.Modules.SelectMany(m => m.Capabilities))
@@ -102,7 +130,7 @@ public class DispatchCapabilityRequestsNode : BTNode
             if (!string.IsNullOrWhiteSpace(req.Capability)) capabilitiesToDescribe.Add(req.Capability);
         }
 
-        if (allowSimilarity)
+        if (canUseSimilarity)
         {
             var descTasks = new List<Task>();
             foreach (var cap in capabilitiesToDescribe)
@@ -111,7 +139,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 {
                     descTasks.Add(RunWithLimiterAsync(_createDescriptionLimiter!, async () =>
                     {
-                        var description = await RequestCapabilityDescriptionAsync(client, ns, similarityAgentId, similarityAgentRole, cap, descriptionTimeoutMs).ConfigureAwait(false);
+                        var description = await RequestCapabilityDescriptionAsync(client, similarityAgentId, cap, descriptionTimeoutMs).ConfigureAwait(false);
                         if (description == null)
                         {
                             DisableSimilarityTemporarily($"no description response for capability '{cap}'");
@@ -124,243 +152,215 @@ public class DispatchCapabilityRequestsNode : BTNode
                 try { await Task.WhenAll(descTasks).ConfigureAwait(false); }
                 catch { /* individual failures are logged inside RequestCapabilityDescriptionAsync */ }
             }
+
+            // If similarity was disabled mid-flight, do NOT abort the whole negotiation; fall back.
+            if (!IsSimilarityEnabled())
+            {
+                Logger.LogWarning("DispatchCapabilityRequests: Similarity disabled after description prefetch. Falling back to direct matching.");
+                canUseSimilarity = false;
+            }
         }
-        // Re-evaluate in case description requests disabled similarity.
-        allowSimilarity = similarityAgentAvailable && IsSimilarityEnabled();
 
         // For each requirement, compute candidate modules by similarity and send CfP only to those modules
         var expectedOfferResponders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var requirement in ctx.Requirements)
         {
-            // Re-evaluate similarity availability before every requirement so cooldowns take effect immediately.
-            var allowSimilarityForRequirement = similarityAgentAvailable && IsSimilarityEnabled();
+            var allModules = state.Modules
+                .Where(m => m != null && !string.IsNullOrWhiteSpace(m.ModuleId))
+                .Where(m => !string.Equals(m.ModuleId, similarityAgentId, StringComparison.OrdinalIgnoreCase))
+                .ToList();
 
-            var allModules = state.Modules.ToList();
-            string? descReq = null;
-            if (allowSimilarityForRequirement)
+            var descReq = state.TryGetCapabilityDescription(requirement.Capability, out var descA) ? descA : null;
+
+            List<string> candidateModules;
+            List<(string ModuleId, double Best, string? BestCap)> moduleResults;
+            Dictionary<string, List<(string Capability, double? Score)>>? similarityMatrix = null;
+
+            if (canUseSimilarity)
             {
-                descReq = state.TryGetCapabilityDescription(requirement.Capability, out var descA) ? descA : null;
+                if (string.IsNullOrWhiteSpace(descReq))
+                {
+                    Logger.LogWarning(
+                        "DispatchCapabilityRequests: missing capability description for requirement {Capability}; falling back to direct matching",
+                        requirement.Capability);
+                    canUseSimilarity = false;
+                }
             }
 
-            if (string.IsNullOrWhiteSpace(descReq) || !allowSimilarityForRequirement)
+            if (canUseSimilarity)
             {
-                // Fallback: exact capability name matching if similarity infra is unavailable.
-                var candidateModulesExact = allModules
-                    .Where(m => !string.IsNullOrWhiteSpace(m.ModuleId)
-                                && m.Capabilities.Any(c => string.Equals(c, requirement.Capability, StringComparison.OrdinalIgnoreCase)))
+                // Optional detailed matrix logging; keep per module a list of cap->score.
+                similarityMatrix = new Dictionary<string, List<(string Capability, double? Score)>>(StringComparer.OrdinalIgnoreCase);
+
+                var moduleTasks = allModules.Select(async module =>
+                {
+                    if (module == null || string.IsNullOrWhiteSpace(module.ModuleId) || module.Capabilities.Count == 0)
+                    {
+                        return (ModuleId: module?.ModuleId ?? string.Empty, Best: double.NegativeInfinity, BestCap: (string?)null);
+                    }
+
+                    var simTasks = new List<Task<(string Cap, double? Sim)>>();
+                    foreach (var modCap in module.Capabilities)
+                    {
+                        if (string.IsNullOrWhiteSpace(modCap)) continue;
+                        var descMod = state.TryGetCapabilityDescription(modCap, out var descB) ? descB : null;
+                        if (string.IsNullOrWhiteSpace(descMod)) continue;
+
+                        var capLocal = modCap;
+                        simTasks.Add(RunWithLimiterAsync(_calcSimilarityLimiter!, async () =>
+                        {
+                            var sim = await GetOrRequestCapabilitySimilarityAsync(
+                                    state,
+                                    client,
+                                    ns,
+                                    similarityAgentId,
+                                    requirement.Capability,
+                                    capLocal,
+                                    descReq!,
+                                    descMod!,
+                                    similarityTimeoutMs)
+                                .ConfigureAwait(false);
+                            return (Cap: capLocal, Sim: sim);
+                        }));
+                    }
+
+                    if (simTasks.Count == 0)
+                    {
+                        return (ModuleId: module.ModuleId, Best: double.NegativeInfinity, BestCap: (string?)null);
+                    }
+
+                    var sims = await Task.WhenAll(simTasks).ConfigureAwait(false);
+                    double best = double.NegativeInfinity;
+                    string? bestCap = null;
+                    var rows = new List<(string Capability, double? Score)>(sims.Length);
+                    foreach (var (cap, sim) in sims)
+                    {
+                        rows.Add((cap, sim));
+                        if (sim.HasValue && sim.Value >= best)
+                        {
+                            best = sim.Value;
+                            bestCap = cap;
+                        }
+                    }
+
+                    lock (similarityMatrix)
+                    {
+                        similarityMatrix[module.ModuleId] = rows;
+                    }
+
+                    return (ModuleId: module.ModuleId, Best: best, BestCap: bestCap);
+                }).ToList();
+
+                var results = await Task.WhenAll(moduleTasks).ConfigureAwait(false);
+                moduleResults = results.Select(r => (r.ModuleId, r.Best, r.BestCap)).ToList();
+
+                var ranked = moduleResults
+                    .Where(r => !string.IsNullOrWhiteSpace(r.ModuleId))
+                    .OrderByDescending(r => r.Best)
+                    .ToList();
+
+                var bestOverall = ranked.FirstOrDefault();
+                if (!string.IsNullOrWhiteSpace(requirement.RequirementId))
+                {
+                    var bestText = bestOverall.Best > double.NegativeInfinity
+                        ? $"best={bestOverall.Best:F3} module={bestOverall.ModuleId} via={bestOverall.BestCap ?? "<unknown>"} threshold={threshold:F2}"
+                        : $"best=<none> threshold={threshold:F2}";
+                    bestMatchByRequirementId[requirement.RequirementId] = bestText;
+                }
+
+                candidateModules = moduleResults
+                    .Where(r => r.Best >= threshold && !string.IsNullOrWhiteSpace(r.ModuleId))
+                    .Select(r => r.ModuleId)
+                    .Distinct(StringComparer.OrdinalIgnoreCase)
+                    .ToList();
+
+                if (candidateModules.Count == 0)
+                {
+                    var top = ranked.Take(5)
+                        .Select(r => $"{r.ModuleId}:{(r.Best > double.NegativeInfinity ? r.Best.ToString("F3") : "n/a")}{(string.IsNullOrWhiteSpace(r.BestCap) ? "" : $" via {r.BestCap}")}")
+                        .ToList();
+
+                    Logger.LogWarning(
+                        "DispatchCapabilityRequests: no candidate modules passed similarity threshold for capability {Capability} (threshold={Threshold:F2}). TopMatches=[{Top}]",
+                        requirement.Capability,
+                        threshold,
+                        string.Join("; ", top));
+
+                    if (logSimilarityMatrix && similarityMatrix != null)
+                    {
+                        foreach (var kvp in similarityMatrix.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
+                        {
+                            var line = string.Join(", ", kvp.Value
+                                .OrderByDescending(v => v.Score ?? double.NegativeInfinity)
+                                .Select(v => $"{v.Capability}={(v.Score.HasValue ? v.Score.Value.ToString("F3") : "n/a")}"));
+                            Logger.LogInformation(
+                                "SimilarityMatrix: requirement {Req} vs module {Module}: {Line}",
+                                requirement.Capability,
+                                kvp.Key,
+                                line);
+                        }
+                    }
+                    continue;
+                }
+
+                Logger.LogInformation(
+                    "DispatchCapabilityRequests: similarity kept {Kept}/{Total} modules for capability {Capability} (threshold={Threshold:F2})",
+                    candidateModules.Count,
+                    ranked.Count,
+                    requirement.Capability,
+                    threshold);
+            }
+            else
+            {
+                // Fallback: dispatch by direct capability name match.
+                moduleResults = allModules
+                    .Select(m => (ModuleId: m.ModuleId, Best: m.Capabilities.Any(c => string.Equals(c, requirement.Capability, StringComparison.OrdinalIgnoreCase)) ? 1.0 : 0.0, BestCap: (string?)requirement.Capability))
+                    .ToList();
+
+                candidateModules = allModules
+                    .Where(m => m.Capabilities.Any(c => string.Equals(c, requirement.Capability, StringComparison.OrdinalIgnoreCase)))
                     .Select(m => m.ModuleId)
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
-                if (candidateModulesExact.Count == 0)
+                if (candidateModules.Count == 0)
                 {
+                    // As a last resort, broadcast to all modules with any capabilities so they can self-filter.
+                    candidateModules = allModules
+                        .Where(m => m.Capabilities.Count > 0)
+                        .Select(m => m.ModuleId)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
                     Logger.LogWarning(
-                        "DispatchCapabilityRequests: no candidate modules found for capability {Capability} (similarity unavailable)",
-                        requirement.Capability);
-                    continue;
-                }
-
-                foreach (var m in candidateModulesExact)
-                {
-                    expectedOfferResponders.Add(m);
-                }
-
-                foreach (var tgtModule in candidateModulesExact)
-                {
-                    var builder = new I40MessageBuilder()
-                        .From(Context.AgentId, Context.AgentRole)
-                        .To(tgtModule, "ModuleHolon")
-                        .WithType(I40MessageTypes.CALL_FOR_PROPOSAL, subtype)
-                        .WithConversationId(ctx.ConversationId)
-                        .AddElement(CreateStringProperty("Capability", requirement.Capability))
-                        .AddElement(CreateStringProperty("RequirementId", requirement.RequirementId));
-
-                    if (!string.IsNullOrWhiteSpace(ctx.ProductId))
-                    {
-                        builder.AddElement(CreateStringProperty("ProductId", ctx.ProductId));
-                    }
-
-                    if (requirement.CapabilityContainer != null)
-                    {
-                        builder.AddElement(requirement.CapabilityContainer);
-                    }
-
-                    var cfp = builder.Build();
-                    if (!cfpsByTarget.TryGetValue(tgtModule, out var list))
-                    {
-                        list = new List<I40Message>();
-                        cfpsByTarget[tgtModule] = list;
-                    }
-                    list.Add(cfp);
-
-                    var publishedAt = DateTimeOffset.UtcNow;
-                    await client.PublishAsync(cfp, topic).ConfigureAwait(false);
-                    Logger.LogInformation(
-                        "DispatchCapabilityRequests: CfP published at {Timestamp:o} to {Module} Capability={Capability} Requirement={RequirementId} Topic={Topic}",
-                        publishedAt,
-                        tgtModule,
+                        "DispatchCapabilityRequests: no exact-match modules for capability {Capability}; broadcasting CfP to {Count} modules",
                         requirement.Capability,
-                        requirement.RequirementId,
-                        topic);
+                        candidateModules.Count);
                 }
-
-                continue;
             }
-
-            // Optional detailed matrix logging; keep per module a list of cap->score.
-            var similarityMatrix = new Dictionary<string, List<(string Capability, double? Score)>>(StringComparer.OrdinalIgnoreCase);
-
-            var moduleTasks = allModules.Select(async module =>
-            {
-                if (module == null || string.IsNullOrWhiteSpace(module.ModuleId) || module.Capabilities.Count == 0)
-                {
-                    return (ModuleId: module?.ModuleId ?? string.Empty, Best: double.NegativeInfinity, BestCap: (string?)null);
-                }
-
-                var simTasks = new List<Task<(string Cap, double? Sim)>>();
-                foreach (var modCap in module.Capabilities)
-                {
-                    if (string.IsNullOrWhiteSpace(modCap)) continue;
-                    var descMod = state.TryGetCapabilityDescription(modCap, out var descB) ? descB : null;
-                    if (string.IsNullOrWhiteSpace(descMod)) continue;
-
-                    var capLocal = modCap;
-                    simTasks.Add(RunWithLimiterAsync(_calcSimilarityLimiter!, async () =>
-                    {
-                        var sim = await GetOrRequestCapabilitySimilarityAsync(
-                                state,
-                                client,
-                                ns,
-                                similarityAgentId,
-                                similarityAgentRole,
-                                requirement.Capability,
-                                capLocal,
-                                descReq!,
-                                descMod!,
-                                similarityTimeoutMs)
-                            .ConfigureAwait(false);
-                        return (Cap: capLocal, Sim: sim);
-                    }));
-                }
-
-                if (simTasks.Count == 0)
-                {
-                    return (ModuleId: module.ModuleId, Best: double.NegativeInfinity, BestCap: (string?)null);
-                }
-
-                var sims = await Task.WhenAll(simTasks).ConfigureAwait(false);
-                double best = double.NegativeInfinity;
-                string? bestCap = null;
-                var rows = new List<(string Capability, double? Score)>(sims.Length);
-                foreach (var (cap, sim) in sims)
-                {
-                    rows.Add((cap, sim));
-                    if (sim.HasValue && sim.Value >= best)
-                    {
-                        best = sim.Value;
-                        bestCap = cap;
-                    }
-                }
-
-                lock (similarityMatrix)
-                {
-                    similarityMatrix[module.ModuleId] = rows;
-                }
-
-                return (ModuleId: module.ModuleId, Best: best, BestCap: bestCap);
-            }).ToList();
-
-            var moduleResults = await Task.WhenAll(moduleTasks).ConfigureAwait(false);
-
-            var ranked = moduleResults
-                .Where(r => !string.IsNullOrWhiteSpace(r.ModuleId))
-                .OrderByDescending(r => r.Best)
-                .ToList();
-
-            var bestOverall = ranked.FirstOrDefault();
-            if (!string.IsNullOrWhiteSpace(requirement.RequirementId))
-            {
-                var bestText = bestOverall.Best > double.NegativeInfinity
-                    ? $"best={bestOverall.Best:F3} module={bestOverall.ModuleId} via={bestOverall.BestCap ?? "<unknown>"} threshold={threshold:F2}"
-                    : $"best=<none> threshold={threshold:F2}";
-                bestMatchByRequirementId[requirement.RequirementId] = bestText;
-            }
-
-            var candidateModules = moduleResults
-                .Where(r => r.Best >= threshold && !string.IsNullOrWhiteSpace(r.ModuleId))
-                .Select(r => r.ModuleId)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToList();
 
             foreach (var m in candidateModules)
             {
                 expectedOfferResponders.Add(m);
             }
 
-            if (candidateModules.Count == 0)
-            {
-                var top = ranked.Take(5)
-                    .Select(r => $"{r.ModuleId}:{(r.Best > double.NegativeInfinity ? r.Best.ToString("F3") : "n/a")}{(string.IsNullOrWhiteSpace(r.BestCap) ? "" : $" via {r.BestCap}")}")
-                    .ToList();
-
-                Logger.LogWarning(
-                    "DispatchCapabilityRequests: no candidate modules passed similarity threshold for capability {Capability} (threshold={Threshold:F2}). TopMatches=[{Top}]",
-                    requirement.Capability,
-                    threshold,
-                    string.Join("; ", top));
-
-                if (logSimilarityMatrix)
-                {
-                    foreach (var kvp in similarityMatrix.OrderBy(k => k.Key, StringComparer.OrdinalIgnoreCase))
-                    {
-                        var line = string.Join(", ", kvp.Value
-                            .OrderByDescending(v => v.Score ?? double.NegativeInfinity)
-                            .Select(v => $"{v.Capability}={(v.Score.HasValue ? v.Score.Value.ToString("F3") : "n/a")}"));
-                        Logger.LogInformation(
-                            "SimilarityMatrix: requirement {Req} vs module {Module}: {Line}",
-                            requirement.Capability,
-                            kvp.Key,
-                            line);
-                    }
-                }
-                continue;
-            }
-
-            Logger.LogInformation(
-                "DispatchCapabilityRequests: similarity kept {Kept}/{Total} modules for capability {Capability} (threshold={Threshold:F2})",
-                candidateModules.Count,
-                ranked.Count,
-                requirement.Capability,
-                threshold);
-
             // send CfP individually to candidate modules
             foreach (var tgtModule in candidateModules.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                var builder = new I40MessageBuilder()
-                    .From(Context.AgentId, Context.AgentRole)
-                    .To(tgtModule, "ModuleHolon")
-                    .WithType(I40MessageTypes.CALL_FOR_PROPOSAL, subtype)
-                    .WithConversationId(ctx.ConversationId)
-                    .AddElement(CreateStringProperty("Capability", requirement.Capability))
-                    .AddElement(CreateStringProperty("RequirementId", requirement.RequirementId));
+                var cfpMessage = new CapabilityCallForProposalMessage(
+                    Context.AgentId,
+                    Context.AgentRole,
+                    tgtModule,
+                    "ModuleHolon",
+                    ctx.ConversationId,
+                    subtype,
+                    requirement.Capability,
+                    requirement.RequirementId,
+                    ctx.ProductId,
+                    capabilityDescription: descReq,
+                    capabilityContainer: requirement.CapabilityContainer);
 
-                if (!string.IsNullOrWhiteSpace(ctx.ProductId))
-                {
-                    builder.AddElement(CreateStringProperty("ProductId", ctx.ProductId));
-                }
-
-                if (requirement.CapabilityContainer != null)
-                {
-                    builder.AddElement(requirement.CapabilityContainer);
-                }
-
-                // attach cached description if available
-                if (allowSimilarity && state.TryGetCapabilityDescription(requirement.Capability, out var descForReq) && !string.IsNullOrWhiteSpace(descForReq))
-                {
-                    builder.AddElement(CreateStringProperty("CapabilityDescription", descForReq));
-                }
-
-                var cfp = builder.Build();
+                var cfp = cfpMessage.ToI40Message();
                 if (!cfpsByTarget.TryGetValue(tgtModule, out var list))
                 {
                     list = new List<I40Message>();
@@ -369,7 +369,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 list.Add(cfp);
 
                 var publishedAt = DateTimeOffset.UtcNow;
-                await client.PublishAsync(cfp, topic).ConfigureAwait(false);
+                await cfpMessage.PublishAsync(client, topic).ConfigureAwait(false);
                 Logger.LogInformation(
                     "DispatchCapabilityRequests: CfP published at {Timestamp:o} to {Module} Capability={Capability} Requirement={RequirementId} Topic={Topic}",
                     publishedAt,
@@ -391,6 +391,36 @@ public class DispatchCapabilityRequestsNode : BTNode
         var totalCfPs = cfpsByTarget.Values.Sum(v => v?.Count ?? 0);
         Logger.LogInformation("DispatchCapabilityRequests: published {Count} CfP messages to {Topic}", totalCfPs, topic);
         return NodeStatus.Success;
+    }
+
+    private bool GetConfigBool(string key, bool defaultValue)
+    {
+        try
+        {
+            var v = Context.Get<object>(key);
+            if (v is bool b) return b;
+            if (v is string s && bool.TryParse(s, out var parsed)) return parsed;
+            if (v is int i) return i != 0;
+            if (v is long l) return l != 0;
+            if (v is System.Text.Json.JsonElement je)
+            {
+                if (je.ValueKind == System.Text.Json.JsonValueKind.True) return true;
+                if (je.ValueKind == System.Text.Json.JsonValueKind.False) return false;
+                if (je.ValueKind == System.Text.Json.JsonValueKind.Number && je.TryGetInt32(out var n)) return n != 0;
+                if (je.ValueKind == System.Text.Json.JsonValueKind.String)
+                {
+                    var str = je.GetString();
+                    if (bool.TryParse(str, out var p)) return p;
+                    if (int.TryParse(str, out var pn)) return pn != 0;
+                }
+            }
+        }
+        catch
+        {
+            // ignore
+        }
+
+        return defaultValue;
     }
 
     private string GetRequestMode()
@@ -435,21 +465,18 @@ public class DispatchCapabilityRequestsNode : BTNode
         return Task.CompletedTask;
     }
 
-    private async Task EnsureCreateDescriptionResponseListenerAsync(MessagingClient client, string ns, string similarityAgentId, string? similarityAgentRole)
+    private async Task EnsureCreateDescriptionResponseListenerAsync(MessagingClient client, string similarityAgentId)
     {
         if (!_subscribedCreateDescriptionResponse)
         {
-            // SimilarityAnalysisAgent currently answers on its own request topics.
-            // Subscribe to both (legacy receiver-topic and request-topic) to be robust.
-            var responseTopicOnReceiver = TopicHelper.BuildAgentTopic(Context, Context.AgentId, "CreateDescription");
-            var responseTopicOnRequester = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CreateDescription", similarityAgentRole);
-            await client.SubscribeAsync(responseTopicOnReceiver).ConfigureAwait(false);
+            // SimilarityAnalysisAgent BT subscribes to /{ns}/{AgentId}/CreateDescription (no role segment).
+            var responseTopicOnRequester = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CreateDescription");
             await client.SubscribeAsync(responseTopicOnRequester).ConfigureAwait(false);
             _subscribedCreateDescriptionResponse = true;
         }
     }
 
-    private async Task<string?> RequestCapabilityDescriptionAsync(MessagingClient client, string ns, string similarityAgentId, string? similarityAgentRole, string capability, int timeoutMs)
+    private async Task<string?> RequestCapabilityDescriptionAsync(MessagingClient client, string similarityAgentId, string capability, int timeoutMs)
     {
         if (string.IsNullOrWhiteSpace(capability)) return null;
 
@@ -465,15 +492,23 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         try
         {
-            var builder = new I40MessageBuilder()
-                .From(Context.AgentId, Context.AgentRole)
-                .To(similarityAgentId, "AIAgent")
-                .WithType("createDescription")
-                .WithConversationId(convId)
-                .AddElement(CreateStringProperty("Capability_0", capability.Trim()));
+            var request = new SimilarityCreateDescriptionRequestMessage(
+                Context.AgentId,
+                Context.AgentRole,
+                similarityAgentId,
+                "AIAgent",
+                convId,
+                capability);
 
-            var requestTopic = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CreateDescription", similarityAgentRole);
-            await client.PublishAsync(builder.Build(), requestTopic).ConfigureAwait(false);
+            // SimilarityAnalysisAgent listens on /{ns}/{AgentId}/CreateDescription (no role segment).
+            var requestTopic = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CreateDescription");
+            Logger.LogInformation(
+                "DispatchCapabilityRequests: publishing createDescription request to Topic={Topic} Receiver={ReceiverId} ReceiverRole={ReceiverRole} Capability={Capability}",
+                requestTopic,
+                similarityAgentId,
+                "AIAgent",
+                capability);
+            await request.PublishAsync(client, requestTopic).ConfigureAwait(false);
 
             var response = await WaitForResponseAsync(tcs, timeoutMs).ConfigureAwait(false);
             if (response == null)
@@ -520,9 +555,7 @@ public class DispatchCapabilityRequestsNode : BTNode
 
     private async Task<double?> RequestCapabilitySimilarityAsync(
         MessagingClient client,
-        string ns,
         string similarityAgentId,
-        string? similarityAgentRole,
         string capabilityA,
         string capabilityB,
         string descA,
@@ -536,16 +569,25 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         try
         {
-            var builder = new I40MessageBuilder()
-                .From(Context.AgentId, Context.AgentRole)
-                .To(similarityAgentId, "AIAgent")
-                .WithType("calcSimilarity")
-                .WithConversationId(convId)
-                .AddElement(CreateStringProperty("Description_1", descA))
-                .AddElement(CreateStringProperty("Description_2", descB));
+            var request = new SimilarityCalcSimilarityRequestMessage(
+                Context.AgentId,
+                Context.AgentRole,
+                similarityAgentId,
+                "AIAgent",
+                convId,
+                descA,
+                descB);
 
-            var requestTopic = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcSimilarity", similarityAgentRole);
-            await client.PublishAsync(builder.Build(), requestTopic).ConfigureAwait(false);
+            // SimilarityAnalysisAgent listens on /{ns}/{AgentId}/CalcSimilarity (no role segment).
+            var requestTopic = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcSimilarity");
+            Logger.LogInformation(
+                "DispatchCapabilityRequests: publishing calcSimilarity request to Topic={Topic} Receiver={ReceiverId} ReceiverRole={ReceiverRole} CapabilityA={CapabilityA} CapabilityB={CapabilityB}",
+                requestTopic,
+                similarityAgentId,
+                "AIAgent",
+                capabilityA,
+                capabilityB);
+            await request.PublishAsync(client, requestTopic).ConfigureAwait(false);
 
             var response = await WaitForResponseAsync(tcs, timeoutMs).ConfigureAwait(false);
             if (response == null)
@@ -585,7 +627,6 @@ public class DispatchCapabilityRequestsNode : BTNode
         MessagingClient client,
         string ns,
         string similarityAgentId,
-        string? similarityAgentRole,
         string capabilityA,
         string capabilityB,
         string descA,
@@ -605,9 +646,7 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         var sim = await RequestCapabilitySimilarityAsync(
             client,
-            ns,
             similarityAgentId,
-            similarityAgentRole,
             capabilityA,
             capabilityB,
             descA,
@@ -620,29 +659,14 @@ public class DispatchCapabilityRequestsNode : BTNode
         return sim;
     }
 
-    private async Task EnsureCalcSimilarityResponseListenerAsync(MessagingClient client, string ns, string similarityAgentId, string? similarityAgentRole)
+    private async Task EnsureCalcSimilarityResponseListenerAsync(MessagingClient client, string similarityAgentId)
     {
             if (!_subscribedCalcSimilarityResponse)
             {
-                // SimilarityAnalysisAgent may answer on multiple topics. Subscribe to legacy and pairwise topics.
-                var responseTopicOnReceiver = TopicHelper.BuildAgentTopic(Context, Context.AgentId, "CalcSimilarity");
-                var responseTopicOnRequester = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcSimilarity", similarityAgentRole);
-                var responseTopicOnReceiverPairwise = TopicHelper.BuildAgentTopic(Context, Context.AgentId, "CalcPairwiseSimilarity");
-                var responseTopicOnRequesterPairwise = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcPairwiseSimilarity", similarityAgentRole);
-                await client.SubscribeAsync(responseTopicOnReceiver).ConfigureAwait(false);
-                await client.SubscribeAsync(responseTopicOnRequester).ConfigureAwait(false);
-                await client.SubscribeAsync(responseTopicOnReceiverPairwise).ConfigureAwait(false);
+                var responseTopicOnRequesterPairwise = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcPairwiseSimilarity");
                 await client.SubscribeAsync(responseTopicOnRequesterPairwise).ConfigureAwait(false);
                 _subscribedCalcSimilarityResponse = true;
             }
-    }
-
-    private static Property<string> CreateStringProperty(string idShort, string value)
-    {
-        return new Property<string>(idShort)
-        {
-            Value = new PropertyValue<string>(value ?? string.Empty)
-        };
     }
 
     private int GetConfigInt(string key, int defaultValue)

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using AasSharpClient.Models.ProcessChain;
+using AasSharpClient.Models.ManufacturingSequence;
 using AasSharpClient.Models;
 using BaSyx.Models.AdminShell;
 
@@ -18,7 +19,7 @@ public class ProcessChainNegotiationContext
     public SubmodelElementCollection? RequestProcessChainElement { get; set; }
     public CapabilityRequirementCollection Requirements { get; } = new CapabilityRequirementCollection();
 
-    public bool HasCompleteProcessChain => Requirements.All(r => r.CapabilityOffers.Count > 0);
+    public bool HasCompleteProcessChain => Requirements.All(r => r.CapabilityOffers.Count > 0 || r.OfferedCapabilitySequences.Count > 0);
 }
 
 public class CapabilityRequirement
@@ -27,6 +28,7 @@ public class CapabilityRequirement
     public string RequirementId { get; set; } = Guid.NewGuid().ToString();
     public CapabilityContainer? CapabilityContainer { get; set; }
     public IList<OfferedCapability> CapabilityOffers { get; } = new List<OfferedCapability>();
+    public IList<ManufacturingOfferedCapabilitySequence> OfferedCapabilitySequences { get; } = new List<ManufacturingOfferedCapabilitySequence>();
     public string? RequestedInstanceIdentifier { get; set; }
     public Reference? RequestedCapabilityReference { get; set; }
     public SubmodelElementCollection? RequestedCapabilityElement { get; set; }
@@ -36,6 +38,14 @@ public class CapabilityRequirement
         if (offer != null)
         {
             CapabilityOffers.Add(offer);
+        }
+    }
+
+    public void AddSequence(ManufacturingOfferedCapabilitySequence sequence)
+    {
+        if (sequence != null)
+        {
+            OfferedCapabilitySequences.Add(sequence);
         }
     }
 }

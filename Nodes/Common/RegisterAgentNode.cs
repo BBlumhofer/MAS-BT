@@ -62,15 +62,28 @@ namespace MAS_BT.Nodes.Common
 
             // Determine parent agent:
             // 1) explicit node attribute ParentAgent
-            // 2) config.Agent.ParentAgent / config.Agent.ParentModuleId
+            // 2) config.Agent.ParentAgent / config.Agent.ParentModuleId (fallback)
+            //    Special-case: if config.Agent.ParentAgent equals the namespace (e.g. "_PHUKET"),
+            //    treat it as an explicit request to register to /{ns}/register.
             // 3) role-based fallback
             var parentAgent = ResolveTemplates(ParentAgent);
-            if (string.IsNullOrWhiteSpace(parentAgent))
+            var configuredParentAgent = Context.Get<string>("config.Agent.ParentAgent")
+                                      ?? Context.Get<string>("config.Agent.ParentId")
+                                      ?? Context.Get<string>("config.Agent.ParentModuleId")
+                                      ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(configuredParentAgent))
             {
-                parentAgent = Context.Get<string>("config.Agent.ParentAgent")
-                           ?? Context.Get<string>("config.Agent.ParentId")
-                           ?? Context.Get<string>("config.Agent.ParentModuleId")
-                           ?? string.Empty;
+                var configParentTrimmed = configuredParentAgent.Trim().Trim('/');
+                if (string.Equals(configParentTrimmed, ns, StringComparison.OrdinalIgnoreCase))
+                {
+                    // Force namespace registration even if the BT configured a different ParentAgent.
+                    parentAgent = configuredParentAgent;
+                }
+                else if (string.IsNullOrWhiteSpace(parentAgent))
+                {
+                    parentAgent = configuredParentAgent;
+                }
             }
 
             if (string.IsNullOrWhiteSpace(parentAgent))
@@ -292,7 +305,10 @@ namespace MAS_BT.Nodes.Common
                 return string.Empty;
             }
 
-            // Some BTs pass namespace as ParentAgent to indicate "register to namespace"
+            // Strip accidental leading/trailing slashes early so comparisons work with "/_PHUKET" etc.
+            parentAgent = parentAgent.Trim('/');
+
+            // Some BTs/configs pass namespace as ParentAgent to indicate "register to namespace"
             if (string.Equals(parentAgent, ns, StringComparison.OrdinalIgnoreCase))
             {
                 return string.Empty;
@@ -304,9 +320,6 @@ namespace MAS_BT.Nodes.Common
             {
                 return "DispatchingAgent";
             }
-
-            // Strip accidental leading/trailing slashes
-            parentAgent = parentAgent.Trim('/');
 
             return parentAgent;
         }

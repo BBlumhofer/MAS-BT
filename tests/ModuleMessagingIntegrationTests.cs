@@ -35,6 +35,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
     private static readonly string? RealMqttPassword = Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_PASSWORD");
 
     private readonly List<MessagingClient> _clients = new();
+    private readonly InMemoryTransport _inMemoryTransport = new();
 
     private static string ResolveTestFile(string name)
     {
@@ -57,7 +58,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
                 $"masbt-tests-{Guid.NewGuid():N}",
                 RealMqttUsername,
                 RealMqttPassword)
-            : new InMemoryTransport();
+            : _inMemoryTransport;
 
         var client = new MessagingClient(transport, defaultTopic);
         await client.ConnectAsync();
@@ -84,7 +85,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         moduleContext.Set("config.Agent.ModuleName", moduleNameAlias);
 
         var moduleClient = await CreateClientAsync($"{moduleId}/logs");
-        await moduleClient.SubscribeAsync($"/{ns}/DispatchingAgent/Offer");
+        await moduleClient.SubscribeAsync($"/{ns}/Offer");
         moduleContext.Set("MessagingClient", moduleClient);
 
         var planningClients = new List<(MessagingClient client, TaskCompletionSource<I40Message?> tcs)>();
@@ -139,7 +140,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
 
         Console.WriteLine($"ReceiverId={cfpMessage.Frame?.Receiver?.Identification?.Id}");
 
-        await dispatcherClient.PublishAsync(cfpMessage, $"/{ns}/DispatchingAgent/Offer");
+        await dispatcherClient.PublishAsync(cfpMessage, $"/{ns}/Offer");
 
         var forwardStatus = await node.Execute();
         Assert.Equal(NodeStatus.Success, forwardStatus);
@@ -171,7 +172,9 @@ public class ModuleMessagingIntegrationTests : IDisposable
         planningContext.Set("config.Namespace", ns);
         planningContext.Set("Namespace", ns);
         planningContext.Set("config.Agent.ModuleName", moduleId);
+        planningContext.Set("config.Agent.ModuleId", moduleId);
         planningContext.Set("ModuleId", moduleId);
+        planningContext.Set("CapabilityReferenceQuery", new PassthroughCapabilityReferenceQuery());
 
         var planningClient = await CreateClientAsync("planning/logs");
         planningContext.Set("MessagingClient", planningClient);
@@ -211,12 +214,17 @@ public class ModuleMessagingIntegrationTests : IDisposable
         Assert.Equal(I40MessageTypes.PROPOSAL, proposal!.Frame?.Type);
         Assert.Equal(conversationId, proposal.Frame?.ConversationId);
 
-        var offered = proposal.InteractionElements
-            .OfType<SubmodelElementCollection>()
-            .FirstOrDefault(smc => string.Equals(smc.IdShort, "OfferedCapability", StringComparison.OrdinalIgnoreCase));
-        Assert.NotNull(offered);
+        var offeredSequence = proposal.InteractionElements
+            .OfType<SubmodelElementList>()
+            .FirstOrDefault(list => string.Equals(list.IdShort, "OfferedCapabilitySequence", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(offeredSequence);
 
-        var actions = offered!.Values?.OfType<SubmodelElementList>()
+        var firstOffered = offeredSequence!
+            .OfType<SubmodelElementCollection>()
+            .FirstOrDefault();
+        Assert.NotNull(firstOffered);
+
+        var actions = firstOffered!.Values?.OfType<SubmodelElementList>()
             .FirstOrDefault(list => string.Equals(list.IdShort, "Actions", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(actions);
         Assert.True(actions!.Any(), "OfferedCapability.Actions must not be empty");
@@ -269,8 +277,11 @@ public class ModuleMessagingIntegrationTests : IDisposable
         planningContext.Set("config.Namespace", ns);
         planningContext.Set("Namespace", ns);
         planningContext.Set("config.Agent.ModuleName", moduleId);
+        planningContext.Set("config.Agent.ModuleId", moduleId);
         planningContext.Set("ModuleId", moduleId);
         planningContext.Set("LastReceivedMessage", cfp);
+
+        planningContext.Set("CapabilityReferenceQuery", new PassthroughCapabilityReferenceQuery());
 
         var planningClient = await CreateClientAsync("planning/logs");
         planningContext.Set("MessagingClient", planningClient);
@@ -298,12 +309,17 @@ public class ModuleMessagingIntegrationTests : IDisposable
         Assert.Equal(I40MessageTypes.PROPOSAL, proposal!.Frame?.Type);
         Assert.Equal(cfp.Frame?.ConversationId, proposal.Frame?.ConversationId);
 
-        var offered = proposal.InteractionElements
-            .OfType<SubmodelElementCollection>()
-            .FirstOrDefault(smc => string.Equals(smc.IdShort, "OfferedCapability", StringComparison.OrdinalIgnoreCase));
-        Assert.NotNull(offered);
+        var offeredSequence = proposal.InteractionElements
+            .OfType<SubmodelElementList>()
+            .FirstOrDefault(list => string.Equals(list.IdShort, "OfferedCapabilitySequence", StringComparison.OrdinalIgnoreCase));
+        Assert.NotNull(offeredSequence);
 
-        var actions = offered!.Values?.OfType<SubmodelElementList>()
+        var firstOffered = offeredSequence!
+            .OfType<SubmodelElementCollection>()
+            .FirstOrDefault();
+        Assert.NotNull(firstOffered);
+
+        var actions = firstOffered!.Values?.OfType<SubmodelElementList>()
             .FirstOrDefault(list => string.Equals(list.IdShort, "Actions", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(actions);
         Assert.True(actions!.Any(), "OfferedCapability.Actions must not be empty");
@@ -334,16 +350,16 @@ public class ModuleMessagingIntegrationTests : IDisposable
         };
         context.Set("config.Namespace", ns);
         context.Set("Namespace", ns);
+        context.Set("config.DispatchingAgent.SimilarityAgentId", $"SimilarityAnalysisAgent_{ns}");
         context.Set("LastReceivedMessage", manufacturingRequest);
         context.Set("ProcessChain.RequestType", "ManufacturingSequence");
         context.Set("CapabilityReferenceQuery", new PassthroughCapabilityReferenceQuery());
 
         var dispatchClient = await CreateClientAsync("dispatch/logs");
-        await dispatchClient.SubscribeAsync($"/{ns}/DispatchingAgent/Offer");
         context.Set("MessagingClient", dispatchClient);
 
         var moduleClient = await CreateClientAsync("module/logs");
-        var offerTopic = $"/{ns}/DispatchingAgent/Offer";
+        var offerTopic = $"/{ns}/Offer";
         await moduleClient.SubscribeAsync(offerTopic);
 
         var parseNode = new ParseProcessChainRequestNode { Context = context };
@@ -357,6 +373,20 @@ public class ModuleMessagingIntegrationTests : IDisposable
         state.Upsert(new DispatchingModuleInfo { ModuleId = "P101", Capabilities = new List<string> { "Drill" } });
         state.Upsert(new DispatchingModuleInfo { ModuleId = "P100", Capabilities = new List<string> { "Screw" } });
         state.Upsert(new DispatchingModuleInfo { ModuleId = "P102", Capabilities = new List<string> { "Assemble" } });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = $"SimilarityAnalysisAgent_{ns}", Capabilities = new List<string>() });
+
+        var capsForSimilarity = new[] { "Drill", "Screw", "Assemble" };
+        foreach (var cap in capsForSimilarity)
+        {
+            state.SetCapabilityDescription(cap, $"{cap} description");
+        }
+        foreach (var a in capsForSimilarity)
+        {
+            foreach (var b in capsForSimilarity)
+            {
+                state.SetCapabilitySimilarity(a, b, string.Equals(a, b, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.0);
+            }
+        }
         context.Set("DispatchingState", state);
         context.Set("ProcessChain.CfPTopic", offerTopic);
 
@@ -389,6 +419,9 @@ public class ModuleMessagingIntegrationTests : IDisposable
         var collectNode = new CollectCapabilityOfferNode { Context = context, TimeoutSeconds = 5 };
         Assert.Equal(NodeStatus.Running, await collectNode.Execute());
 
+        // This test validates ManufacturingSequence mode.
+        context.Set("ProcessChain.RequestType", "ManufacturingSequence");
+
         foreach (var cfp in cfps)
         {
             var capability = ExtractProperty(cfp, "Capability") ?? string.Empty;
@@ -408,8 +441,8 @@ public class ModuleMessagingIntegrationTests : IDisposable
                 }
                 : Array.Empty<(string InstanceId, TransportPlacement Placement)>();
 
-            var offeredCapability = CreateOfferedCapabilityWithTransports(moduleId, capability, transports);
-            await PublishProposalAsync(moduleClient, cfp, moduleId, offeredCapability, ns);
+            var offeredSequence = CreateOfferedCapabilitySequenceWithTransports(moduleId, capability, transports);
+            await PublishManufacturingProposalAsync(moduleClient, cfp, moduleId, offeredSequence, ns);
         }
 
         NodeStatus collectStatus;
@@ -467,13 +500,14 @@ public class ModuleMessagingIntegrationTests : IDisposable
         };
         context.Set("config.Namespace", "phuket");
         context.Set("Namespace", "phuket");
+        context.Set("config.DispatchingAgent.SimilarityAgentId", "SimilarityAnalysisAgent_phuket");
         context.Set("LastReceivedMessage", processChain);
 
         var dispatchClient = await CreateClientAsync("dispatch/logs");
         context.Set("MessagingClient", dispatchClient);
 
         var moduleClient = await CreateClientAsync("module/logs");
-        await moduleClient.SubscribeAsync("/phuket/DispatchingAgent/Offer");
+        await moduleClient.SubscribeAsync("/phuket/Offer");
 
         var parseNode = new ParseProcessChainRequestNode { Context = context };
         var dispatchNode = new DispatchCapabilityRequestsNode { Context = context };
@@ -493,6 +527,18 @@ public class ModuleMessagingIntegrationTests : IDisposable
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToList();
         state.Upsert(new DispatchingModuleInfo { ModuleId = "P102", Capabilities = caps });
+        state.Upsert(new DispatchingModuleInfo { ModuleId = "SimilarityAnalysisAgent_phuket", Capabilities = new List<string>() });
+        foreach (var cap in caps)
+        {
+            state.SetCapabilityDescription(cap, $"{cap} description");
+        }
+        foreach (var a in caps)
+        {
+            foreach (var b in caps)
+            {
+                state.SetCapabilitySimilarity(a, b, string.Equals(a, b, StringComparison.OrdinalIgnoreCase) ? 1.0 : 0.0);
+            }
+        }
         context.Set("DispatchingState", state);
 
         var offers = new List<I40Message>();
@@ -563,19 +609,56 @@ public class ModuleMessagingIntegrationTests : IDisposable
         offered.OfferedCapabilityReference.Value = new ReferenceElementValue(CreateCapabilityReference(capability));
         offered.AddAction(new ActionModel($"Action_{capability}", capability, ActionStatusEnum.PLANNED, null, null, null, null, moduleId));
 
+        return offered;
+    }
+
+    private static ManufacturingOfferedCapabilitySequence CreateOfferedCapabilitySequenceWithTransports(
+        string moduleId,
+        string capability,
+        IEnumerable<(string InstanceId, TransportPlacement Placement)> transports)
+    {
+        var main = CreateOfferedCapabilityWithTransports(moduleId, capability, Array.Empty<(string, TransportPlacement)>());
+        var seq = new ManufacturingOfferedCapabilitySequence();
+
+        // pre
         foreach (var transport in transports ?? Array.Empty<(string InstanceId, TransportPlacement Placement)>())
         {
+            if (transport.Placement == TransportPlacement.AfterCapability)
+            {
+                continue;
+            }
+
             var nested = new OfferedCapability("OfferedCapability");
             nested.InstanceIdentifier.Value = new PropertyValue<string>(transport.InstanceId);
             nested.Station.Value = new PropertyValue<string>("Transport");
-            nested.SetSequencePlacement(transport.Placement == TransportPlacement.AfterCapability ? "post" : "pre");
+            nested.SetSequencePlacement("pre");
             nested.SetCost(0);
             nested.OfferedCapabilityReference.Value = new ReferenceElementValue(CreateCapabilityReference("Transport"));
             nested.AddAction(new ActionModel("ActionTransport", "Transport", ActionStatusEnum.PLANNED, null, null, null, null, "Transport"));
-            offered.AddCapabilityToSequence(nested);
+            seq.AddCapability(nested);
         }
 
-        return offered;
+        seq.AddCapability(main);
+
+        // post
+        foreach (var transport in transports ?? Array.Empty<(string InstanceId, TransportPlacement Placement)>())
+        {
+            if (transport.Placement != TransportPlacement.AfterCapability)
+            {
+                continue;
+            }
+
+            var nested = new OfferedCapability("OfferedCapability");
+            nested.InstanceIdentifier.Value = new PropertyValue<string>(transport.InstanceId);
+            nested.Station.Value = new PropertyValue<string>("Transport");
+            nested.SetSequencePlacement("post");
+            nested.SetCost(0);
+            nested.OfferedCapabilityReference.Value = new ReferenceElementValue(CreateCapabilityReference("Transport"));
+            nested.AddAction(new ActionModel("ActionTransport", "Transport", ActionStatusEnum.PLANNED, null, null, null, null, "Transport"));
+            seq.AddCapability(nested);
+        }
+
+        return seq;
     }
 
     private static async Task PublishProposalAsync(
@@ -598,7 +681,30 @@ public class ModuleMessagingIntegrationTests : IDisposable
             .AddElement(offeredCapability)
             .Build();
 
-        await client.PublishAsync(message, $"/{ns}/DispatchingAgent/Offer");
+        await client.PublishAsync(message, $"/{ns}/Offer");
+    }
+
+    private static async Task PublishManufacturingProposalAsync(
+        MessagingClient client,
+        I40Message cfp,
+        string moduleId,
+        ManufacturingOfferedCapabilitySequence offeredSequence,
+        string ns)
+    {
+        var capability = ExtractProperty(cfp, "Capability") ?? "Capability";
+        var requirementId = ExtractProperty(cfp, "RequirementId") ?? Guid.NewGuid().ToString();
+
+        var message = new I40MessageBuilder()
+            .From($"{moduleId}_Planning", "PlanningHolon")
+            .To("DispatchingAgent", "DispatchingAgent")
+            .WithType(I40MessageTypes.PROPOSAL)
+            .WithConversationId(cfp.Frame?.ConversationId ?? Guid.NewGuid().ToString())
+            .AddElement(new Property<string>("Capability") { Value = new PropertyValue<string>(capability) })
+            .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>(requirementId) })
+            .AddElement(offeredSequence)
+            .Build();
+
+        await client.PublishAsync(message, $"/{ns}/Offer");
     }
 
     private sealed class PassthroughCapabilityReferenceQuery : ICapabilityReferenceQuery

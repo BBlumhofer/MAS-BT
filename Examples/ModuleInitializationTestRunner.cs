@@ -293,7 +293,7 @@ public class ModuleInitializationTestRunner
                         if (tickCount % 50 == 0)
                         {
                             var elapsed = (DateTime.UtcNow - startTime).TotalSeconds;
-                            Console.WriteLine($"⏳ Tree Running... (Tick #{tickCount}, {elapsed:F1}s elapsed, last tick: {tickDuration:F1}ms)");
+                            //Console.WriteLine($"⏳ Tree Running... (Tick #{tickCount}, {elapsed:F1}s elapsed, last tick: {tickDuration:F1}ms)");
                         }
                         
                         // Warnung bei langsamen Ticks (nur alle 100 Ticks)
@@ -852,6 +852,11 @@ public class ModuleInitializationTestRunner
         // Print all keys stored in the blackboard in a readable form
         foreach (var key in context.Keys.OrderBy(k => k))
         {
+            // Skip noisy debug keys that are not helpful after shutdown
+            if (string.Equals(key, "SpawnSubHolonsInTerminal", StringComparison.OrdinalIgnoreCase)) continue;
+            if (key.StartsWith("SubscribeToTopic.HandlerRegistered:", StringComparison.OrdinalIgnoreCase)) continue;
+            if (key.StartsWith("WaitForMessage.Consumed", StringComparison.OrdinalIgnoreCase)) continue;
+
             var val = context.Get(key);
             if (val != null)
             {

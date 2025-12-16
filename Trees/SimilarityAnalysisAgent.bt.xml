@@ -26,7 +26,7 @@
             <Repeat name="CalcSimilarityLoop" num_cycles="-1">
           <Fallback name="CalcSimilarityOrWait">
             <Sequence name="HandleCalcSimilarity">
-              <WaitForMessage name="WaitCalcSimilarity" ExpectedTypes="calcPairwiseSimilarity" ExpectedTopic="/{Namespace}/{AgentId}/CalcPairwiseSimilarity" TimeoutSeconds="10" />
+              <WaitForMessage name="WaitCalcSimilarity" ExpectedTypes="calcSimilarity" ExpectedTopic="/{Namespace}/{AgentId}/CalcSimilarity" TimeoutSeconds="10" />
               <CalcEmbedding name="CalcEmbedding" OllamaEndpoint="{config.Ollama.Endpoint}" Model="{config.Ollama.Model}" />
               <CalcPairwiseSimilarity name="CalcPairwiseSimilarity" />
               <BuildPairwiseSimilarityResponse name="BuildPairwiseSimilarityResponse" />

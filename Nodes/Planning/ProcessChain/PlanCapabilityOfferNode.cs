@@ -39,9 +39,12 @@ public class PlanCapabilityOfferNode : BTNode
         var plannedStart = now.AddMinutes(2);
 
         var station = Context.Get<string>("config.Agent.ModuleId")
-                      ?? Context.Get<string>("ModuleId")
-                      ?? Context.AgentId
-                      ?? "PlanningStation";
+                      ?? Context.Get<string>("ModuleId");
+        if (string.IsNullOrWhiteSpace(station))
+        {
+            Logger.LogError("PlanCapabilityOffer: missing station/module id (config.Agent.ModuleId/ModuleId)");
+            return NodeStatus.Failure;
+        }
 
         var cost = BaseCost + (cycle.TotalMinutes * CostPerMinute);
         if (!string.IsNullOrEmpty(request.ProductId))
@@ -72,39 +75,29 @@ public class PlanCapabilityOfferNode : BTNode
         if (!string.IsNullOrWhiteSpace(request.Capability))
         {
             var moduleId = Context.Get<string>("config.Agent.ModuleId")
-                ?? Context.Get<string>("ModuleId")
-                ?? Context.Get<string>("config.Agent.ModuleName")
-                ?? string.Empty;
+                ?? Context.Get<string>("ModuleId");
+
+            if (string.IsNullOrWhiteSpace(moduleId))
+            {
+                Logger.LogError("PlanCapabilityOffer: missing module id (config.Agent.ModuleId/ModuleId) for capability reference resolution");
+                return NodeStatus.Failure;
+            }
 
             var referenceQuery = Context.Get<ICapabilityReferenceQuery>("CapabilityReferenceQuery");
-            if (referenceQuery != null && !string.IsNullOrWhiteSpace(moduleId))
+            if (referenceQuery == null)
             {
-                try
-                {
-                    var json = await referenceQuery.GetCapabilityReferenceJsonAsync(moduleId, request.Capability).ConfigureAwait(false);
-                    if (!string.IsNullOrWhiteSpace(json) && TryParseNeo4jReferenceJson(json!, out var modelRef))
-                    {
-                        offeredCapability.OfferedCapabilityReference.Value = new ReferenceElementValue(modelRef);
-                        Logger.LogDebug(
-                            "PlanCapabilityOffer: Using Neo4j reference for capability {Capability} (module={Module}).",
-                            request.Capability,
-                            moduleId);
-                    }
-                    else
-                    {
-                        ApplyFallbackExternalReference(offeredCapability, request.Capability);
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogDebug(ex, "PlanCapabilityOffer: Failed to resolve Neo4j reference for capability {Capability}", request.Capability);
-                    ApplyFallbackExternalReference(offeredCapability, request.Capability);
-                }
+                Logger.LogError("PlanCapabilityOffer: CapabilityReferenceQuery missing");
+                return NodeStatus.Failure;
             }
-            else
+
+            var json = await referenceQuery.GetCapabilityReferenceJsonAsync(moduleId, request.Capability).ConfigureAwait(false);
+            if (string.IsNullOrWhiteSpace(json) || !TryParseNeo4jReferenceJson(json!, out var modelRef))
             {
-                ApplyFallbackExternalReference(offeredCapability, request.Capability);
+                Logger.LogError("PlanCapabilityOffer: capability reference missing/invalid for capability {Capability} (module={Module})", request.Capability, moduleId);
+                return NodeStatus.Failure;
             }
+
+            offeredCapability.OfferedCapabilityReference.Value = new ReferenceElementValue(modelRef);
         }
 
         var action = new ActionModel(
@@ -169,9 +162,10 @@ public class PlanCapabilityOfferNode : BTNode
                     continue;
                 }
 
+                EnsureOfferHasActionInputParameters(transportOffer, fallbackActionTitle: "Transport");
+
                 transportOffer.SetSequencePlacement(ConvertPlacement(entry.Placement));
                 plan.SupplementalCapabilities.Add(transportOffer);
-                offeredCapability.AddCapabilityToSequence(transportOffer);
             }
         }
         else
@@ -188,7 +182,6 @@ public class PlanCapabilityOfferNode : BTNode
 
                     transportOffer.SetSequencePlacement("pre");
                     plan.SupplementalCapabilities.Add(transportOffer);
-                    offeredCapability.AddCapabilityToSequence(transportOffer);
                 }
             }
         }
@@ -200,17 +193,51 @@ public class PlanCapabilityOfferNode : BTNode
         return NodeStatus.Success;
     }
 
-    private static void ApplyFallbackExternalReference(OfferedCapability offeredCapability, string capability)
+    private static void EnsureOfferHasActionInputParameters(OfferedCapability offer, string fallbackActionTitle)
     {
-        var keys = new List<IKey>
+        if (offer == null)
         {
-            new Key(KeyType.GlobalReference, capability)
-        };
-        var reference = new Reference(keys)
+            return;
+        }
+
+        // Accept both typed ActionModel and generic SubmodelElementCollection actions.
+        foreach (var actionElement in offer.Actions)
         {
-            Type = ReferenceType.ExternalReference
-        };
-        offeredCapability.OfferedCapabilityReference.Value = new ReferenceElementValue(reference);
+            if (actionElement is ActionModel actionModel)
+            {
+                if (actionModel.InputParameters != null)
+                {
+                    return;
+                }
+            }
+            else if (actionElement is SubmodelElementCollection actionCollection)
+            {
+                var hasInputParameters = (actionCollection.Values ?? Array.Empty<ISubmodelElement>())
+                    .OfType<SubmodelElementCollection>()
+                    .Any(smc => string.Equals(smc.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase));
+
+                if (hasInputParameters)
+                {
+                    return;
+                }
+            }
+        }
+
+        var machineName = offer.Station.GetText() ?? string.Empty;
+        var title = string.IsNullOrWhiteSpace(fallbackActionTitle) ? "Action" : fallbackActionTitle.Trim();
+
+        // Minimal action: empty InputParameters collection is sufficient for dispatcher validation.
+        var fallbackAction = new ActionModel(
+            idShort: "Action_Transport",
+            actionTitle: title,
+            status: ActionStatusEnum.PLANNED,
+            inputParameters: null,
+            finalResultData: null,
+            preconditions: null,
+            skillReference: null,
+            machineName: machineName);
+
+        offer.AddAction(fallbackAction);
     }
 
     private sealed record Neo4jReferenceKey(string? Type, string? Value);

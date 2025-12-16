@@ -49,6 +49,14 @@ public class BuildPairwiseSimilarityResponseNode : BTNode
                 .WithType("informConfirm")
                 .WithConversationId(conversationId);
 
+            if (sortedPairs.Count > 0)
+            {
+                builder.AddElement(new Property<double>("CosineSimilarity")
+                {
+                    Value = new PropertyValue<double>(sortedPairs[0].Similarity)
+                });
+            }
+
             var matrix = new SubmodelElementCollection("SimilarityMatrix");
             int idx = 0;
             foreach (var p in sortedPairs)

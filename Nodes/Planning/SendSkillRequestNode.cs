@@ -1,12 +1,12 @@
 using System;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
+using AasSharpClient.Models.Messages;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
 using MAS_BT.Nodes.Common;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
-using I40Sharp.Messaging.Core;
 using MAS_BT.Services;
 
 namespace MAS_BT.Nodes.Planning;
@@ -41,17 +41,16 @@ public class SendSkillRequestNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var builder = new I40MessageBuilder()
-            .From($"{machineName}_Planning_Agent", "PlanningAgent")
-            .To($"{machineName}_Execution_Agent", "ExecutionAgent")
-            .WithType("request")
-            .WithConversationId(conversationId)
-            .AddElement(action);
-
-        var message = builder.Build();
+        var message = new SkillRequestMessage(
+            $"{machineName}_Planning_Agent",
+            "PlanningAgent",
+            $"{machineName}_Execution_Agent",
+            "ExecutionAgent",
+            conversationId,
+            action);
         var topic = TopicHelper.BuildTopic(Context, "SkillRequest");
         Logger.LogInformation("SendSkillRequest: publishing to topic {Topic}", topic);
-        await client.PublishAsync(message, topic);
+        await message.PublishAsync(client, topic);
 
         // Update context for responses
         Context.Set("ConversationId", conversationId);

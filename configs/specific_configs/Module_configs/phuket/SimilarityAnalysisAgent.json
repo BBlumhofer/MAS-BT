@@ -3,6 +3,7 @@
     "AgentId": "S1",
     "Role": "AIAgent",
     "AgentType": "SimilarityAnalysisAgent",
+    "ParentAgent": "_PHUKET",
     "LogLevel": "Information",
     "InitializationTree": "Trees/SimilarityAnalysisAgent.bt.xml",
     "HeartbeatIntervalSeconds": 30,

@@ -11,7 +11,6 @@ using MAS_BT.Core;
 using MAS_BT.Nodes.Planning.ProcessChain;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
-using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using UAClient.Client;
 
@@ -67,7 +66,13 @@ public class RequestTransportNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
+        var ns = Context.Get<string>("config.Namespace");
+        if (string.IsNullOrWhiteSpace(ns))
+        {
+            Logger.LogError("RequestTransport: missing config.Namespace");
+            return NodeStatus.Failure;
+        }
+
         var topic = $"/{ns}/TransportPlan";
         var aggregatedOffers = new List<OfferedCapability>();
         var sequenceItems = new List<TransportSequenceItem>();
@@ -99,16 +104,17 @@ public class RequestTransportNode : BTNode
 
             var element = BuildTransportRequestElement(requestContext, target, requirement, index);
             var convId = Guid.NewGuid().ToString();
-            var message = new I40MessageBuilder()
-                .From(Context.AgentId, Context.AgentRole)
-                .To($"{ns}/DispatchingAgent", "DispatchingAgent")
-                .WithType(I40MessageTypes.REQUIREMENT, I40MessageTypeSubtypes.TransportRequest)
-                .WithConversationId(convId)
-                .AddElement(element)
-                .Build();
+
+            var request = new TransportPlanRequestMessage(
+                Context.AgentId,
+                Context.AgentRole,
+                $"{ns}/DispatchingAgent",
+                "DispatchingAgent",
+                convId,
+                element);
 
             var publishedAt = DateTimeOffset.UtcNow;
-            await client.PublishAsync(message, topic).ConfigureAwait(false);
+            await request.PublishAsync(client, topic).ConfigureAwait(false);
             Logger.LogInformation(
                 "RequestTransport: published transport request #{Index} (requirement={Requirement}, placement={Placement}, target={Target}, source={Source}, convId={Conv}, publishedAt={Timestamp:o})",
                 index + 1,
@@ -460,19 +466,6 @@ public class RequestTransportNode : BTNode
                         else if (actionElement is ISubmodelElement smElement)
                         {
                             offer.Actions.Add(smElement);
-                        }
-                    }
-                    break;
-                case SubmodelElementList list when string.Equals(list.IdShort, OfferedCapability.CapabilitySequenceIdShort, StringComparison.OrdinalIgnoreCase):
-                    foreach (var nested in list)
-                    {
-                        if (nested is OfferedCapability nestedOffer)
-                        {
-                            offer.AddCapabilityToSequence(nestedOffer);
-                        }
-                        else if (nested is SubmodelElementCollection nestedCollection && LooksLikeOfferedCapability(nestedCollection))
-                        {
-                            offer.AddCapabilityToSequence(CreateOfferedCapabilityFromCollection(nestedCollection));
                         }
                     }
                     break;
