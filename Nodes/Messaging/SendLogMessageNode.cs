@@ -58,7 +58,7 @@ public class SendLogMessageNode : BTNode
                 .Build();
 
             // Sende über angegebenes Topic oder Default-Topic
-            var topic = !string.IsNullOrEmpty(Topic) ? Topic : $"/Modules/{moduleId}/Logs/";
+            var topic = !string.IsNullOrEmpty(Topic) ? Topic : TopicHelper.BuildTopic(Context, "Logs");
             await client.PublishAsync(logMessage, topic);
 
             Logger.LogInformation("SendLogMessage: Sent log message to MQTT topic '{Topic}'", topic);
