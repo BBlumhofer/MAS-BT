@@ -25,8 +25,9 @@ public class ReadCachedSnapshotsNode : BTNode
             try
             {
                 var first = storageUnits[0];
-                var slotCount = first.Slots?.Count ?? 0;
-                var sample = slotCount > 0 ? first.Slots[0].Content : null;
+                var slots = first.Slots;
+                var slotCount = slots?.Count ?? 0;
+                var sample = slotCount > 0 ? slots![0].Content : null;
                 Logger.LogDebug("ReadCachedSnapshots: sample storage='{Storage}' slots={SlotCount} sampleContent={Sample}", first.Name, slotCount, sample);
             }
             catch (Exception ex)

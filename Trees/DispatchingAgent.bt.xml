@@ -20,6 +20,7 @@
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
       <SubscribeToTopic name="SubscribeTransportPlan" Topic="/{Namespace}/TransportPlan" />
       <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
+      <SyncAgentToNeo4j name="SyncToGraph" />
 
       <Parallel name="DispatchingLoops">
         <Repeat name="RegistrationLoop" num_cycles="-1">
@@ -27,7 +28,9 @@
             <Sequence name="HandleRegistration">
               <WaitForMessage name="WaitRegistration" ExpectedTypes="registerMessage,moduleRegistration" TimeoutSeconds="10" />
               <HandleRegistration name="HandleRegistration" />
+              <SyncAgentToNeo4j name="SyncRegisteredModule" />
               <RegisterAgent name="RegisterAfterRegistration" ParentAgent="{config.Namespace}" />
+              <SyncAgentToNeo4j name="SyncDispatchingAgent" />
               <Wait name="RegIdle" DelayMs="10000" />
             </Sequence>
             <Wait name="RegBackoff" DelayMs="10000" />
@@ -49,14 +52,14 @@
         <Repeat name="ProcessChainLoop" num_cycles="-1">
           <Fallback name="ProcessChainOrIdle">
             <Sequence name="HandleProcessChain">
-              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal,callForProposal/ProcessChain" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal,callForProposal/ProcessChain" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
               <SetBlackboardValue name="BindProcessChainRequestType" Key="ProcessChain.RequestType" Value="ProcessChain" />
               <ParseProcessChainRequest name="ParseProcessChainRequest" />
               <Fallback name="CapabilityMatchmaking">
                 <Sequence name="CapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
                   <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
-                  <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="20" />
+                  <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
                   <BuildProcessChainResponse name="BuildProcessChainResponse" />
                   <SendProcessChainResponse name="SendProcessChainResponse" />
                 </Sequence>
@@ -64,23 +67,23 @@
                   <SendProcessChainResponse name="SendProcessChainRefusal" />
                 </Sequence>
               </Fallback>
-              <Wait name="ProcessChainIdle" DelayMs="200" />
+              <Wait name="ProcessChainIdle" DelayMs="{config.DispatchingAgent.ProcessChainIdleDelayMs}" />
             </Sequence>
-            <Wait name="ProcessChainBackoff" DelayMs="200" />
+            <Wait name="ProcessChainBackoff" DelayMs="{config.DispatchingAgent.ProcessChainBackoffDelayMs}" />
           </Fallback>
         </Repeat>
 
         <Repeat name="ManufacturingSequenceLoop" num_cycles="-1">
           <Fallback name="MfgSeqOrIdle">
             <Sequence name="HandleMfgSeq">
-              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequenceRequest" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequenceRequest" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
               <SetBlackboardValue name="BindManufacturingRequestType" Key="ProcessChain.RequestType" Value="ManufacturingSequence" />
               <ParseProcessChainRequest name="ParseManufacturingSequenceRequest" />
               <Fallback name="MfgCapabilityMatchmaking">
                 <Sequence name="MfgCapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespaceMfg" />
                   <DispatchCapabilityRequests name="DispatchCapabilityRequestsMfg" />
-                  <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="20" />
+                  <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
                   <BuildProcessChainResponse name="BuildManufacturingSequenceResponse" />
                   <SendProcessChainResponse name="SendManufacturingSequenceResponse" />
                 </Sequence>
@@ -88,9 +91,9 @@
                   <SendProcessChainResponse name="SendManufacturingSequenceRefusal" />
                 </Sequence>
               </Fallback>
-              <Wait name="MfgIdle" DelayMs="300" />
+              <Wait name="MfgIdle" DelayMs="{config.DispatchingAgent.ManufacturingIdleDelayMs}" />
             </Sequence>
-            <Wait name="MfgBackoff" DelayMs="300" />
+            <Wait name="MfgBackoff" DelayMs="{config.DispatchingAgent.ManufacturingBackoffDelayMs}" />
           </Fallback>
         </Repeat>
 

@@ -266,7 +266,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         var completed = await Task.WhenAny(responseTcs.Task, Task.Delay(TimeSpan.FromSeconds(2)));
         Assert.Same(responseTcs.Task, completed);
 
-        var response = responseTcs.Task.Result;
+        var response = await responseTcs.Task;
         Assert.NotNull(response);
         Assert.Equal(I40MessageTypes.REFUSE_PROPOSAL, response!.Frame?.Type);
 

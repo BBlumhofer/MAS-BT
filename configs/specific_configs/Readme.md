@@ -35,8 +35,8 @@
     "KeepAliveInterval": 60,
     "ReconnectDelay": 5000
   },
-  "Namespace": "phuket", 
-  "Scheduling": {
+  "Namespace": "_PHUKET", 
+    "Namespace": "_PHUKET",
     "MaxScheduleAgeMs": 300000,
     "TentativeReservationTimeout": 60000,
     "BookingConfirmationTimeout": 30000,

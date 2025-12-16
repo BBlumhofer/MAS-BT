@@ -10,6 +10,8 @@
 
   <BehaviorTree ID="PreModuleInit">
     <Sequence name="PreModuleInitSequence">
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
       <RetryUntilSuccess name="MqttConnectRetry" numAttempts="5" delayMs="2000">
         <ConnectToMessagingBroker
           name="ConnectMqtt"

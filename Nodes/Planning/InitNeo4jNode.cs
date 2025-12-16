@@ -41,6 +41,32 @@ public class InitNeo4jNode : BTNode
             }
 
             
+                        // Ensure basic schema constraints so MERGE works deterministically and duplicates are prevented.
+                        // If the DB already contains duplicates, constraint creation can fail; we log and continue.
+                        try
+                        {
+                            await using var schemaSession = driver.AsyncSession(o => o.WithDatabase(database));
+
+                            // Agent identity must be unique.
+                            await schemaSession.RunAsync(
+                                "CREATE CONSTRAINT agent_agentId_unique IF NOT EXISTS FOR (a:Agent) REQUIRE a.agentId IS UNIQUE");
+
+                            // Optional: Namespace identity should be unique when used.
+                            await schemaSession.RunAsync(
+                                "CREATE CONSTRAINT namespace_value_unique IF NOT EXISTS FOR (n:Namespace) REQUIRE n.value IS UNIQUE");
+
+                            // Inventory graph nodes should also be unique to prevent duplicates.
+                            await schemaSession.RunAsync(
+                                "CREATE CONSTRAINT storage_storageId_unique IF NOT EXISTS FOR (s:Storage) REQUIRE s.storageId IS UNIQUE");
+
+                            await schemaSession.RunAsync(
+                                "CREATE CONSTRAINT slot_slotId_unique IF NOT EXISTS FOR (sl:Slot) REQUIRE sl.slotId IS UNIQUE");
+                        }
+                        catch (Exception ex)
+                        {
+                            Logger.LogWarning(ex, "InitNeo4j: Failed to create Neo4j schema constraints (continuing without constraints). If duplicates already exist, clean them up before enabling UNIQUE constraints.");
+                        }
+
             // store driver and capability query implementation in blackboard for other nodes
             Context.Set("Neo4jDriver", driver);
             Context.Set("GraphCapabilityQuery", new Neo4jCapabilityQuery(driver, database));

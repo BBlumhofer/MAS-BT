@@ -7,6 +7,7 @@
       <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
       <SetBlackboardValue name="BindModuleId" Key="ModuleId" Value="{config.Agent.ModuleId}" />
       <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
+      <InitNeo4j name="InitNeo4j" />
 
       <ConnectToMessagingBroker
         name="ConnectMqtt"
@@ -21,8 +22,20 @@
         <!-- ExpectedAgents is intentionally omitted: config.SubHolons contains config filenames, not runtime AgentIds -->
         <WaitForRegistration name="WaitSubHolons" TimeoutSeconds="15" />
       <RegisterAgent name="InitialRegistration" ParentAgent="DispatchingAgent_{config.Namespace}" />
+      <SyncAgentToNeo4j name="SyncModuleHolonToGraph" />
 
       <Parallel name="HolonLoops">
+        <Repeat name="InventoryLoop" num_cycles="-1">
+          <Fallback name="InvOrWait">
+            <Sequence name="HandleInventory">
+              <WaitForMessage name="WaitInventory" ExpectedTypes="inventoryUpdate" ExpectedTopic="/{Namespace}/{ModuleId}/Inventory" TimeoutSeconds="5" />
+              <SyncInventoryToNeo4j name="SyncInventory" />
+              <Wait name="InvIdle" DelayMs="200" />
+            </Sequence>
+            <Wait name="InvBackoff" DelayMs="200" />
+          </Fallback>
+        </Repeat>
+
         <Repeat name="OfferLoop" num_cycles="-1">
           <Fallback name="OfferOrIdle">
             <Sequence name="HandleOffer">
@@ -65,6 +78,7 @@
           <Sequence name="Heartbeat">
             <ReadCachedSnapshots name="LoadLastSnapshots" />
             <RegisterAgent name="RefreshRegistration" ParentAgent="DispatchingAgent_{config.Namespace}" />
+            <SyncAgentToNeo4j name="SyncHeartbeat" />
             <Wait name="HeartbeatWait" DelayMs="{config.Agent.RegistrationIntervalMs}" />
           </Sequence>
         </Repeat>

@@ -39,16 +39,16 @@ public class ModuleInitializationTestRunner
             await SpawnAgentsAsync(providedConfigPath, agentList, spawnSubHolonsInTerminal);
             return;
         }
-        var opcuaEndpoint = GetConfigValue(config, "OPCUA.Endpoint", "opc.tcp://192.168.178.30:4849");
-        var opcuaUsername = GetConfigValue(config, "OPCUA.Username", "orchestrator");
-        var opcuaPassword = GetConfigValue(config, "OPCUA.Password", "orchestrator");
-        var agentId = GetConfigValue(config, "Agent.AgentId", "TestAgent");
-        var agentRole = GetConfigValue(config, "Agent.Role", "ResourceHolon");
+        var opcuaEndpoint = GetConfigValue(config, "OPCUA.Endpoint", "opc.tcp://192.168.178.30:4849") ?? "opc.tcp://192.168.178.30:4849";
+        var opcuaUsername = GetConfigValue(config, "OPCUA.Username", "orchestrator") ?? "orchestrator";
+        var opcuaPassword = GetConfigValue(config, "OPCUA.Password", "orchestrator") ?? "orchestrator";
+        var agentId = GetConfigValue(config, "Agent.AgentId", "TestAgent") ?? "TestAgent";
+        var agentRole = GetConfigValue(config, "Agent.Role", "ResourceHolon") ?? "ResourceHolon";
         var moduleId = GetConfigValue(config, "Agent.ModuleId", null)
                    ?? agentId;
         var moduleName = GetConfigValue(config, "Agent.ModuleName", null)
                  ?? moduleId;
-        var mqttBroker = GetConfigValue(config, "MQTT.Broker", "localhost");
+        var mqttBroker = GetConfigValue(config, "MQTT.Broker", "localhost") ?? "localhost";
         var mqttPort = GetConfigInt(config, "MQTT.Port", 1883);
         var preconditionRetries = GetConfigInt(config, "Execution.MaxPreconditionRetries", 10);
         var preconidionBackoffTime = GetConfigInt(config, "Execution.PreconditionBackoffStartMs", 20000);
@@ -557,10 +557,10 @@ public class ModuleInitializationTestRunner
             }
 
             var treePath = GetInitializationTreeFromConfig(agentConfig);
-            var agentId = GetConfigValue(agentConfig, "Agent.AgentId", trimmedEntry);
-            var moduleId = GetConfigValue(agentConfig, "Agent.ModuleId", null)
-                           ?? GetConfigValue(agentConfig, "Agent.ModuleName", agentId)
-                           ?? agentId;
+            var agentId = GetConfigValue(agentConfig, "Agent.AgentId", trimmedEntry) ?? trimmedEntry;
+            string moduleId = GetConfigValue(agentConfig, "Agent.ModuleId", null)
+                              ?? GetConfigValue(agentConfig, "Agent.ModuleName", agentId)
+                              ?? agentId;
 
             var spec = new SubHolonLaunchSpec(
                 treePath,
@@ -671,7 +671,7 @@ public class ModuleInitializationTestRunner
         }
     }
 
-    private static string GetConfigValue(Dictionary<string, object> config, string path, [System.Diagnostics.CodeAnalysis.AllowNull] string defaultValue)
+    private static string? GetConfigValue(Dictionary<string, object> config, string path, [System.Diagnostics.CodeAnalysis.AllowNull] string defaultValue)
     {
         var parts = path.Split('.');
         object? current = config;

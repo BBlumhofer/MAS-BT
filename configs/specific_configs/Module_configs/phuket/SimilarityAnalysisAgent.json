@@ -9,7 +9,7 @@
     "HeartbeatIntervalSeconds": 30,
     "Capabilities": ["CalcSimilarity"]
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "MQTT": {
     "Broker": "192.168.178.30",
     "Port": 1883,

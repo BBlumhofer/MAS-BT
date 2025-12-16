@@ -32,7 +32,7 @@
     "ReconnectDelay": 5000
   },
   "RetryInit": 3,
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "Scheduling": {
     "MaxScheduleAgeMs": 300000,
     "TentativeReservationTimeout": 60000,
@@ -54,5 +54,11 @@
     "StateRefreshIntervalMs": 1000,
     "HealthCheckIntervalMs": 5000,
     "AlarmHistoryDuration": 3600000
+  },
+  "Neo4j": {
+    "Uri": "neo4j://192.168.178.30:7687",
+    "Username": "neo4j",
+    "Password": "testtest",
+    "Database": "neo4j"
   }
 }

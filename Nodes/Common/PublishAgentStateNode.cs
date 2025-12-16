@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
@@ -54,12 +55,17 @@ namespace MAS_BT.Nodes.Common
             var topic = $"/{ns}/DispatchingAgent/logs";
 
             var snapshot = state.Modules
+                .Where(m => m != null)
                 .Select(m => new
                 {
-                    ModuleId = m.ModuleId,
-                    Capabilities = m.Capabilities.OrderBy(c => c).ToArray()
+                    ModuleId = m.ModuleId ?? string.Empty,
+                    Capabilities = (m.Capabilities ?? new List<string>())
+                        .Where(c => !string.IsNullOrWhiteSpace(c))
+                        .OrderBy(c => c, StringComparer.OrdinalIgnoreCase)
+                        .ToArray()
                 })
-                .OrderBy(m => m.ModuleId)
+                .Where(m => !string.IsNullOrWhiteSpace(m.ModuleId))
+                .OrderBy(m => m.ModuleId, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
             var serialized = JsonSerializer.Serialize(snapshot);

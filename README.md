@@ -143,7 +143,7 @@ All configs follow this structure:
     "ModuleName": "P102",
     "RegistrationIntervalMs": 5000
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "MQTT": {
     "Broker": "localhost",
     "Port": 1883,

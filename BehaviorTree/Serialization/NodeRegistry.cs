@@ -285,6 +285,9 @@ public class NodeRegistry
         // Neo4j nodes
         Register<InitNeo4jNode>("InitNeo4j");
         Register<RunNeo4jTestNode>("RunNeo4jTest");
+        Register<SyncAgentToNeo4jNode>("SyncAgentToNeo4j");
+        Register<SyncInventoryToNeo4jNode>("SyncInventoryToNeo4j");
+        Register<DeregisterAgentFromNeo4jNode>("DeregisterAgentFromNeo4j");
 
         // Recovery Nodes
         Register<RecoverySequenceNode>("RecoverySequence");

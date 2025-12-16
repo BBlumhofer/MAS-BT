@@ -64,7 +64,7 @@ namespace MAS_BT.Tests
             catch (Exception ex)
             {
                 // Don't fail the test on cleanup exception, but log for diagnostics
-                Assert.True(false, "Cleanup DeleteSubmodelAsync threw: " + ex.Message);
+                Console.WriteLine("Cleanup DeleteSubmodelAsync threw: " + ex.Message);
             }
         }
     }

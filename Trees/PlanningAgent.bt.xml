@@ -18,11 +18,13 @@
       <PublishCapabilities name="PublishCapabilities" />
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
       <RegisterAgent name="RegisterPlanning" ParentAgent="{config.Agent.ModuleId}" />
+      <SyncAgentToNeo4j name="SyncPlanningToGraph" />
       
       <Parallel name="PlanningParallel">
         <Repeat name="RegistrationHeartbeat" num_cycles="-1">
           <Sequence name="RegistrationBeat">
             <RegisterAgent name="RegisterPlanningHeartbeat" ParentAgent="{config.Agent.ModuleId}" />
+            <SyncAgentToNeo4j name="SyncPlanningHeartbeat" />
             <Wait name="RegistrationWait" DelayMs="5000" />
           </Sequence>
         </Repeat>

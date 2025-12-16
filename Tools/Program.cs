@@ -12,9 +12,13 @@ Console.WriteLine("Sending similarity request: {0} vs {1}", cap1, cap2);
 var client = new MessagingClient(new MqttTransport("localhost", 1883));
 await client.ConnectAsync();
 
+// Derive namespace from environment variable `NAMESPACE` or use default 'phuket'
+var nsEnv = Environment.GetEnvironmentVariable("NAMESPACE") ?? "phuket";
+var ns = nsEnv.TrimStart('_').ToLower();
+
 var builder = new I40MessageBuilder()
-    .From("DispatchingAgent_phuket", "DispatchingAgent")
-    .To("SimilarityAnalysisAgent_phuket", "AIAgent")
+    .From($"DispatchingAgent_{ns}", "DispatchingAgent")
+    .To($"SimilarityAnalysisAgent_{ns}", "AIAgent")
     .WithType("calcSimilarity")
     .WithConversationId(Guid.NewGuid().ToString());
 
@@ -30,7 +34,7 @@ builder.AddElement(new Property<string>("Capability_1")
     Kind = ModelingKind.Instance 
 });
 
-await client.PublishAsync(builder.Build(), "/phuket/SimilarityAnalysisAgent_phuket/CalcSimilarity");
+await client.PublishAsync(builder.Build(), $"/{ns}/SimilarityAnalysisAgent_{ns}/CalcSimilarity");
 
 Console.WriteLine("Message sent! Check agent for response.");
 await Task.Delay(2000);

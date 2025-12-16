@@ -36,7 +36,7 @@
     "ReconnectDelay": 5000,
     "PublishLogs": false
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "TimeSynchronization": {
     "NTPServer": "time.google.com",
     "MaxDriftMs": 1000,

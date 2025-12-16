@@ -270,7 +270,7 @@ public class SimilarityAnalysisTests : IDisposable
     }
 
     [Fact]
-    public void CalcEmbedding_WithWrongNumberOfElements_Fails()
+    public async Task CalcEmbedding_WithWrongNumberOfElements_Fails()
     {
         // Arrange
         var context = new BTContext(NullLogger<BTContext>.Instance);
@@ -296,7 +296,7 @@ public class SimilarityAnalysisTests : IDisposable
         context.Set("config.SimilarityAnalysis.MaxInteractionElements", 2);
 
         // Act
-        var result = node.Execute().Result;
+        var result = await node.Execute();
 
         // Assert
         Assert.Equal(NodeStatus.Failure, result);

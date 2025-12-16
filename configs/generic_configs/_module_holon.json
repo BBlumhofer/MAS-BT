@@ -6,7 +6,7 @@
     "ModuleId": "TestModule",
     "InitializationTree": "Trees/ModuleHolon.bt.xml"
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "MQTT": {
     "Broker": "localhost",
     "Port": 1883,

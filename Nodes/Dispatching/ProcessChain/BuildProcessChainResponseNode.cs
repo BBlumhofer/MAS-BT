@@ -254,6 +254,7 @@ public class BuildProcessChainResponseNode : BTNode
         }
 
         var capability = requirement?.Capability ?? string.Empty;
+        var conversationId = negotiation?.ConversationId ?? "<unknown>";
 
         if (string.IsNullOrWhiteSpace(capability))
         {
@@ -270,7 +271,7 @@ public class BuildProcessChainResponseNode : BTNode
         var referenceQuery = Context.Get<ICapabilityReferenceQuery>("CapabilityReferenceQuery");
         if (referenceQuery == null)
         {
-            throw new InvalidOperationException($"BuildProcessChainResponse: capability reference query service missing (conversation={negotiation.ConversationId})");
+            throw new InvalidOperationException($"BuildProcessChainResponse: capability reference query service missing (conversation={conversationId})");
         }
 
         string? json = null;
@@ -280,12 +281,12 @@ public class BuildProcessChainResponseNode : BTNode
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"BuildProcessChainResponse: failed to query Neo4j for capability reference (conversation={negotiation.ConversationId} sender={senderShellId} capability={capability}): {ex.Message}", ex);
+            throw new InvalidOperationException($"BuildProcessChainResponse: failed to query Neo4j for capability reference (conversation={conversationId} sender={senderShellId} capability={capability}): {ex.Message}", ex);
         }
 
         if (string.IsNullOrWhiteSpace(json) || !TryParseNeo4jReferenceJson(json, out var modelRef))
         {
-            throw new InvalidOperationException($"BuildProcessChainResponse: could not resolve capability reference from graph (conversation={negotiation.ConversationId} sender={senderShellId} capability={capability}) RawNeo4jResponse={json ?? "<null>"}");
+            throw new InvalidOperationException($"BuildProcessChainResponse: could not resolve capability reference from graph (conversation={conversationId} sender={senderShellId} capability={capability}) RawNeo4jResponse={json ?? "<null>"}");
         }
 
         return modelRef;

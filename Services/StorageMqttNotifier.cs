@@ -26,6 +26,7 @@ namespace MAS_BT.Services
         private readonly string _agentRole;
         private readonly HashSet<string> _registeredNodes = new(StringComparer.OrdinalIgnoreCase);
         private readonly object _publishLock = new();
+        private readonly object _modelLock = new();
         private readonly Dictionary<string, System.Threading.CancellationTokenSource> _pendingPublishes = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, string> _lastEventMessages = new(StringComparer.OrdinalIgnoreCase);
         private int _debounceMs = 150; // coalesce rapid successive changes into a single publish (default)
@@ -186,6 +187,10 @@ namespace MAS_BT.Services
                         var dv = notification?.Value;
                         var value = dv?.Value;
 
+                        // IMPORTANT: AddMonitoredItemAsync does not update RemoteVariable.Value automatically.
+                        // If we don't write back here, RemoteServer stays stale and inventory payloads look empty.
+                        TryUpdateRemoteVariableValue(moduleName, storageName, slotName, variableName, dv);
+
                         // Use storage-level key for coalescing (avoid multiple publishes per slot)
                         var pathKey = $"{moduleName}/{storageName}";
                         var shortMsg = $"change for {moduleName}/{storageName}/{slotName ?? "<storage>"}/{variableName}: {value ?? "<null>"}";
@@ -261,63 +266,73 @@ namespace MAS_BT.Services
             var storageUnits = new List<StorageUnit>();
             try
             {
-                if (_server.Modules != null && _server.Modules.TryGetValue(moduleName, out var mod) && mod.Storages != null && mod.Storages.TryGetValue(storageName, out var remStorage) && remStorage != null)
+                lock (_modelLock)
                 {
-                    var slots = new List<Slot>();
-                    if (remStorage.Slots != null)
+                    if (_server.Modules != null && _server.Modules.TryGetValue(moduleName, out var mod) && mod.Storages != null && mod.Storages.TryGetValue(storageName, out var remStorage) && remStorage != null)
                     {
-                        var idx = 0;
-                        foreach (var s in remStorage.Slots.Values)
+                        var slots = new List<Slot>();
+                        if (remStorage.Slots != null)
                         {
-                            slots.Add(new Slot
+                            var idx = 0;
+                            foreach (var s in remStorage.Slots.Values)
                             {
-                                Index = idx++,
-                                Content = new SlotContent
+                                slots.Add(new Slot
                                 {
-                                    CarrierID = s.CarrierId ?? string.Empty,
-                                    CarrierType = s.CarrierTypeDisplay() ?? string.Empty,
-                                    ProductID = s.ProductId ?? string.Empty,
-                                    ProductType = s.ProductTypeDisplay() ?? string.Empty,
-                                    IsSlotEmpty = s.IsSlotEmpty ?? true
-                                }
-                            });
-                        }
-                    }
-
-                    storageUnits.Add(new StorageUnit
-                    {
-                        Name = remStorage.Name ?? storageName,
-                        Slots = slots
-                    });
-                }
-                else
-                {
-                    // fallback: single slot with event text as product id
-                    storageUnits.Add(new StorageUnit
-                    {
-                        Name = storageName,
-                        Slots = new List<Slot>
-                        {
-                            new Slot
-                            {
-                                Index = 0,
-                                Content = new SlotContent
-                                {
-                                    CarrierID = string.Empty,
-                                    CarrierType = string.Empty,
-                                    ProductID = eventText ?? string.Empty,
-                                    ProductType = string.Empty,
-                                    IsSlotEmpty = string.IsNullOrEmpty(eventText)
-                                }
+                                    Index = idx++,
+                                    Content = new SlotContent
+                                    {
+                                        CarrierID = s.CarrierId ?? string.Empty,
+                                        CarrierType = s.CarrierTypeDisplay() ?? string.Empty,
+                                        ProductID = s.ProductId ?? string.Empty,
+                                        ProductType = s.ProductTypeDisplay() ?? string.Empty,
+                                        IsSlotEmpty = s.IsSlotEmpty ?? true
+                                    }
+                                });
                             }
                         }
-                    });
+
+                        storageUnits.Add(new StorageUnit
+                        {
+                            Name = remStorage.Name ?? storageName,
+                            Slots = slots
+                        });
+                    }
+                    else
+                    {
+                        // fallback: single slot with event text as product id
+                        storageUnits.Add(new StorageUnit
+                        {
+                            Name = storageName,
+                            Slots = new List<Slot>
+                            {
+                                new Slot
+                                {
+                                    Index = 0,
+                                    Content = new SlotContent
+                                    {
+                                        CarrierID = string.Empty,
+                                        CarrierType = string.Empty,
+                                        ProductID = eventText ?? string.Empty,
+                                        ProductType = string.Empty,
+                                        IsSlotEmpty = string.IsNullOrEmpty(eventText)
+                                    }
+                                }
+                            }
+                        });
+                    }
                 }
             }
             catch (Exception mapEx)
             {
                 Console.WriteLine($"StorageMqttNotifier: failed to map storage snapshot for {moduleName}/{storageName}: {mapEx.Message}");
             }
+
+            // Keep a current snapshot in the BT context so other nodes (e.g., UpdateInventory) don't publish stale data.
+            try
+            {
+                _context.Set("ModuleInventory", storageUnits);
+            }
+            catch { /* best-effort */ }
 
             // Publish InventoryMessage
             try
@@ -385,6 +400,46 @@ namespace MAS_BT.Services
             topics.Add($"/Modules/{moduleName}/{channel}/");
 
             return topics.Distinct(StringComparer.OrdinalIgnoreCase);
+        }
+
+        private void TryUpdateRemoteVariableValue(
+            string moduleName,
+            string storageName,
+            string? slotName,
+            string variableName,
+            DataValue? dataValue)
+        {
+            try
+            {
+                if (dataValue == null) return;
+                lock (_modelLock)
+                {
+                    if (_server.Modules == null) return;
+                    if (!_server.Modules.TryGetValue(moduleName, out var module) || module?.Storages == null) return;
+                    if (!module.Storages.TryGetValue(storageName, out var storage) || storage == null) return;
+
+                    if (string.IsNullOrWhiteSpace(slotName))
+                    {
+                        if (storage.Variables != null && storage.Variables.TryGetValue(variableName, out var v) && v != null)
+                        {
+                            v.UpdateFromDataValue(dataValue);
+                        }
+                        return;
+                    }
+
+                    if (storage.Slots != null && storage.Slots.TryGetValue(slotName, out var slot) && slot != null)
+                    {
+                        if (slot.Variables != null && slot.Variables.TryGetValue(variableName, out var v) && v != null)
+                        {
+                            v.UpdateFromDataValue(dataValue);
+                        }
+                    }
+                }
+            }
+            catch
+            {
+                // ignore write-back failures
+            }
         }
     }
 }

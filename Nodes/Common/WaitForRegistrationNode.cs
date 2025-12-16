@@ -8,6 +8,7 @@ using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
 using MAS_BT.Nodes.ModuleHolon;
+using MAS_BT.Nodes.Planning;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Common
@@ -96,6 +97,7 @@ namespace MAS_BT.Nodes.Common
                 if (queue.TryDequeue(out var msg))
                 {
                     Context.Set("LastReceivedMessage", msg);
+                    await TrySyncRegistrationToNeo4jAsync().ConfigureAwait(false);
 
                     var state = Context.Get<DispatchingState>("DispatchingState") ?? new DispatchingState();
                     var info = DispatchingModuleInfo.FromMessage(msg);
@@ -214,6 +216,29 @@ namespace MAS_BT.Nodes.Common
             }
 
             return string.IsNullOrWhiteSpace(id) ? "<unknown>" : id;
+        }
+
+        private async Task TrySyncRegistrationToNeo4jAsync()
+        {
+            try
+            {
+                if (!Context.Has("Neo4jDriver"))
+                {
+                    return;
+                }
+
+                var syncNode = new SyncAgentToNeo4jNode { Context = Context };
+                syncNode.SetLogger(Logger);
+                var status = await syncNode.Execute().ConfigureAwait(false);
+                if (status != NodeStatus.Success)
+                {
+                    Logger.LogDebug("WaitForRegistration: SyncAgentToNeo4j returned {Status}", status);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "WaitForRegistration: failed to sync registration to Neo4j");
+            }
         }
 
         private int ResolveExpectedCount(HashSet<string> expectedAgents)

@@ -28,7 +28,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
 {
     private static readonly MessageSerializer Serializer = new();
     private static readonly bool UseRealMqtt = string.Equals(Environment.GetEnvironmentVariable("MASBT_TEST_USE_REAL_MQTT"), "true", StringComparison.OrdinalIgnoreCase);
-    private static readonly string RealMqttHost = Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_HOST") ?? "localhost";
+    private static readonly string RealMqttHost = Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_HOST") ?? "192.168.178.30";
     private static readonly int RealMqttPort = int.TryParse(Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_PORT"), out var parsedPort) ? parsedPort : 1883;
     private static readonly string? RealMqttUsername = Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_USERNAME");
     private static readonly string? RealMqttPassword = Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_PASSWORD");
@@ -149,7 +149,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
 
         foreach (var (_, tcs) in planningClients)
         {
-            var forwarded = tcs.Task.Result;
+            var forwarded = await tcs.Task;
             Assert.NotNull(forwarded);
             Assert.Equal(conversationId, forwarded!.Frame?.ConversationId);
             Assert.True(IsCallForProposalType(forwarded.Frame?.Type),
@@ -205,7 +205,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         var completed = await Task.WhenAny(proposalTcs.Task, Task.Delay(TimeSpan.FromSeconds(2)));
         Assert.Same(proposalTcs.Task, completed);
 
-        var proposal = proposalTcs.Task.Result;
+        var proposal = await proposalTcs.Task;
         Assert.NotNull(proposal);
         Assert.Equal(I40MessageTypes.PROPOSAL, proposal!.Frame?.Type);
         Assert.Equal(conversationId, proposal.Frame?.ConversationId);
@@ -291,7 +291,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
 
         var completed = await Task.WhenAny(proposalTcs.Task, Task.Delay(TimeSpan.FromSeconds(2)));
         Assert.Same(proposalTcs.Task, completed);
-        var proposal = proposalTcs.Task.Result;
+        var proposal = await proposalTcs.Task;
         Assert.NotNull(proposal);
 
         Assert.Equal(I40MessageTypes.PROPOSAL, proposal!.Frame?.Type);

@@ -7,7 +7,7 @@
     "LogLevel": "Information",
     "InitializationTree": "Trees/DispatchingAgent.bt.xml"
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "MQTT": {
     "Broker": "localhost",
     "Port": 1883,
@@ -28,7 +28,7 @@
     "Timeout": 10000
   },
   "Neo4j": {
-    "Uri": "bolt://localhost:7687",
+    "Uri": "neo4j://localhost:7687",
     "Username": "neo4j",
     "Password": "neo4j",
     "Database": "neo4j"

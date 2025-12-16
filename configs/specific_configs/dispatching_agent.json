@@ -10,7 +10,7 @@
     "HeartbeatIntervalSeconds": 30,
     "StatePublishDelayMs": 1000
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "MQTT": {
     "Broker": "192.168.178.30",
     "Port": 1883,
@@ -31,7 +31,7 @@
     "Timeout": 10000
   },
   "Neo4j": {
-    "Uri": "bolt://192.168.178.30:7687",
+    "Uri": "neo4j://192.168.178.30:7687",
     "Username": "neo4j",
     "Password": "testtest",
     "Database": "neo4j"
@@ -44,6 +44,13 @@
     "SimilarityTimeoutMs": 30000,
     "SimilarityAgentId": "SimilarityAnalysisAgent_phuket",
     "CalcSimilarityConcurrency": 20,
-    "CreateDescriptionConcurrency":20
+    "CreateDescriptionConcurrency":20,
+    "CfPTimeoutSeconds": 30,
+    "OfferCollectionTimeoutSeconds": 40,
+    "ProcessChainIdleDelayMs": 200,
+    "ProcessChainBackoffDelayMs": 200,
+    "ManufacturingIdleDelayMs": 300,
+    "ManufacturingBackoffDelayMs": 300,
+    "RegistrationIdleDelayMs": 10000
   }
 }

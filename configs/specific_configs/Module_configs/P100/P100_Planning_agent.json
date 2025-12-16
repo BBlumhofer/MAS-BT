@@ -1,6 +1,6 @@
 {
   "Agent": {
-    "AgentId": "P100_Planning",
+    "AgentId": "P100",
     "ModuleId": "P100",
     "ModuleName":"ScrewingStation",
     "Role": "PlanningHolon",
@@ -26,7 +26,7 @@
     "ReconnectDelay": 5000,
     "PublishLogs": false
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "TimeSynchronization": {
     "NTPServer": "time.google.com",
     "MaxDriftMs": 1000,
@@ -39,7 +39,7 @@
     "SchedulingHorizonSteps": 3
   },
   "Neo4j": {
-    "Uri": "bolt://192.168.178.30:7687",
+    "Uri": "neo4j://192.168.178.30:7687",
     "Username": "neo4j",
     "Password": "testtest",
     "Database": "neo4j"

@@ -59,8 +59,28 @@ public class ReadShellNode : BTNode
             Context.Set("AAS.Shell", shell);
             Context.Set("AAS.Shell.SubmodelReferences", references);
             Context.Set("AAS.ShellRepositoryEndpoint", endpoint);
-            Context.AgentId = resolvedAgentId;
-            Context.Set("AgentId", resolvedAgentId);
+
+            // IMPORTANT: Do not clobber the agent identity when we load *another* shell.
+            // Example: PlanningHolon loads the ModuleHolon shell (AgentId=ModuleId/ModuleName) for capability data.
+            // In that case, overwriting Context.AgentId / "AgentId" would break registrations and messaging.
+            var configuredAgentId = Context.Get<string>("config.Agent.AgentId") ?? string.Empty;
+            var currentAgentId = Context.AgentId ?? string.Empty;
+            var blackboardAgentId = Context.Get<string>("AgentId") ?? string.Empty;
+
+            var looksLikeSelf =
+                (!string.IsNullOrWhiteSpace(configuredAgentId) && string.Equals(resolvedAgentId, configuredAgentId, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(currentAgentId) && string.Equals(resolvedAgentId, currentAgentId, StringComparison.OrdinalIgnoreCase))
+                || (!string.IsNullOrWhiteSpace(blackboardAgentId) && string.Equals(resolvedAgentId, blackboardAgentId, StringComparison.OrdinalIgnoreCase));
+
+            if (looksLikeSelf)
+            {
+                Context.AgentId = resolvedAgentId;
+                Context.Set("AgentId", resolvedAgentId);
+            }
+            else
+            {
+                Context.Set("AAS.LoadedShellAgentId", resolvedAgentId);
+            }
 
             Logger.LogInformation("ReadShell: Loaded shell {ShellIdShort} ({ShellId}) with {Submodels} submodel references",
                 shell.IdShort,

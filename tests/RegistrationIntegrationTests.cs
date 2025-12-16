@@ -551,8 +551,9 @@ public class RegistrationIntegrationTests
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(1)));
         Assert.Same(tcs.Task, completed);
-        Assert.NotNull(tcs.Task.Result);
-        Assert.Equal(I40MessageTypes.PROPOSAL, tcs.Task.Result!.Frame?.Type);
-        Assert.Equal(conv, tcs.Task.Result.Frame?.ConversationId);
+        var response = await tcs.Task;
+        Assert.NotNull(response);
+        Assert.Equal(I40MessageTypes.PROPOSAL, response!.Frame?.Type);
+        Assert.Equal(conv, response.Frame?.ConversationId);
     }
 }

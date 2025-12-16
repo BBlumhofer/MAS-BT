@@ -55,6 +55,11 @@ namespace MAS_BT.Nodes.Common
                          ?? Context.AgentId
                          ?? "UnknownAgent";
 
+            // For Planning/Execution sub-holons, ensure the registration identity cannot collide with the ModuleHolon.
+            // If the configured AgentId was accidentally overwritten (e.g., by loading a different AAS shell),
+            // derive a stable id from ModuleId + Role.
+            var registrationAgentId = ResolveRegistrationAgentId(agentId, role);
+
             // Determine parent agent:
             // 1) explicit node attribute ParentAgent
             // 2) config.Agent.ParentAgent / config.Agent.ParentModuleId
@@ -138,13 +143,13 @@ namespace MAS_BT.Nodes.Common
                     : "registerMessage";
             }
 
-            var message = new RegisterMessage(agentId, subagents, capabilities);
+            var message = new RegisterMessage(registrationAgentId, subagents, capabilities);
             var topic = BuildRegisterTopic(ns, parentAgent);
 
             try
             {
                 var builder = new I40MessageBuilder()
-                    .From(agentId, string.IsNullOrWhiteSpace(role) ? "Agent" : role)
+                    .From(registrationAgentId, string.IsNullOrWhiteSpace(role) ? "Agent" : role)
                     .To(string.IsNullOrWhiteSpace(parentAgent) ? "Namespace" : parentAgent, null)
                     .WithType(messageType)
                     .WithConversationId(Guid.NewGuid().ToString())
@@ -184,7 +189,7 @@ namespace MAS_BT.Nodes.Common
 
                 await client.PublishAsync(builder.Build(), topic).ConfigureAwait(false);
 
-                Logger.LogDebug("RegisterAgent: sent registration for {AgentId} to {Topic}", agentId, topic);
+                Logger.LogDebug("RegisterAgent: sent registration for {AgentId} to {Topic}", registrationAgentId, topic);
                 return NodeStatus.Success;
             }
             catch (Exception ex)
@@ -202,6 +207,36 @@ namespace MAS_BT.Nodes.Common
                 || role.Contains("SubHolon", StringComparison.OrdinalIgnoreCase)
                 || role.Contains("PlanningHolon", StringComparison.OrdinalIgnoreCase)
                 || role.Contains("ExecutionHolon", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private string ResolveRegistrationAgentId(string currentAgentId, string role)
+        {
+            if (!RoleLooksLikeSubHolon(role))
+            {
+                return currentAgentId;
+            }
+
+            var moduleId = Context.Get<string>("config.Agent.ModuleId")
+                        ?? Context.Get<string>("ModuleId")
+                        ?? string.Empty;
+
+            if (!string.IsNullOrWhiteSpace(moduleId))
+            {
+                // If the current agentId already looks like a sub-holon id for that module, keep it.
+                // Example: P102_Planning (configured) should not become P102_Planning_PlanningHolon.
+                if (!string.IsNullOrWhiteSpace(currentAgentId)
+                    && currentAgentId.StartsWith(moduleId + "_", StringComparison.OrdinalIgnoreCase))
+                {
+                    return currentAgentId;
+                }
+
+                // Otherwise derive a stable id from ModuleId + Role.
+                var rolePart = string.IsNullOrWhiteSpace(role) ? "SubHolon" : role.Trim();
+                rolePart = rolePart.Replace(' ', '_').Replace('/', '_').Replace('\\', '_');
+                return $"{moduleId}_{rolePart}";
+            }
+
+            return currentAgentId;
         }
 
         private int? TryGetInt(string key)

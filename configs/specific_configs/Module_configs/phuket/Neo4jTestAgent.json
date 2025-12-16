@@ -7,7 +7,7 @@
     "LogLevel": "Information",
     "InitializationTree": "Trees/Neo4jTestAgent.bt.xml"
   },
-  "Namespace": "phuket",
+  "Namespace": "_PHUKET",
   "MQTT": {
     "Broker": "192.168.178.30",
     "Port": 1883,
@@ -26,5 +26,8 @@
     "Username": "neo4j",
     "Password": "testtest",
     "Database": "neo4j"
+  },
+  "Neo4jTestInfos":{
+    "Asset": "P102"
   }
 }

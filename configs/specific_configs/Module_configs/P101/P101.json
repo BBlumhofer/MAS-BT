@@ -29,7 +29,13 @@
     "ReconnectDelay": 5000,
     "PublishLogs": false
   },
-  "Namespace": "phuket",
+  "Neo4j": {
+    "Uri": "neo4j://192.168.178.30:7687",
+    "Username": "neo4j",
+    "Password": "testtest",
+    "Database": "neo4j"
+  },
+  "Namespace": "_PHUKET",
   "TimeSynchronization": {
     "NTPServer": "time.google.com",
     "MaxDriftMs": 1000,
