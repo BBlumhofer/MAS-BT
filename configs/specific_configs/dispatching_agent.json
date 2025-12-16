@@ -1,7 +1,7 @@
 {
   "Agent": {
     "AgentId": "DispatchingAgent_phuket",
-    "Role": "DispatchingAgent",
+    "Role": "Dispatching",
     "AgentType": "DispatchingAgent",
     "ModuleId": "DispatchingAgent_phuket",
     "LogLevel": "Information",
