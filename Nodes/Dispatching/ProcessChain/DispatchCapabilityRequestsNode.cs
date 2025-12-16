@@ -64,6 +64,7 @@ public class DispatchCapabilityRequestsNode : BTNode
         var cfpDispatchUtc = DateTime.UtcNow;
 
         var similarityAgentId = Context.Get<string>("config.DispatchingAgent.SimilarityAgentId") ?? $"SimilarityAnalysisAgent_{ns}";
+        var similarityAgentRole = Context.Get<string>("config.DispatchingAgent.SimilarityAgentRole");
         var descriptionTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.DescriptionTimeoutMs", defaultValue: 30000), 500, 5000);
         var similarityTimeoutMs = ClampInt(GetConfigInt("config.DispatchingAgent.SimilarityTimeoutMs", defaultValue: 30000), 500, 5000);
         var threshold = GetConfigDouble("config.DispatchingAgent.CapabilitySimilarityThreshold", fallbackKey: "config.SimilarityAnalysis.MinSimilarityThreshold", defaultValue: 0.75);
@@ -77,8 +78,8 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         // Ensure we have response handlers/subscriptions for CreateDescription/CalcSimilarity
         await EnsureResponseHandlerRegisteredAsync(client).ConfigureAwait(false);
-        await EnsureCreateDescriptionResponseListenerAsync(client, ns, similarityAgentId).ConfigureAwait(false);
-        await EnsureCalcSimilarityResponseListenerAsync(client, ns, similarityAgentId).ConfigureAwait(false);
+        await EnsureCreateDescriptionResponseListenerAsync(client, ns, similarityAgentId, similarityAgentRole).ConfigureAwait(false);
+        await EnsureCalcSimilarityResponseListenerAsync(client, ns, similarityAgentId, similarityAgentRole).ConfigureAwait(false);
 
         // Ensure descriptions for all registered + requested capabilities are present (cache them)
         var state = Context.Get<DispatchingState>("DispatchingState") ?? new DispatchingState();
@@ -110,7 +111,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 {
                     descTasks.Add(RunWithLimiterAsync(_createDescriptionLimiter!, async () =>
                     {
-                        var description = await RequestCapabilityDescriptionAsync(client, ns, similarityAgentId, cap, descriptionTimeoutMs).ConfigureAwait(false);
+                        var description = await RequestCapabilityDescriptionAsync(client, ns, similarityAgentId, similarityAgentRole, cap, descriptionTimeoutMs).ConfigureAwait(false);
                         if (description == null)
                         {
                             DisableSimilarityTemporarily($"no description response for capability '{cap}'");
@@ -227,15 +228,16 @@ public class DispatchCapabilityRequestsNode : BTNode
                     simTasks.Add(RunWithLimiterAsync(_calcSimilarityLimiter!, async () =>
                     {
                         var sim = await GetOrRequestCapabilitySimilarityAsync(
-                                client,
                                 state,
+                                client,
                                 ns,
                                 similarityAgentId,
-                                capabilityA: requirement.Capability,
-                                capabilityB: capLocal,
-                                descA: descReq!,
-                                descB: descMod!,
-                                timeoutMs: similarityTimeoutMs)
+                                similarityAgentRole,
+                                requirement.Capability,
+                                capLocal,
+                                descReq!,
+                                descMod!,
+                                similarityTimeoutMs)
                             .ConfigureAwait(false);
                         return (Cap: capLocal, Sim: sim);
                     }));
@@ -433,21 +435,21 @@ public class DispatchCapabilityRequestsNode : BTNode
         return Task.CompletedTask;
     }
 
-    private async Task EnsureCreateDescriptionResponseListenerAsync(MessagingClient client, string ns, string similarityAgentId)
+    private async Task EnsureCreateDescriptionResponseListenerAsync(MessagingClient client, string ns, string similarityAgentId, string? similarityAgentRole)
     {
         if (!_subscribedCreateDescriptionResponse)
         {
             // SimilarityAnalysisAgent currently answers on its own request topics.
             // Subscribe to both (legacy receiver-topic and request-topic) to be robust.
-            var responseTopicOnReceiver = $"/{ns}/{Context.AgentId}/CreateDescription";
-            var responseTopicOnRequester = $"/{ns}/{similarityAgentId}/CreateDescription";
+            var responseTopicOnReceiver = TopicHelper.BuildAgentTopic(Context, Context.AgentId, "CreateDescription");
+            var responseTopicOnRequester = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CreateDescription", similarityAgentRole);
             await client.SubscribeAsync(responseTopicOnReceiver).ConfigureAwait(false);
             await client.SubscribeAsync(responseTopicOnRequester).ConfigureAwait(false);
             _subscribedCreateDescriptionResponse = true;
         }
     }
 
-    private async Task<string?> RequestCapabilityDescriptionAsync(MessagingClient client, string ns, string similarityAgentId, string capability, int timeoutMs)
+    private async Task<string?> RequestCapabilityDescriptionAsync(MessagingClient client, string ns, string similarityAgentId, string? similarityAgentRole, string capability, int timeoutMs)
     {
         if (string.IsNullOrWhiteSpace(capability)) return null;
 
@@ -470,7 +472,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 .WithConversationId(convId)
                 .AddElement(CreateStringProperty("Capability_0", capability.Trim()));
 
-            var requestTopic = $"/{ns}/{similarityAgentId}/CreateDescription";
+            var requestTopic = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CreateDescription", similarityAgentRole);
             await client.PublishAsync(builder.Build(), requestTopic).ConfigureAwait(false);
 
             var response = await WaitForResponseAsync(tcs, timeoutMs).ConfigureAwait(false);
@@ -520,6 +522,7 @@ public class DispatchCapabilityRequestsNode : BTNode
         MessagingClient client,
         string ns,
         string similarityAgentId,
+        string? similarityAgentRole,
         string capabilityA,
         string capabilityB,
         string descA,
@@ -541,7 +544,7 @@ public class DispatchCapabilityRequestsNode : BTNode
                 .AddElement(CreateStringProperty("Description_1", descA))
                 .AddElement(CreateStringProperty("Description_2", descB));
 
-            var requestTopic = $"/{ns}/{similarityAgentId}/CalcSimilarity";
+            var requestTopic = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcSimilarity", similarityAgentRole);
             await client.PublishAsync(builder.Build(), requestTopic).ConfigureAwait(false);
 
             var response = await WaitForResponseAsync(tcs, timeoutMs).ConfigureAwait(false);
@@ -578,10 +581,11 @@ public class DispatchCapabilityRequestsNode : BTNode
     }
 
     private async Task<double?> GetOrRequestCapabilitySimilarityAsync(
-        MessagingClient client,
         DispatchingState state,
+        MessagingClient client,
         string ns,
         string similarityAgentId,
+        string? similarityAgentRole,
         string capabilityA,
         string capabilityB,
         string descA,
@@ -603,6 +607,7 @@ public class DispatchCapabilityRequestsNode : BTNode
             client,
             ns,
             similarityAgentId,
+            similarityAgentRole,
             capabilityA,
             capabilityB,
             descA,
@@ -615,15 +620,15 @@ public class DispatchCapabilityRequestsNode : BTNode
         return sim;
     }
 
-    private async Task EnsureCalcSimilarityResponseListenerAsync(MessagingClient client, string ns, string similarityAgentId)
+    private async Task EnsureCalcSimilarityResponseListenerAsync(MessagingClient client, string ns, string similarityAgentId, string? similarityAgentRole)
     {
             if (!_subscribedCalcSimilarityResponse)
             {
                 // SimilarityAnalysisAgent may answer on multiple topics. Subscribe to legacy and pairwise topics.
-                var responseTopicOnReceiver = $"/{ns}/{Context.AgentId}/CalcSimilarity";
-                var responseTopicOnRequester = $"/{ns}/{similarityAgentId}/CalcSimilarity";
-                var responseTopicOnReceiverPairwise = $"/{ns}/{Context.AgentId}/CalcPairwiseSimilarity";
-                var responseTopicOnRequesterPairwise = $"/{ns}/{similarityAgentId}/CalcPairwiseSimilarity";
+                var responseTopicOnReceiver = TopicHelper.BuildAgentTopic(Context, Context.AgentId, "CalcSimilarity");
+                var responseTopicOnRequester = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcSimilarity", similarityAgentRole);
+                var responseTopicOnReceiverPairwise = TopicHelper.BuildAgentTopic(Context, Context.AgentId, "CalcPairwiseSimilarity");
+                var responseTopicOnRequesterPairwise = TopicHelper.BuildAgentTopic(Context, similarityAgentId, "CalcPairwiseSimilarity", similarityAgentRole);
                 await client.SubscribeAsync(responseTopicOnReceiver).ConfigureAwait(false);
                 await client.SubscribeAsync(responseTopicOnRequester).ConfigureAwait(false);
                 await client.SubscribeAsync(responseTopicOnReceiverPairwise).ConfigureAwait(false);

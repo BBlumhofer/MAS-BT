@@ -1,9 +1,8 @@
 {
   "Agent": {
-    "AgentId": "SimilarityAnalysisAgent_phuket",
+    "AgentId": "S1",
     "Role": "AIAgent",
     "AgentType": "SimilarityAnalysisAgent",
-    "ParentAgent": "DispatchingAgent_phuket",
     "LogLevel": "Information",
     "InitializationTree": "Trees/SimilarityAnalysisAgent.bt.xml",
     "HeartbeatIntervalSeconds": 30,

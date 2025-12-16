@@ -40,7 +40,7 @@ public static class TopicHelper
     }
 
     /// <summary>
-    /// Builds a namespace-level topic: /{namespace_path}/topic
+    /// Builds a namespace-level topic: /{namespace}/topic
     /// 
     /// Examples:
     /// - Simple: /_PHUKET/register
@@ -50,6 +50,31 @@ public static class TopicHelper
     {
         var namespacePath = BuildNamespacePath(context);
         return $"{namespacePath}/{topic}";
+    }
+
+    /// <summary>
+    /// Builds a direct agent-to-agent topic with hierarchical structure.
+    /// Pattern: /{namespace}/{targetAgentId}/{targetAgentId}_{role}/topic
+    /// 
+    /// Examples with role:
+    /// - /_PHUKET/SimilarityAnalysisAgent_phuket/SimilarityAnalysisAgent_phuket_AIAgent/CalcSimilarity
+    /// 
+    /// Examples without role (fallback):
+    /// - /_PHUKET/SimilarityAnalysisAgent_phuket/CalcSimilarity
+    /// </summary>
+    public static string BuildAgentTopic(BTContext context, string targetAgentId, string topic, string? targetRole = null)
+    {
+        var namespacePath = BuildNamespacePath(context);
+        
+        if (!string.IsNullOrEmpty(targetRole))
+        {
+            // Hierarchical pattern with role
+            var subAgent = $"{targetAgentId}_{targetRole}";
+            return $"{namespacePath}/{targetAgentId}/{subAgent}/{topic}";
+        }
+        
+        // Simple pattern without role (for backward compatibility or when role is unknown)
+        return $"{namespacePath}/{targetAgentId}/{topic}";
     }
 
     /// <summary>
