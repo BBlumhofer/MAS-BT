@@ -11,6 +11,7 @@ using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
 using MAS_BT.Nodes.Common;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Dispatching.ProcessChain;
@@ -398,22 +399,7 @@ public class DispatchCapabilityRequestsNode : BTNode
         try
         {
             var v = Context.Get<object>(key);
-            if (v is bool b) return b;
-            if (v is string s && bool.TryParse(s, out var parsed)) return parsed;
-            if (v is int i) return i != 0;
-            if (v is long l) return l != 0;
-            if (v is System.Text.Json.JsonElement je)
-            {
-                if (je.ValueKind == System.Text.Json.JsonValueKind.True) return true;
-                if (je.ValueKind == System.Text.Json.JsonValueKind.False) return false;
-                if (je.ValueKind == System.Text.Json.JsonValueKind.Number && je.TryGetInt32(out var n)) return n != 0;
-                if (je.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    var str = je.GetString();
-                    if (bool.TryParse(str, out var p)) return p;
-                    if (int.TryParse(str, out var pn)) return pn != 0;
-                }
-            }
+            if (JsonFacade.TryToBool(v, out var parsed)) return parsed;
         }
         catch
         {
@@ -674,15 +660,7 @@ public class DispatchCapabilityRequestsNode : BTNode
         try
         {
             var v = Context.Get<object>(key);
-            if (v is int i) return i;
-            if (v is long l) return (int)l;
-            if (v is string s && int.TryParse(s, out var parsed)) return parsed;
-            // try JsonElement
-            if (v is System.Text.Json.JsonElement je)
-            {
-                if (je.ValueKind == System.Text.Json.JsonValueKind.Number && je.TryGetInt32(out var n)) return n;
-                if (je.ValueKind == System.Text.Json.JsonValueKind.String && int.TryParse(je.GetString(), out var p)) return p;
-            }
+            if (JsonFacade.TryToInt(v, out var parsed)) return parsed;
         }
         catch
         {
@@ -715,21 +693,7 @@ public class DispatchCapabilityRequestsNode : BTNode
         try
         {
             var v = Context.Get<object>(key);
-            if (v is double d) return d;
-            if (v is float f) return f;
-            if (v is decimal m) return (double)m;
-            if (v is int i) return i;
-            if (v is long l) return l;
-            if (v is string s && double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed)) return parsed;
-            if (v is System.Text.Json.JsonElement je)
-            {
-                if (je.ValueKind == System.Text.Json.JsonValueKind.Number && je.TryGetDouble(out var n)) return n;
-                if (je.ValueKind == System.Text.Json.JsonValueKind.String)
-                {
-                    var str = je.GetString();
-                    if (double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p)) return p;
-                }
-            }
+            if (JsonFacade.TryToDouble(v, out var parsed)) return parsed;
         }
         catch
         {

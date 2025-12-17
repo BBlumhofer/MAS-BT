@@ -2,7 +2,6 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using AAS_Sharp_Client.Models.Messages;
 using BaSyx.Models.AdminShell;
@@ -12,6 +11,7 @@ using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
 using MAS_BT.Nodes.ModuleHolon;
 using Microsoft.Extensions.Logging;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Common
 {
@@ -267,8 +267,11 @@ namespace MAS_BT.Nodes.Common
 
             try
             {
-                var s = Context.Get<string>(key);
-                if (int.TryParse(s, out var parsed)) return parsed;
+                var raw = Context.Get<object>(key);
+                if (JsonFacade.TryToInt(raw, out var n))
+                {
+                    return n;
+                }
             }
             catch
             {
@@ -277,12 +280,8 @@ namespace MAS_BT.Nodes.Common
 
             try
             {
-                var elem = Context.Get<JsonElement>(key);
-                if (elem.ValueKind == JsonValueKind.Number && elem.TryGetInt32(out var n))
-                {
-                    return n;
-                }
-                if (elem.ValueKind == JsonValueKind.String && int.TryParse(elem.GetString(), out var parsed))
+                var s = Context.Get<string>(key);
+                if (int.TryParse(s, out var parsed))
                 {
                     return parsed;
                 }
@@ -421,28 +420,15 @@ namespace MAS_BT.Nodes.Common
                 }
             }
 
-            // config.SubHolons (JsonElement array)
+            // config.SubHolons (array)
             if (Context.Has("config.SubHolons"))
             {
                 try
                 {
-                    var elem = Context.Get<JsonElement>("config.SubHolons");
-                    if (elem.ValueKind == JsonValueKind.Array)
+                    var raw = TryGetConfigValue("config.SubHolons", new[] { "SubHolons" });
+                    var result = ExtractStringList(raw, trimSuffixAgent: true);
+                    if (result.Count > 0)
                     {
-                        var result = new List<string>();
-                        foreach (var e in elem.EnumerateArray())
-                        {
-                            if (e.ValueKind == JsonValueKind.String)
-                            {
-                                var v = e.GetString() ?? string.Empty;
-                                v = v.Trim();
-                                if (v.EndsWith("_agent", StringComparison.OrdinalIgnoreCase))
-                                {
-                                    v = v.Substring(0, v.Length - "_agent".Length);
-                                }
-                                if (!string.IsNullOrWhiteSpace(v)) result.Add(v);
-                            }
-                        }
                         return result;
                     }
                 }
@@ -487,23 +473,15 @@ namespace MAS_BT.Nodes.Common
                 if (list != null && list.Count > 0) return list.Where(s => !string.IsNullOrWhiteSpace(s)).ToList();
             }
 
-            // config.Agent.Capabilities (JsonElement array)
+            // config.Agent.Capabilities (array)
             if (Context.Has("config.Agent.Capabilities"))
             {
                 try
                 {
-                    var elem = Context.Get<JsonElement>("config.Agent.Capabilities");
-                    if (elem.ValueKind == JsonValueKind.Array)
+                    var raw = TryGetConfigValue("config.Agent.Capabilities", new[] { "Agent", "Capabilities" });
+                    var result = ExtractStringList(raw, trimSuffixAgent: false);
+                    if (result.Count > 0)
                     {
-                        var result = new List<string>();
-                        foreach (var e in elem.EnumerateArray())
-                        {
-                            if (e.ValueKind == JsonValueKind.String)
-                            {
-                                var v = e.GetString() ?? string.Empty;
-                                if (!string.IsNullOrWhiteSpace(v)) result.Add(v);
-                            }
-                        }
                         return result;
                     }
                 }
@@ -535,6 +513,78 @@ namespace MAS_BT.Nodes.Common
             catch { /* best-effort */ }
 
             return new List<string>();
+        }
+
+        private object? TryGetConfigValue(string directKey, IEnumerable<string> path)
+        {
+            if (Context.Has(directKey))
+            {
+                try
+                {
+                    return Context.Get<object>(directKey);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            try
+            {
+                var configRoot = Context.Get<object>("config");
+                return JsonFacade.GetPath(configRoot, path);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static List<string> ExtractStringList(object? raw, bool trimSuffixAgent)
+        {
+            var result = new List<string>();
+
+            if (raw is IEnumerable<string> stringEnumerable)
+            {
+                foreach (var s in stringEnumerable)
+                {
+                    AddNormalized(s);
+                }
+
+                return result;
+            }
+
+            if (raw is IList<object?> list)
+            {
+                foreach (var item in list)
+                {
+                    AddNormalized(JsonFacade.ToStringValue(item));
+                }
+
+                return result;
+            }
+
+            AddNormalized(JsonFacade.ToStringValue(raw));
+            return result;
+
+            void AddNormalized(string? value)
+            {
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return;
+                }
+
+                var v = value.Trim();
+                if (trimSuffixAgent && v.EndsWith("_agent", StringComparison.OrdinalIgnoreCase))
+                {
+                    v = v.Substring(0, v.Length - "_agent".Length);
+                }
+
+                if (!string.IsNullOrWhiteSpace(v))
+                {
+                    result.Add(v);
+                }
+            }
         }
 
     }

@@ -1,10 +1,9 @@
 using System;
 using System.Net.Http;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Services.Embeddings;
 
@@ -31,13 +30,11 @@ public sealed class OllamaEmbeddingProvider : ITextEmbeddingProvider
             return Array.Empty<double>();
         }
 
-        var request = new OllamaEmbeddingRequest
+        var json = JsonFacade.Serialize(new System.Collections.Generic.Dictionary<string, object?>
         {
-            Model = Model,
-            Prompt = text
-        };
-
-        var json = JsonSerializer.Serialize(request);
+            ["model"] = Model,
+            ["prompt"] = text
+        });
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         try
@@ -49,28 +46,30 @@ public sealed class OllamaEmbeddingProvider : ITextEmbeddingProvider
 
             response.EnsureSuccessStatusCode();
 
-            await using var stream = await response.Content.ReadAsStreamAsync(cancellationToken);
-            var payload = await JsonSerializer.DeserializeAsync<OllamaEmbeddingResponse>(stream, cancellationToken: cancellationToken);
-            return payload?.Embedding;
+            var responseJson = await response.Content.ReadAsStringAsync(cancellationToken);
+            var parsed = JsonFacade.Parse(responseJson);
+            var embeddingNode = JsonFacade.GetPath(parsed, new[] { "embedding" });
+            if (embeddingNode is not System.Collections.Generic.IList<object?> list)
+            {
+                return null;
+            }
+
+            var embedding = new double[list.Count];
+            for (var i = 0; i < list.Count; i++)
+            {
+                if (!JsonFacade.TryToDouble(list[i], out var d))
+                {
+                    return null;
+                }
+
+                embedding[i] = d;
+            }
+
+            return embedding;
         }
         catch
         {
             return null;
         }
-    }
-
-    private sealed record OllamaEmbeddingRequest
-    {
-        [JsonPropertyName("model")]
-        public string Model { get; init; } = string.Empty;
-
-        [JsonPropertyName("prompt")]
-        public string Prompt { get; init; } = string.Empty;
-    }
-
-    private sealed record OllamaEmbeddingResponse
-    {
-        [JsonPropertyName("embedding")]
-        public double[]? Embedding { get; init; }
     }
 }

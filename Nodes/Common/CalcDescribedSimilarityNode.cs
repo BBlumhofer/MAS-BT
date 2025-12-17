@@ -1,13 +1,12 @@
 using Microsoft.Extensions.Logging;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Common;
 
@@ -127,12 +126,7 @@ public class CalcDescribedSimilarityNode : BTNode
     private async Task<string> GenerateDescription(string endpoint, string model, ISubmodelElement element)
     {
         var valueOnly = ExtractTextFromElement(element);
-        var elementJson = JsonSerializer.Serialize(new { value = valueOnly }, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            WriteIndented = false
-        });
+        var elementJson = JsonFacade.Serialize(new { value = valueOnly });
         var prompt = $@"Generate a precise, technically neutral description 
             The description must:
             - Contain exactly 30 words
@@ -157,7 +151,7 @@ public class CalcDescribedSimilarityNode : BTNode
             stream = false
         };
 
-        var json = JsonSerializer.Serialize(requestBody);
+        var json = JsonFacade.Serialize(requestBody);
         using var content = new StringContent(json, Encoding.UTF8, "application/json");
 
         using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(60));
@@ -173,8 +167,9 @@ public class CalcDescribedSimilarityNode : BTNode
         }
 
         var responseJson = await response.Content.ReadAsStringAsync(cts.Token);
-        var responseObj = JsonSerializer.Deserialize<OllamaGenerateResponse>(responseJson);
-        return (responseObj?.Response ?? string.Empty).Trim();
+        var root = JsonFacade.Parse(responseJson);
+        var responseText = JsonFacade.GetPathAsString(root, new[] { "response" }) ?? string.Empty;
+        return responseText.Trim();
     }
 
     private string BuildSimplePropertyJson(ISubmodelElement element)
@@ -205,12 +200,7 @@ public class CalcDescribedSimilarityNode : BTNode
             value
         };
 
-        return JsonSerializer.Serialize(payload, new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            WriteIndented = false
-        });
+        return JsonFacade.Serialize(payload);
     }
 
     private string ExtractTextFromElement(ISubmodelElement element)
@@ -223,9 +213,4 @@ public class CalcDescribedSimilarityNode : BTNode
         return element.IdShort ?? string.Empty;
     }
 
-    private class OllamaGenerateResponse
-    {
-        [JsonPropertyName("response")]
-        public string? Response { get; set; }
-    }
 }

@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.ProcessChain;
@@ -9,6 +8,7 @@ using AasSharpClient.Models.ManufacturingSequence;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
 using MAS_BT.Services.Graph;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 using ProcessChainModel = AasSharpClient.Models.ProcessChain.ProcessChain;
 using RequiredCapabilityModel = AasSharpClient.Models.ProcessChain.RequiredCapability;
@@ -225,9 +225,7 @@ public class BuildProcessChainResponseNode : BTNode
         List<Neo4jReferenceKey>? keysDto;
         try
         {
-            keysDto = JsonSerializer.Deserialize<List<Neo4jReferenceKey>>(
-                json,
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+            keysDto = JsonFacade.Deserialize<List<Neo4jReferenceKey>>(json);
         }
         catch
         {

@@ -2,12 +2,12 @@ using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using MAS_BT.Serialization;
 using MAS_BT.Services;
-using System.Text.Json;
 using System.Linq;
 using System.IO;
 using UAClient.Client;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Transport;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Examples;
 
@@ -33,32 +33,6 @@ public class ModuleInitializationTestRunner
         }
 
         var config = LoadConfig(providedConfigPath);
-
-        // Store full parsed JSON root in BTContext under key "config" so XmlTreeDeserializer
-        // can resolve placeholders like {config.DispatchingAgent.OfferCollectionTimeoutSeconds}.
-        try
-        {
-            var raw = File.ReadAllText(providedConfigPath);
-            using var doc = JsonDocument.Parse(raw);
-            // RootElement is a JsonElement struct; store it directly
-            var configRoot = doc.RootElement.Clone();
-            // We'll set this into the context later once the context exists; temporarily stash on a local variable.
-            // Note: we need to keep the value until Context is created below.
-            // To pass it into the existing flow, we'll attach it after creating the BTContext.
-            // Save to a temp file-local variable via closure below.
-            // Use a simple local variable to carry the JsonElement.
-            // (Named configRoot and used later.)
-            // Replace the config variable usage below where appropriate.
-            // We'll assign it into the BTContext after it's created.
-            // For clarity: the variable remains in scope for the rest of the method.
-            
-            // assign to a new variable in outer scope by shadowing
-            var _parsedConfigRoot = configRoot;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"⚠️ Fehler beim Parsen der Config JSON: {ex.Message}");
-        }
 
         if (TryGetAgentList(config, out var agentList) && agentList.Count > 0)
         {
@@ -127,14 +101,15 @@ public class ModuleInitializationTestRunner
             AgentRole = agentRole
         };
 
-        // If we parsed the config root above, expose it as JsonElement under key "config"
+        // Expose full parsed config under key "config" so placeholder interpolation can resolve {config.*}.
         try
         {
-            // Re-parse to obtain JsonElement in case the earlier parse was skipped due to scope
             var raw2 = File.ReadAllText(providedConfigPath);
-            using var doc2 = JsonDocument.Parse(raw2);
-            var configRoot2 = doc2.RootElement.Clone();
-            context.Set("config", configRoot2);
+            var configRoot2 = JsonFacade.Parse(raw2);
+            if (configRoot2 != null)
+            {
+                context.Set("config", configRoot2);
+            }
         }
         catch (Exception)
         {
@@ -379,12 +354,12 @@ public class ModuleInitializationTestRunner
         Console.WriteLine("👋 Test beendet");
     }
     
-    private static Dictionary<string, object> LoadConfig()
+    private static Dictionary<string, object?> LoadConfig()
     {
         return LoadConfig(null);
     }
 
-    private static Dictionary<string, object> LoadConfig(string? configPath)
+    private static Dictionary<string, object?> LoadConfig(string? configPath)
     {
         if (string.IsNullOrWhiteSpace(configPath) || !File.Exists(configPath))
         {
@@ -394,18 +369,13 @@ public class ModuleInitializationTestRunner
         try
         {
             var json = File.ReadAllText(configPath);
-            var config = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json);
-
-            var result = new Dictionary<string, object>();
-            if (config != null)
+            var root = JsonFacade.Parse(json);
+            if (root is IDictionary<string, object?> dict)
             {
-                foreach (var kvp in config)
-                {
-                    result[kvp.Key] = kvp.Value;
-                }
+                return new Dictionary<string, object?>(dict);
             }
 
-            return result;
+            return new Dictionary<string, object?>();
         }
         catch (Exception ex)
         {
@@ -491,32 +461,22 @@ public class ModuleInitializationTestRunner
         return null;
     }
 
-    private static string? GetInitializationTreeFromConfig(Dictionary<string, object> config)
+    private static string? GetInitializationTreeFromConfig(Dictionary<string, object?> config)
     {
         if (config == null || config.Count == 0)
             return null;
 
         // Top-level InitializationTree
-        if (config.TryGetValue("InitializationTree", out var top))
-        {
-            if (top is JsonElement je && je.ValueKind == JsonValueKind.String)
-                return je.GetString();
-            return top?.ToString();
-        }
+        var top = JsonFacade.GetPathAsString(config, new[] { "InitializationTree" });
+        if (!string.IsNullOrWhiteSpace(top)) return top;
 
         // Nested common keys
-        if (config.TryGetValue("ProductAgent", out var productObj) && productObj is JsonElement prodElem && prodElem.ValueKind == JsonValueKind.Object)
-        {
-            if (prodElem.TryGetProperty("InitializationTree", out var initElem) && initElem.ValueKind == JsonValueKind.String)
-                return initElem.GetString();
-        }
+        var productTree = JsonFacade.GetPathAsString(config, new[] { "ProductAgent", "InitializationTree" });
+        if (!string.IsNullOrWhiteSpace(productTree)) return productTree;
 
         // Try Agent.* keys - e.g., some configs may provide a preferred Tree entry
-        if (config.TryGetValue("Agent", out var agentObj) && agentObj is JsonElement agentElem && agentElem.ValueKind == JsonValueKind.Object)
-        {
-            if (agentElem.TryGetProperty("InitializationTree", out var initAgent) && initAgent.ValueKind == JsonValueKind.String)
-                return initAgent.GetString();
-        }
+        var agentTree = JsonFacade.GetPathAsString(config, new[] { "Agent", "InitializationTree" });
+        if (!string.IsNullOrWhiteSpace(agentTree)) return agentTree;
 
         return null;
     }
@@ -585,7 +545,7 @@ public class ModuleInitializationTestRunner
                 continue;
             }
 
-            Dictionary<string, object> agentConfig;
+            Dictionary<string, object?> agentConfig;
             try
             {
                 agentConfig = LoadConfig(resolvedConfigPath);
@@ -622,7 +582,7 @@ public class ModuleInitializationTestRunner
         Console.WriteLine("👥 Alle angeforderten Agenten wurden gestartet.");
     }
 
-    private static bool TryGetAgentList(Dictionary<string, object> config, out IReadOnlyList<string> agents)
+    private static bool TryGetAgentList(Dictionary<string, object?> config, out IReadOnlyList<string> agents)
     {
         agents = Array.Empty<string>();
         if (config == null || !config.TryGetValue("Agents", out var value) || value == null)
@@ -630,11 +590,11 @@ public class ModuleInitializationTestRunner
 
         var list = new List<string>();
 
-        if (value is JsonElement element && element.ValueKind == JsonValueKind.Array)
+        if (value is IList<object?> rawList)
         {
-            foreach (var entry in element.EnumerateArray())
+            foreach (var entry in rawList)
             {
-                var entryValue = entry.ValueKind == JsonValueKind.String ? entry.GetString() : entry.ToString();
+                var entryValue = JsonFacade.ToStringValue(entry);
                 if (!string.IsNullOrWhiteSpace(entryValue))
                     list.Add(entryValue!);
             }
@@ -711,137 +671,26 @@ public class ModuleInitializationTestRunner
         }
     }
 
-    private static string? GetConfigValue(Dictionary<string, object> config, string path, [System.Diagnostics.CodeAnalysis.AllowNull] string defaultValue)
+    private static string? GetConfigValue(Dictionary<string, object?> config, string path, [System.Diagnostics.CodeAnalysis.AllowNull] string defaultValue)
     {
         var parts = path.Split('.');
-        object? current = config;
-        
-        foreach (var part in parts)
-        {
-            if (current is Dictionary<string, object> dict && dict.TryGetValue(part, out var value))
-            {
-                current = value;
-            }
-            else if (current is JsonElement element && element.ValueKind == JsonValueKind.Object)
-            {
-                if (element.TryGetProperty(part, out var prop))
-                {
-                    current = prop;
-                }
-                else
-                {
-                    return defaultValue;
-                }
-            }
-            else
-            {
-                return defaultValue;
-            }
-        }
-        
-        if (current is JsonElement jsonElem)
-        {
-            return jsonElem.GetString() ?? defaultValue;
-        }
-        
-        return current?.ToString() ?? defaultValue;
+        var current = JsonFacade.GetPath(config, parts);
+        var s = JsonFacade.ToStringValue(current);
+        return string.IsNullOrWhiteSpace(s) ? defaultValue : s;
     }
     
-    private static int GetConfigInt(Dictionary<string, object> config, string path, int defaultValue)
+    private static int GetConfigInt(Dictionary<string, object?> config, string path, int defaultValue)
     {
         var parts = path.Split('.');
-        object? current = config;
-        
-        foreach (var part in parts)
-        {
-            if (current is Dictionary<string, object> dict && dict.TryGetValue(part, out var value))
-            {
-                current = value;
-            }
-            else if (current is JsonElement element && element.ValueKind == JsonValueKind.Object)
-            {
-                if (element.TryGetProperty(part, out var prop))
-                {
-                    current = prop;
-                }
-                else
-                {
-                    return defaultValue;
-                }
-            }
-            else
-            {
-                return defaultValue;
-            }
-        }
-        
-        if (current is JsonElement jsonElem)
-        {
-            if (jsonElem.ValueKind == JsonValueKind.Number)
-            {
-                return jsonElem.GetInt32();
-            }
-            else if (jsonElem.ValueKind == JsonValueKind.String)
-            {
-                return int.TryParse(jsonElem.GetString(), out var intValue) ? intValue : defaultValue;
-            }
-        }
-        
-        if (current is int intVal)
-        {
-            return intVal;
-        }
-        
-        return int.TryParse(current?.ToString() ?? "", out var parsed) ? parsed : defaultValue;
+        var current = JsonFacade.GetPath(config, parts);
+        return JsonFacade.TryToInt(current, out var parsed) ? parsed : defaultValue;
     }
 
-    private static bool GetConfigBool(Dictionary<string, object> config, string path, bool defaultValue)
+    private static bool GetConfigBool(Dictionary<string, object?> config, string path, bool defaultValue)
     {
         var parts = path.Split('.');
-        object? current = config;
-
-        foreach (var part in parts)
-        {
-            if (current is Dictionary<string, object> dict && dict.TryGetValue(part, out var value))
-            {
-                current = value;
-            }
-            else if (current is JsonElement element && element.ValueKind == JsonValueKind.Object)
-            {
-                if (element.TryGetProperty(part, out var prop))
-                {
-                    current = prop;
-                }
-                else
-                {
-                    return defaultValue;
-                }
-            }
-            else
-            {
-                return defaultValue;
-            }
-        }
-
-        if (current is JsonElement jsonElem)
-        {
-            if (jsonElem.ValueKind == JsonValueKind.True) return true;
-            if (jsonElem.ValueKind == JsonValueKind.False) return false;
-            if (jsonElem.ValueKind == JsonValueKind.String)
-                return bool.TryParse(jsonElem.GetString(), out var b) ? b : defaultValue;
-        }
-
-        if (current is bool bVal)
-        {
-            return bVal;
-        }
-
-        if (current != null && bool.TryParse(current.ToString(), out var parsed))
-        {
-            return parsed;
-        }
-
-        return defaultValue;
+        var current = JsonFacade.GetPath(config, parts);
+        return JsonFacade.TryToBool(current, out var parsed) ? parsed : defaultValue;
     }
     
     private static void PrintContextState(BTContext context)
@@ -882,25 +731,8 @@ public class ModuleInitializationTestRunner
         if (value == null) return "(null)";
         if (value is bool b) return b ? "✓" : "✗";
         if (value is string s) return s;
-        if (value is JsonElement je)
-        {
-            switch (je.ValueKind)
-            {
-                case JsonValueKind.Object:
-                    return "{...}";
-                case JsonValueKind.Array:
-                    return "[...]";
-                case JsonValueKind.String:
-                    return je.GetString() ?? string.Empty;
-                case JsonValueKind.Number:
-                    return je.GetRawText();
-                case JsonValueKind.True:
-                case JsonValueKind.False:
-                    return je.GetBoolean() ? "✓" : "✗";
-                default:
-                    return je.ToString();
-            }
-        }
+        if (value is IDictionary<string, object?>) return "{...}";
+        if (value is IList<object?>) return "[...]";
         if (value is IEnumerable<string> strEnum)
         {
             return $"[{string.Join(", ", strEnum)}]";
@@ -923,49 +755,39 @@ public class ModuleInitializationTestRunner
         return value.ToString() ?? "(object)";
     }
 
-    private static void PrintFullConfig(Dictionary<string, object> config, string indent = "")
+    private static void PrintFullConfig(Dictionary<string, object?> config, string indent = "")
     {
         foreach (var kv in config)
         {
             var key = kv.Key;
             var val = kv.Value;
-            if (val is JsonElement je)
+
+            if (val is IDictionary<string, object?> dict)
             {
-                switch (je.ValueKind)
+                Console.WriteLine($"{indent}{key}:");
+                PrintFullConfig(new Dictionary<string, object?>(dict), indent + "  ");
+                continue;
+            }
+
+            if (val is IList<object?> list)
+            {
+                Console.WriteLine($"{indent}{key}: [");
+                foreach (var item in list)
                 {
-                    case JsonValueKind.Object:
-                        Console.WriteLine($"{indent}{key}:");
-                        var sub = new Dictionary<string, object>();
-                        foreach (var prop in je.EnumerateObject())
-                        {
-                            sub[prop.Name] = prop.Value;
-                        }
-                        PrintFullConfig(sub, indent + "  ");
-                        break;
-                    case JsonValueKind.Array:
-                        Console.WriteLine($"{indent}{key}: [");
-                        foreach (var item in je.EnumerateArray())
-                        {
-                            if (item.ValueKind == JsonValueKind.Object)
-                            {
-                                Console.WriteLine($"{indent}  - {{...}}");
-                            }
-                            else
-                            {
-                                Console.WriteLine($"{indent}  - {item.ToString()}");
-                            }
-                        }
-                        Console.WriteLine($"{indent}]");
-                        break;
-                    default:
-                        Console.WriteLine($"{indent}{key}: {je.ToString()}");
-                        break;
+                    if (item is IDictionary<string, object?>)
+                    {
+                        Console.WriteLine($"{indent}  - {{...}}");
+                    }
+                    else
+                    {
+                        Console.WriteLine($"{indent}  - {JsonFacade.ToStringValue(item)}");
+                    }
                 }
+                Console.WriteLine($"{indent}]");
+                continue;
             }
-            else
-            {
-                Console.WriteLine($"{indent}{key}: {val}");
-            }
+
+            Console.WriteLine($"{indent}{key}: {JsonFacade.ToStringValue(val)}");
         }
     }
 }

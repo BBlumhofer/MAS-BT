@@ -5,8 +5,8 @@ using AasSharpClient.Models;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
 using I40Sharp.Messaging;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Planning;
 
@@ -152,44 +152,64 @@ public class ApplySkillResponseNode : BTNode
 
     private static string? ExtractActionState(string json)
     {
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (!doc.RootElement.TryGetProperty("interactionElements", out var elements))
-            {
-                return null;
-            }
-
-            foreach (var el in elements.EnumerateArray())
-            {
-                if (el.TryGetProperty("idShort", out var idShortProp) && idShortProp.GetString()?.Equals("ActionState", StringComparison.OrdinalIgnoreCase) == true)
-                {
-                    if (el.TryGetProperty("value", out var val) && val.ValueKind == JsonValueKind.String)
-                    {
-                        return val.GetString();
-                    }
-                }
-
-                if (el.TryGetProperty("value", out var valueProp) && valueProp.ValueKind == JsonValueKind.Array)
-                {
-                    foreach (var sub in valueProp.EnumerateArray())
-                    {
-                        if (sub.TryGetProperty("idShort", out var subId) && subId.GetString()?.Equals("ActionState", StringComparison.OrdinalIgnoreCase) == true)
-                        {
-                            if (sub.TryGetProperty("value", out var subVal) && subVal.ValueKind == JsonValueKind.String)
-                            {
-                                return subVal.GetString();
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        catch
+        var root = JsonFacade.Parse(json);
+        if (root is not IDictionary<string, object?> dict)
         {
             return null;
         }
 
+        if (JsonFacade.GetPath(dict, new[] { "interactionElements" }) is not IList<object?> elements)
+        {
+            return null;
+        }
+
+        foreach (var el in elements)
+        {
+            if (TryExtractActionStateFromElement(el, out var state) && !string.IsNullOrWhiteSpace(state))
+            {
+                return state;
+            }
+        }
+
         return null;
+    }
+
+    private static bool TryExtractActionStateFromElement(object? element, out string? state)
+    {
+        state = null;
+
+        if (element is not IDictionary<string, object?> dict)
+        {
+            return false;
+        }
+
+        var idShort = dict.TryGetValue("idShort", out var idShortRaw)
+            ? JsonFacade.ToStringValue(idShortRaw)
+            : null;
+
+        if (string.Equals(idShort, "ActionState", StringComparison.OrdinalIgnoreCase))
+        {
+            if (dict.TryGetValue("value", out var valueRaw))
+            {
+                state = JsonFacade.ToStringValue(valueRaw);
+                if (!string.IsNullOrWhiteSpace(state))
+                {
+                    return true;
+                }
+            }
+        }
+
+        if (dict.TryGetValue("value", out var nested) && nested is IList<object?> nestedElements)
+        {
+            foreach (var sub in nestedElements)
+            {
+                if (TryExtractActionStateFromElement(sub, out state) && !string.IsNullOrWhiteSpace(state))
+                {
+                    return true;
+                }
+            }
+        }
+
+        return false;
     }
 }

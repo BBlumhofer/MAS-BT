@@ -2,12 +2,12 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Messages;
 using AasSharpClient.Models.Helpers;
 using MAS_BT.Core;
 using MAS_BT.Services.Graph;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
@@ -151,7 +151,7 @@ namespace MAS_BT.Nodes.Dispatching
                     .WithType(messageType)
                     .WithConversationId(conversationId);
 
-                var serialized = JsonSerializer.Serialize(responseDto);
+                var serialized = JsonFacade.Serialize(responseDto);
                 var payload = new Property<string>("ProcessChain")
                 {
                     Value = new PropertyValue<string>(serialized)
@@ -508,15 +508,7 @@ namespace MAS_BT.Nodes.Dispatching
             try
             {
                 var v = Context.Get<object>(key);
-                if (v is bool b) return b;
-                if (v is string s && bool.TryParse(s, out var parsed)) return parsed;
-                if (v is JsonElement je)
-                {
-                    if (je.ValueKind == JsonValueKind.True) return true;
-                    if (je.ValueKind == JsonValueKind.False) return false;
-                    if (je.ValueKind == JsonValueKind.String && bool.TryParse(je.GetString(), out var p)) return p;
-                    if (je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out var n)) return n != 0;
-                }
+                if (JsonFacade.TryToBool(v, out var parsed)) return parsed;
             }
             catch
             {
@@ -530,14 +522,7 @@ namespace MAS_BT.Nodes.Dispatching
             try
             {
                 var v = Context.Get<object>(key);
-                if (v is int i) return i;
-                if (v is long l) return (int)l;
-                if (v is string s && int.TryParse(s, out var parsed)) return parsed;
-                if (v is JsonElement je)
-                {
-                    if (je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out var n)) return n;
-                    if (je.ValueKind == JsonValueKind.String && int.TryParse(je.GetString(), out var p)) return p;
-                }
+                if (JsonFacade.TryToInt(v, out var parsed)) return parsed;
             }
             catch
             {
@@ -563,21 +548,7 @@ namespace MAS_BT.Nodes.Dispatching
             try
             {
                 var v = Context.Get<object>(key);
-                if (v is double d) return d;
-                if (v is float f) return f;
-                if (v is decimal m) return (double)m;
-                if (v is int i) return i;
-                if (v is long l) return l;
-                if (v is string s && double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var parsed)) return parsed;
-                if (v is JsonElement je)
-                {
-                    if (je.ValueKind == JsonValueKind.Number && je.TryGetDouble(out var n)) return n;
-                    if (je.ValueKind == JsonValueKind.String)
-                    {
-                        var str = je.GetString();
-                        if (double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var p)) return p;
-                    }
-                }
+                if (JsonFacade.TryToDouble(v, out var parsed)) return parsed;
             }
             catch
             {

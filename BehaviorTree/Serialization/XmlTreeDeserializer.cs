@@ -3,7 +3,7 @@ using System.Linq;
 using System.Xml.Linq;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
-using System.Text.Json;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Serialization;
 
@@ -195,34 +195,26 @@ public class XmlTreeDeserializer
             {
                 try
                 {
-                    var configRoot = context.Get<System.Text.Json.JsonElement>("config");
-                    if (configRoot.ValueKind != System.Text.Json.JsonValueKind.Undefined && configRoot.ValueKind != System.Text.Json.JsonValueKind.Null)
+                    var configRoot = context.Get<object>("config");
+                    if (configRoot is not null)
                     {
                         var segments = placeholder.Substring("config.".Length).Split('.', System.StringSplitOptions.RemoveEmptyEntries);
-                        var resolved = TraverseJsonElement(configRoot, segments);
-                        if (resolved != null)
-                        {
-                            replacement = resolved;
-                        }
-                        else
-                        {
-                            // Fallback: allow callers to have set individual flattened keys like "config.Path" in the BT context
-                            replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
-                        }
+                        var resolved = JsonFacade.GetPathAsString(configRoot, segments);
+                        replacement = resolved ?? (context.Get<object>(placeholder)?.ToString() ?? $"{{{placeholder}}}");
                     }
                     else
                     {
-                        replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+                        replacement = context.Get<object>(placeholder)?.ToString() ?? $"{{{placeholder}}}";
                     }
                 }
                 catch
                 {
-                    replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+                    replacement = context.Get<object>(placeholder)?.ToString() ?? $"{{{placeholder}}}";
                 }
             }
             else
             {
-                replacement = context.Get<string>(placeholder) ?? $"{{{placeholder}}}";
+                replacement = context.Get<object>(placeholder)?.ToString() ?? $"{{{placeholder}}}";
             }
 
             result = result.Substring(0, openBrace) + replacement + result.Substring(closeBrace + 1);
@@ -257,36 +249,6 @@ public class XmlTreeDeserializer
         return value;
     }
 
-    /// <summary>
-    /// Traversiert ein <see cref="JsonElement"/> anhand von Segmenten und gibt den Wert als String zurück.
-    /// </summary>
-    private string? TraverseJsonElement(JsonElement root, string[] segments)
-    {
-        var current = root;
-
-        foreach (var seg in segments)
-        {
-            if (current.ValueKind == JsonValueKind.Object && current.TryGetProperty(seg, out var prop))
-            {
-                current = prop;
-            }
-            else
-            {
-                return null;
-            }
-        }
-
-        return current.ValueKind switch
-        {
-            JsonValueKind.String => current.GetString(),
-            JsonValueKind.Number => current.GetRawText(),
-            JsonValueKind.True => current.GetRawText(),
-            JsonValueKind.False => current.GetRawText(),
-            JsonValueKind.Null => null,
-            _ => JsonSerializer.Serialize(current),
-        };
-    }
-    
     /// <summary>
     /// Konvertiert kebab-case zu PascalCase (z.B. "timeout-ms" → "TimeoutMs")
     /// </summary>

@@ -2,13 +2,13 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
 using MAS_BT.Nodes.ModuleHolon;
 using MAS_BT.Nodes.Planning;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Common
@@ -256,17 +256,12 @@ namespace MAS_BT.Nodes.Common
             // Try infer from config.SubHolons (commonly a JSON array)
             try
             {
-                var elem = Context.Get<JsonElement>("config.SubHolons");
-                if (elem.ValueKind == JsonValueKind.Array)
+                var elem = Context.Get<object>("config.SubHolons");
+                if (elem is IList<object?> list)
                 {
-                    var count = 0;
-                    foreach (var _ in elem.EnumerateArray())
+                    if (list.Count > 0)
                     {
-                        count++;
-                    }
-                    if (count > 0)
-                    {
-                        return count;
+                        return list.Count;
                     }
                 }
             }
@@ -278,17 +273,12 @@ namespace MAS_BT.Nodes.Common
             // Backward compat: some configs store SubHolons under config.Agent.SubHolons
             try
             {
-                var elem = Context.Get<JsonElement>("config.Agent.SubHolons");
-                if (elem.ValueKind == JsonValueKind.Array)
+                var elem = Context.Get<object>("config.Agent.SubHolons");
+                if (elem is IList<object?> list)
                 {
-                    var count = 0;
-                    foreach (var _ in elem.EnumerateArray())
+                    if (list.Count > 0)
                     {
-                        count++;
-                    }
-                    if (count > 0)
-                    {
-                        return count;
+                        return list.Count;
                     }
                 }
             }
@@ -339,14 +329,15 @@ namespace MAS_BT.Nodes.Common
             {
                 try
                 {
-                    var doc = JsonDocument.Parse(trimmed);
-                    if (doc.RootElement.ValueKind == JsonValueKind.Array)
+                    var parsed = JsonFacade.Parse(trimmed);
+                    if (parsed is IList<object?> list)
                     {
-                        foreach (var el in doc.RootElement.EnumerateArray())
+                        foreach (var el in list)
                         {
-                            if (el.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(el.GetString()))
+                            var s = el as string ?? JsonFacade.ToStringValue(el);
+                            if (!string.IsNullOrWhiteSpace(s))
                             {
-                                set.Add(el.GetString()!);
+                                set.Add(s);
                             }
                         }
                     }
@@ -382,19 +373,14 @@ namespace MAS_BT.Nodes.Common
 
                 var placeholder = result.Substring(openBrace + 1, closeBrace - openBrace - 1);
                 // Prefer string values, but allow JSON arrays/objects (e.g. config.SubHolons) to be used as JSON text.
-                var replacement = Context.Get<string>(placeholder);
-                if (replacement == null)
+                var raw = Context.Get<object>(placeholder);
+                var replacement = raw as string;
+                if (replacement == null && (raw is IDictionary<string, object?> || raw is IList<object?>))
                 {
-                    var json = Context.Get<System.Text.Json.JsonElement>(placeholder);
-                    if (json.ValueKind == System.Text.Json.JsonValueKind.String)
-                    {
-                        replacement = json.GetString();
-                    }
-                    else if (json.ValueKind != System.Text.Json.JsonValueKind.Undefined && json.ValueKind != System.Text.Json.JsonValueKind.Null)
-                    {
-                        replacement = json.GetRawText();
-                    }
+                    replacement = JsonFacade.Serialize(raw);
                 }
+
+                replacement ??= JsonFacade.ToStringValue(raw);
 
                 replacement ??= $"{{{placeholder}}}";
                 result = result.Substring(0, openBrace) + replacement + result.Substring(closeBrace + 1);

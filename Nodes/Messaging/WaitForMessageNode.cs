@@ -1,7 +1,6 @@
 using Microsoft.Extensions.Logging;
 using System.Collections.Concurrent;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using MAS_BT.Tools;
 
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
@@ -505,8 +504,7 @@ public class WaitForMessageNode : BTNode
                     string serialized = string.Empty;
                     try
                     {
-                        var options = new JsonSerializerOptions { DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull };
-                        serialized = JsonSerializer.Serialize(message, options);
+                        serialized = JsonFacade.Serialize(message);
                     }
                     catch (Exception ex)
                     {

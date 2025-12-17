@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Text.Json;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Services;
@@ -123,14 +123,8 @@ public class ProcessSubHolonLauncher : ISubHolonLauncher
             if (!string.IsNullOrWhiteSpace(spec.ConfigPath) && File.Exists(spec.ConfigPath))
             {
                 var cfgText = File.ReadAllText(spec.ConfigPath);
-                using var d = JsonDocument.Parse(cfgText);
-                if (d.RootElement.TryGetProperty("Agent", out var agentElem) && agentElem.ValueKind == JsonValueKind.Object)
-                {
-                    if (agentElem.TryGetProperty("Role", out var roleElem) && roleElem.ValueKind == JsonValueKind.String)
-                    {
-                        roleFromConfig = roleElem.GetString();
-                    }
-                }
+                var parsed = JsonFacade.Parse(cfgText);
+                roleFromConfig = JsonFacade.GetPathAsString(parsed, new[] { "Agent", "Role" });
             }
         }
         catch

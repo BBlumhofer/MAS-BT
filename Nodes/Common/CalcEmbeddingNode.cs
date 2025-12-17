@@ -1,13 +1,12 @@
 using Microsoft.Extensions.Logging;
 using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using MAS_BT.Core;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using I40Sharp.Messaging.Core;
 using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Common;
 
@@ -147,14 +146,7 @@ public class CalcEmbeddingNode : BTNode
             if (Context.Has(key))
             {
                 var raw = Context.Get<object>(key);
-                if (raw is int i) return i;
-                if (raw is long l) return (int)l;
-
-                if (raw is JsonElement je)
-                {
-                    if (je.ValueKind == JsonValueKind.Number && je.TryGetInt32(out var n)) return n;
-                    if (je.ValueKind == JsonValueKind.String && int.TryParse(je.GetString(), out var parsed)) return parsed;
-                }
+                if (JsonFacade.TryToInt(raw, out var parsed)) return parsed;
             }
         }
         catch
@@ -186,7 +178,7 @@ public class CalcEmbeddingNode : BTNode
                 prompt = text
             };
 
-            var json = JsonSerializer.Serialize(requestBody);
+            var json = JsonFacade.Serialize(requestBody);
             var content = new StringContent(json, Encoding.UTF8, "application/json");
 
             // Increase timeout for Ollama
@@ -205,16 +197,15 @@ public class CalcEmbeddingNode : BTNode
             }
 
             var responseJson = await response.Content.ReadAsStringAsync();
-            var responseObj = JsonSerializer.Deserialize<OllamaEmbeddingResponse>(responseJson);
-
-            if (responseObj?.Embedding == null || responseObj.Embedding.Length == 0)
+            var embedding = ExtractEmbedding(responseJson);
+            if (embedding == null || embedding.Length == 0)
             {
                 Logger.LogError("CalcEmbedding: Ollama returned empty embedding");
                 return null;
             }
 
-            Logger.LogDebug("CalcEmbedding: Successfully got embedding with {Dim} dimensions", responseObj.Embedding.Length);
-            return responseObj.Embedding;
+            Logger.LogDebug("CalcEmbedding: Successfully got embedding with {Dim} dimensions", embedding.Length);
+            return embedding;
         }
         catch (TaskCanceledException ex)
         {
@@ -233,9 +224,29 @@ public class CalcEmbeddingNode : BTNode
         }
     }
 
-    private class OllamaEmbeddingResponse
+    private static double[]? ExtractEmbedding(string responseJson)
     {
-        [JsonPropertyName("embedding")]
-        public double[]? Embedding { get; set; }
+        var root = JsonFacade.Parse(responseJson);
+        if (root is not IDictionary<string, object?> dict)
+        {
+            return null;
+        }
+
+        if (!dict.TryGetValue("embedding", out var rawEmbedding) || rawEmbedding is not IList<object?> list)
+        {
+            return null;
+        }
+
+        var result = new double[list.Count];
+        for (var i = 0; i < list.Count; i++)
+        {
+            if (!JsonFacade.TryToDouble(list[i], out var d))
+            {
+                return null;
+            }
+            result[i] = d;
+        }
+
+        return result;
     }
 }

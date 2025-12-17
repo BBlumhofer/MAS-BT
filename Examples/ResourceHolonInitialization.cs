@@ -4,6 +4,7 @@ using MAS_BT.Nodes.Messaging;
 using MAS_BT.Services;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Console;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Examples;
 
@@ -111,7 +112,7 @@ public class ResourceHolonInitialization
             {
                 var capabilities = context.Get<object>($"CapabilityDescription_{context.AgentId}");
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"✓ Capabilities: {System.Text.Json.JsonSerializer.Serialize(capabilities)}");
+                    Console.WriteLine($"✓ Capabilities: {JsonFacade.Serialize(capabilities)}");
                 Console.ResetColor();
             }
             Console.WriteLine();
@@ -131,7 +132,7 @@ public class ResourceHolonInitialization
             {
                 var skills = context.Get<object>($"Skills_{context.AgentId}");
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"✓ Skills: {System.Text.Json.JsonSerializer.Serialize(skills)}");
+                    Console.WriteLine($"✓ Skills: {JsonFacade.Serialize(skills)}");
                 Console.ResetColor();
             }
             Console.WriteLine();
@@ -151,7 +152,7 @@ public class ResourceHolonInitialization
             {
                 var schedule = context.Get<object>($"MachineSchedule_{context.AgentId}");
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"✓ Schedule: {System.Text.Json.JsonSerializer.Serialize(schedule)}");
+                    Console.WriteLine($"✓ Schedule: {JsonFacade.Serialize(schedule)}");
                 Console.ResetColor();
             }
             Console.WriteLine();
@@ -171,7 +172,7 @@ public class ResourceHolonInitialization
             {
                 var nameplate = context.Get<object>($"Nameplate_{context.AgentId}");
                 Console.ForegroundColor = ConsoleColor.Green;
-                Console.WriteLine($"✓ Nameplate: {System.Text.Json.JsonSerializer.Serialize(nameplate)}");
+                    Console.WriteLine($"✓ Nameplate: {JsonFacade.Serialize(nameplate)}");
                 Console.ResetColor();
             }
             Console.WriteLine();

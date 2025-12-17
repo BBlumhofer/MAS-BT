@@ -1,8 +1,8 @@
-using System.Text.Json;
 using System.IO;
 using System.Collections.Generic;
 using MAS_BT.Core;
 using MAS_BT.Services;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.ModuleHolon;
@@ -13,8 +13,8 @@ public class SpawnSubHolonsNode : BTNode
 
     public override async Task<NodeStatus> Execute()
     {
-        var config = Context.Get<JsonElement>("config");
-        if (config.ValueKind == JsonValueKind.Undefined)
+        var config = Context.Get<object>("config");
+        if (config is null)
         {
             Logger.LogWarning("SpawnSubHolons: no config found");
             return NodeStatus.Success;
@@ -73,18 +73,17 @@ public class SpawnSubHolonsNode : BTNode
         }
     }
 
-    private static IEnumerable<string> ExtractSubHolonEntries(JsonElement config)
+    private static IEnumerable<string> ExtractSubHolonEntries(object? config)
     {
-        if (config.ValueKind != JsonValueKind.Object)
-            yield break;
-
-        if (config.TryGetProperty("SubHolons", out var subHolons) && subHolons.ValueKind == JsonValueKind.Array)
+        var subHolons = JsonFacade.GetPath(config, new[] { "SubHolons" });
+        if (subHolons is System.Collections.Generic.IList<object?> arr)
         {
-            foreach (var entry in subHolons.EnumerateArray())
+            foreach (var entry in arr)
             {
-                if (entry.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(entry.GetString()))
+                var s = entry as string ?? JsonFacade.ToStringValue(entry);
+                if (!string.IsNullOrWhiteSpace(s))
                 {
-                    yield return entry.GetString()!;
+                    yield return s;
                 }
             }
         }
@@ -112,12 +111,10 @@ public class SpawnSubHolonsNode : BTNode
 
         try
         {
-            using var doc = JsonDocument.Parse(File.ReadAllText(configPath));
-            var root = doc.RootElement;
-
-            treePath = TryGetString(root, "InitializationTree")
-                       ?? TryGetString(root, "Agent", "InitializationTree");
-            agentId = TryGetString(root, "Agent", "AgentId");
+            var root = JsonFacade.ParseFile(configPath);
+            treePath = JsonFacade.GetPathAsString(root, new[] { "InitializationTree" })
+                       ?? JsonFacade.GetPathAsString(root, new[] { "Agent", "InitializationTree" });
+            agentId = JsonFacade.GetPathAsString(root, new[] { "Agent", "AgentId" });
 
             if (string.IsNullOrWhiteSpace(treePath))
             {
@@ -140,20 +137,6 @@ public class SpawnSubHolonsNode : BTNode
         }
 
         return !string.IsNullOrWhiteSpace(treePath);
-    }
-
-    private static string? TryGetString(JsonElement root, params string[] path)
-    {
-        JsonElement current = root;
-        foreach (var segment in path)
-        {
-            if (current.ValueKind != JsonValueKind.Object || !current.TryGetProperty(segment, out current))
-            {
-                return null;
-            }
-        }
-
-        return current.ValueKind == JsonValueKind.String ? current.GetString() : null;
     }
 
     private static string BuildAgentId(string moduleId, string treePath)

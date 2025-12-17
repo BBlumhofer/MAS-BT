@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 using MAS_BT.Core;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.ModuleHolon;
 
@@ -15,23 +15,9 @@ public static class ModuleContextHelper
             return s;
         }
 
-        // Many config.* keys are stored as JsonElement in the blackboard.
-        var json = context.Get<JsonElement>(key);
-        if (json.ValueKind == JsonValueKind.String)
-        {
-            var v = json.GetString();
-            return string.IsNullOrWhiteSpace(v) ? null : v;
-        }
-
-        if (json.ValueKind == JsonValueKind.Number
-            || json.ValueKind == JsonValueKind.True
-            || json.ValueKind == JsonValueKind.False)
-        {
-            var v = json.ToString();
-            return string.IsNullOrWhiteSpace(v) ? null : v;
-        }
-
-        return null;
+        var raw = context.Get(key);
+        var v2 = JsonFacade.ToStringValue(raw);
+        return string.IsNullOrWhiteSpace(v2) ? null : v2;
     }
 
     public static string ResolveModuleId(BTContext context)

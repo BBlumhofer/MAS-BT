@@ -2,15 +2,15 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
 using BaSyx.Models.AdminShell;
 using BaSyx.Models.Extensions;
 using MAS_BT.Nodes.Planning;
+using MAS_BT.Tools;
 using MAS_BT.Services.Graph;
 using Neo4j.Driver;
+using AasSharpClient.Tools;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -103,9 +103,7 @@ public class Neo4jCapabilityPropertyQueryTests
         Assert.False(string.IsNullOrWhiteSpace(referenceJson));
 
         // Convert the returned JSON array (keys) into a real BaSyx ReferenceElement.
-        var keysDto = JsonSerializer.Deserialize<List<ReferenceKeyDto>>(
-            referenceJson!,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+        var keysDto = JsonFacade.Deserialize<List<ReferenceKeyDto>>(referenceJson!);
 
         Assert.NotNull(keysDto);
         Assert.NotEmpty(keysDto!);
@@ -134,7 +132,7 @@ public class Neo4jCapabilityPropertyQueryTests
             Value = new ReferenceElementValue(basyxReference)
         };
 
-        var basyxJson = JsonSerializer.Serialize<ISubmodelElement>(referenceElement, CreateBasyxOptions());
+        var basyxJson = JsonLoader.SerializeElement(referenceElement, indented: true);
         _output.WriteLine("Neo4j c.Reference raw: {0}", referenceJson);
         _output.WriteLine("As BaSyx ReferenceElement JSON: {0}", basyxJson);
 
@@ -171,23 +169,6 @@ public class Neo4jCapabilityPropertyQueryTests
     {
         public string? Type { get; set; }
         public string? Value { get; set; }
-    }
-
-    private static JsonSerializerOptions CreateBasyxOptions()
-    {
-        return new JsonSerializerOptions
-        {
-            Converters =
-            {
-                new FullSubmodelElementConverter(new ConverterOptions()),
-                new ReferenceJsonConverter(),
-                new JsonStringEnumConverter()
-            },
-            PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-            PropertyNameCaseInsensitive = true,
-            DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-            WriteIndented = true
-        };
     }
 
     private sealed class ThrowingEmbeddingProvider : MAS_BT.Services.Embeddings.ITextEmbeddingProvider

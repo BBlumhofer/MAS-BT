@@ -6,6 +6,7 @@ using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using BaSyx.Models.AdminShell;
 using AasSharpClient.Tools;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -59,19 +60,7 @@ public class SendMessageNode : BTNode
             }
             else if (Payload != null)
             {
-                if (Payload is System.Text.Json.JsonElement jsonElement)
-                {
-                    var loaded = JsonLoader.DeserializeElement(jsonElement);
-                    if (loaded is SubmodelElement loadedElement)
-                    {
-                        builder.AddElement(loadedElement);
-                    }
-                    else
-                    {
-                        builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(jsonElement.GetRawText()) });
-                    }
-                }
-                else if (Payload is string jsonString)
+                if (Payload is string jsonString)
                 {
                     var loaded = JsonLoader.DeserializeElement(jsonString);
                     if (loaded is SubmodelElement loadedElement)
@@ -81,6 +70,19 @@ public class SendMessageNode : BTNode
                     else
                     {
                         builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(jsonString) });
+                    }
+                }
+                else if (Payload is System.Collections.Generic.IDictionary<string, object?> || Payload is System.Collections.Generic.IList<object?>)
+                {
+                    var json = JsonFacade.Serialize(Payload);
+                    var loaded = JsonLoader.DeserializeElement(json);
+                    if (loaded is SubmodelElement loadedElement)
+                    {
+                        builder.AddElement(loadedElement);
+                    }
+                    else
+                    {
+                        builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(json) });
                     }
                 }
                 else

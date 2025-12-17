@@ -1,5 +1,5 @@
 using System.Linq;
-using System.Text.Json;
+using MAS_BT.Tools;
 
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -141,13 +141,13 @@ public abstract class BTNode
             return false;
         }
 
-        var configRoot = Context.Get<JsonElement>("config");
-        if (configRoot.ValueKind == JsonValueKind.Undefined || configRoot.ValueKind == JsonValueKind.Null)
+        var configRoot = Context.Get<object>("config");
+        if (configRoot is null)
         {
             return false;
         }
 
-        var resolved = TraverseJsonElement(configRoot, segments.Skip(1));
+        var resolved = JsonFacade.GetPathAsString(configRoot, segments.Skip(1));
         if (string.IsNullOrWhiteSpace(resolved))
         {
             return false;
@@ -157,32 +157,7 @@ public abstract class BTNode
         return true;
     }
 
-    private static string? TraverseJsonElement(JsonElement element, IEnumerable<string> path)
-    {
-        foreach (var segment in path)
-        {
-            if (element.ValueKind != JsonValueKind.Object)
-            {
-                return null;
-            }
 
-            if (!element.TryGetProperty(segment, out var child))
-            {
-                return null;
-            }
-
-            element = child;
-        }
-
-        return element.ValueKind switch
-        {
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.ToString(),
-            JsonValueKind.True => "True",
-            JsonValueKind.False => "False",
-            _ => element.ToString()
-        };
-    }
     
     #endregion
     

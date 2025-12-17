@@ -1,7 +1,7 @@
 using System;
-using System.Text.Json;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Common
 {
@@ -30,10 +30,10 @@ namespace MAS_BT.Nodes.Common
 
             try
             {
-                var modulesElement = Context.Get<JsonElement>("config.DispatchingAgent.Modules");
-                if (modulesElement.ValueKind == JsonValueKind.Array)
+                var rawModules = TryGetConfigValue("config.DispatchingAgent.Modules", new[] { "DispatchingAgent", "Modules" });
+                if (rawModules is IList<object?> modules)
                 {
-                    foreach (var moduleElem in modulesElement.EnumerateArray())
+                    foreach (var moduleElem in modules)
                     {
                         var module = ParseModule(moduleElem);
                         if (module != null)
@@ -53,15 +53,15 @@ namespace MAS_BT.Nodes.Common
             }
         }
 
-        private DispatchingModuleInfo? ParseModule(JsonElement element)
+        private DispatchingModuleInfo? ParseModule(object? element)
         {
-            if (element.ValueKind != JsonValueKind.Object)
+            if (element is not IDictionary<string, object?> dict)
             {
                 return null;
             }
 
-            var moduleId = element.TryGetProperty("ModuleId", out var idElem) && idElem.ValueKind == JsonValueKind.String
-                ? idElem.GetString()
+            var moduleId = dict.TryGetValue("ModuleId", out var idRaw)
+                ? JsonFacade.ToStringValue(idRaw)
                 : null;
 
             if (string.IsNullOrWhiteSpace(moduleId))
@@ -72,35 +72,62 @@ namespace MAS_BT.Nodes.Common
             var info = new DispatchingModuleInfo
             {
                 ModuleId = moduleId!,
-                AasId = element.TryGetProperty("AasId", out var aasElem) && aasElem.ValueKind == JsonValueKind.String
-                    ? aasElem.GetString()
+                AasId = dict.TryGetValue("AasId", out var aasRaw)
+                    ? JsonFacade.ToStringValue(aasRaw)
                     : null,
                 LastRegistrationUtc = DateTime.UtcNow
             };
 
-            if (element.TryGetProperty("Capabilities", out var capsElem) && capsElem.ValueKind == JsonValueKind.Array)
+            if (dict.TryGetValue("Capabilities", out var capsRaw) && capsRaw is IList<object?> caps)
             {
-                foreach (var cap in capsElem.EnumerateArray())
+                foreach (var cap in caps)
                 {
-                    if (cap.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(cap.GetString()))
+                    var capStr = JsonFacade.ToStringValue(cap);
+                    if (!string.IsNullOrWhiteSpace(capStr))
                     {
-                        info.Capabilities.Add(cap.GetString()!);
+                        info.Capabilities.Add(capStr!);
                     }
                 }
             }
 
-            if (element.TryGetProperty("Neighbors", out var neighElem) && neighElem.ValueKind == JsonValueKind.Array)
+            if (dict.TryGetValue("Neighbors", out var neighRaw) && neighRaw is IList<object?> neighbors)
             {
-                foreach (var neighbor in neighElem.EnumerateArray())
+                foreach (var neighbor in neighbors)
                 {
-                    if (neighbor.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(neighbor.GetString()))
+                    var neighborStr = JsonFacade.ToStringValue(neighbor);
+                    if (!string.IsNullOrWhiteSpace(neighborStr))
                     {
-                        info.Neighbors.Add(neighbor.GetString()!);
+                        info.Neighbors.Add(neighborStr!);
                     }
                 }
             }
 
             return info;
+        }
+
+        private object? TryGetConfigValue(string directKey, IEnumerable<string> path)
+        {
+            if (Context.Has(directKey))
+            {
+                try
+                {
+                    return Context.Get<object>(directKey);
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            try
+            {
+                var configRoot = Context.Get<object>("config");
+                return JsonFacade.GetPath(configRoot, path);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private string ResolveTemplates(string value)

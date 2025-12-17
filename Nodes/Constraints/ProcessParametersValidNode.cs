@@ -1,6 +1,6 @@
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
-using System.Text.Json;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Constraints;
 
@@ -79,24 +79,39 @@ public class ProcessParametersValidNode : BTNode
         try
         {
             var result = new Dictionary<string, ParameterConstraint>();
-            using var doc = JsonDocument.Parse(json);
-            
-            foreach (var prop in doc.RootElement.EnumerateObject())
+
+            var root = JsonFacade.Parse(json);
+            if (root is not IDictionary<string, object?> dict)
             {
-                var constraint = new ParameterConstraint { Name = prop.Name };
-                
-                if (prop.Value.TryGetProperty("min", out var minProp))
-                    constraint.Min = minProp.GetDouble();
-                if (prop.Value.TryGetProperty("max", out var maxProp))
-                    constraint.Max = maxProp.GetDouble();
-                if (prop.Value.TryGetProperty("equals", out var eqProp))
-                    constraint.ExpectedEquals = eqProp.ToString();
-                if (prop.Value.TryGetProperty("notEquals", out var neqProp))
-                    constraint.NotEquals = neqProp.ToString();
-                if (prop.Value.TryGetProperty("required", out var reqProp))
-                    constraint.Required = reqProp.GetBoolean();
-                    
-                result[prop.Name] = constraint;
+                return null;
+            }
+
+            foreach (var (paramName, rawConstraint) in dict)
+            {
+                if (string.IsNullOrWhiteSpace(paramName))
+                {
+                    continue;
+                }
+
+                if (rawConstraint is not IDictionary<string, object?> constraintDict)
+                {
+                    continue;
+                }
+
+                var constraint = new ParameterConstraint { Name = paramName };
+
+                if (constraintDict.TryGetValue("min", out var minRaw) && JsonFacade.TryToDouble(minRaw, out var min))
+                    constraint.Min = min;
+                if (constraintDict.TryGetValue("max", out var maxRaw) && JsonFacade.TryToDouble(maxRaw, out var max))
+                    constraint.Max = max;
+                if (constraintDict.TryGetValue("equals", out var eqRaw))
+                    constraint.ExpectedEquals = JsonFacade.ToStringValue(eqRaw);
+                if (constraintDict.TryGetValue("notEquals", out var neqRaw))
+                    constraint.NotEquals = JsonFacade.ToStringValue(neqRaw);
+                if (constraintDict.TryGetValue("required", out var reqRaw) && JsonFacade.TryToBool(reqRaw, out var required))
+                    constraint.Required = required;
+
+                result[paramName] = constraint;
             }
             
             return result;

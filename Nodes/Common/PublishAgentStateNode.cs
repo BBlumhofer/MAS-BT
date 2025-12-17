@@ -1,13 +1,13 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Text.Json;
 using System.Threading.Tasks;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using BaSyx.Models.AdminShell;
 using MAS_BT.Core;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Common
@@ -68,7 +68,7 @@ namespace MAS_BT.Nodes.Common
                 .OrderBy(m => m.ModuleId, StringComparer.OrdinalIgnoreCase)
                 .ToArray();
 
-            var serialized = JsonSerializer.Serialize(snapshot);
+            var serialized = JsonFacade.Serialize(snapshot);
             var changed = !string.Equals(serialized, _lastSnapshot, StringComparison.Ordinal);
             var timeSinceLast = (DateTime.UtcNow - _lastPublishUtc).TotalSeconds;
 

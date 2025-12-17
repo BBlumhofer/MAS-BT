@@ -6,6 +6,7 @@ using BaSyx.Clients.AdminShell.Http;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Configuration
@@ -149,7 +150,7 @@ namespace MAS_BT.Nodes.Configuration
                                 // Log JSON payload for debugging server 400 responses
                                 try
                                 {
-                                    var json = System.Text.Json.JsonSerializer.Serialize(concreteExisting, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+                                    var json = JsonFacade.Serialize(concreteExisting, indented: true);
                                     Logger.LogDebug("UploadSubmodel: Shell JSON payload: {Json}", json);
                                 }
                                 catch (Exception exSer)

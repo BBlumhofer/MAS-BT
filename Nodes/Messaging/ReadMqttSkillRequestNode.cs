@@ -11,12 +11,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 using BaSyx.Models.Extensions;
 using AasSharpClient.Models;
 using AasSharpClient.Models.Helpers;
 using AasSharpClient.Tools;
+using MAS_BT.Tools;
 using UAClient.Client;
 using ActionModel = AasSharpClient.Models.Action;
 
@@ -212,55 +211,59 @@ public class ReadMqttSkillRequestNode : BTNode
     {
         try
         {
-            using var doc = JsonDocument.Parse(jsonPayload);
-            var root = doc.RootElement;
+            var root = JsonFacade.Parse(jsonPayload);
+            if (root is not IDictionary<string, object?> rootDict)
+            {
+                Logger.LogWarning("ReadMqttSkillRequest: SkillRequest payload is not a JSON object");
+                return null;
+            }
 
-            if (!root.TryGetProperty("frame", out var frameElement))
+            if (!rootDict.TryGetValue("frame", out var frameObj) || frameObj is not IDictionary<string, object?> frameDict)
             {
                 Logger.LogWarning("ReadMqttSkillRequest: No 'frame' found in message");
                 return null;
             }
 
-            var conversationId = frameElement.TryGetProperty("conversationId", out var convEl) && convEl.ValueKind == JsonValueKind.String
-                ? convEl.GetString() ?? string.Empty
-                : string.Empty;
+            var conversationId = JsonFacade.GetPathAsString(rootDict, new[] { "frame", "conversationId" }) ?? string.Empty;
 
             if (string.IsNullOrWhiteSpace(conversationId))
             {
                 Logger.LogWarning("ReadMqttSkillRequest: Missing conversationId in frame (product id not provided)");
             }
 
-            var senderId = ExtractParticipantId(frameElement, "sender");
-            var receiverId = ExtractParticipantId(frameElement, "receiver");
+            var senderId = ExtractParticipantId(frameDict, "sender");
+            var receiverId = ExtractParticipantId(frameDict, "receiver");
 
-            if (!root.TryGetProperty("interactionElements", out var interactionElements))
+            if (!rootDict.TryGetValue("interactionElements", out var interactionElementsObj) || interactionElementsObj is not IList<object?> interactionElements)
             {
                 Logger.LogWarning("ReadMqttSkillRequest: No 'interactionElements' found in message");
                 return null;
             }
 
             SubmodelElementCollection? actionCollection = null;
-            JsonElement? rawActionElement = null;
+            IDictionary<string, object?>? rawActionElement = null;
 
-            foreach (var element in interactionElements.EnumerateArray())
+            foreach (var elementObj in interactionElements)
             {
-                var raw = element.GetRawText();
-                //Logger.LogInformation("ReadMqttSkillRequest: Attempting BaSyx parse of interaction element JSON: {Json}", raw);
+                if (elementObj is not IDictionary<string, object?> elementDict)
+                {
+                    continue;
+                }
+
+                var idShort = JsonFacade.GetPathAsString(elementDict, new[] { "idShort" }) ?? string.Empty;
+                if (!string.IsNullOrEmpty(idShort) && idShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
+                {
+                    rawActionElement = elementDict;
+                }
+
+                var raw = JsonFacade.Serialize(elementDict);
                 try
                 {
-                    var collection = BuildCollectionFromElement(element);
-                    if (!string.IsNullOrEmpty(collection.IdShort) && collection.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
-                    {
-                        actionCollection = collection;
-                        rawActionElement = element;
-                        break;
-                    }
-
                     var sme = JsonLoader.DeserializeElement(raw);
                     if (sme is SubmodelElementCollection col && !string.IsNullOrEmpty(col.IdShort) && col.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
                     {
                         actionCollection = col;
-                        rawActionElement = element;
+                        rawActionElement = elementDict;
                         break;
                     }
                 }
@@ -270,11 +273,11 @@ public class ReadMqttSkillRequestNode : BTNode
                         "ReadMqttSkillRequest: BaSyx deserialization failed for interaction element; raw JSON: {Json}. Exception: {Ex}",
                         raw,
                         ex.Message);
-                    if (element.TryGetProperty("idShort", out var idShort) && idShort.GetString()?.StartsWith("Action") == true)
-                    {
-                        rawActionElement = element;
-                        break;
-                    }
+                }
+
+                if (rawActionElement != null)
+                {
+                    break;
                 }
             }
 
@@ -302,13 +305,16 @@ public class ReadMqttSkillRequestNode : BTNode
             }
             else
             {
-                var actionValue = rawActionElement!.Value.GetProperty("value");
+                if (rawActionElement is null)
+                {
+                    return null;
+                }
+
+                rawActionElement.TryGetValue("value", out var actionValue);
                 actionTitle = ExtractPropertyValue(actionValue, "ActionTitle");
                 status = ExtractPropertyValue(actionValue, "Status");
                 machineName = ExtractPropertyValue(actionValue, "MachineName");
-                actionIdShort = rawActionElement.Value.TryGetProperty("idShort", out var idShortProp)
-                    ? idShortProp.GetString() ?? "Action001"
-                    : "Action001";
+                actionIdShort = JsonFacade.GetPathAsString(rawActionElement, new[] { "idShort" }) ?? "Action001";
                 inputParams = ExtractInputParametersFromRaw(actionValue);
                 actionModel = BuildAasAction(actionIdShort, actionTitle, status, machineName, inputParams);
             }
@@ -334,65 +340,72 @@ public class ReadMqttSkillRequestNode : BTNode
         }
     }
 
-    private static string ExtractParticipantId(JsonElement frameElement, string propertyName)
+    private static string ExtractParticipantId(IDictionary<string, object?> frameElement, string propertyName)
     {
-        if (!frameElement.TryGetProperty(propertyName, out var participant) || participant.ValueKind != JsonValueKind.Object)
+        if (!frameElement.TryGetValue(propertyName, out var participantObj) || participantObj is not IDictionary<string, object?> participant)
         {
             return string.Empty;
         }
 
-        if (participant.TryGetProperty("identification", out var identification) && identification.ValueKind == JsonValueKind.Object)
+        if (participant.TryGetValue("identification", out var identificationObj) && identificationObj is IDictionary<string, object?> identification)
         {
-            if (identification.TryGetProperty("id", out var idValue) && idValue.ValueKind == JsonValueKind.String)
+            if (identification.TryGetValue("id", out var idValue))
             {
-                return idValue.GetString() ?? string.Empty;
+                return JsonFacade.ToStringValue(idValue) ?? string.Empty;
             }
         }
 
         return string.Empty;
     }
 
-    private Dictionary<string, object> ExtractInputParametersFromRaw(JsonElement actionValue)
+    private Dictionary<string, object> ExtractInputParametersFromRaw(object? actionValue)
     {
         var inputParams = new Dictionary<string, object>(StringComparer.OrdinalIgnoreCase);
 
-        foreach (var prop in actionValue.EnumerateArray())
+        if (actionValue is not IList<object?> actionElements)
         {
-            if (!prop.TryGetProperty("idShort", out var propIdShort))
+            return inputParams;
+        }
+
+        foreach (var propObj in actionElements)
+        {
+            if (propObj is not IDictionary<string, object?> prop)
             {
                 continue;
             }
 
-            if (!string.Equals(propIdShort.GetString(), "InputParameters", StringComparison.Ordinal))
+            var propIdShort = JsonFacade.GetPathAsString(prop, new[] { "idShort" });
+
+            if (!string.Equals(propIdShort, "InputParameters", StringComparison.Ordinal))
             {
                 continue;
             }
 
-            if (!prop.TryGetProperty("value", out var paramsArray) || paramsArray.ValueKind != JsonValueKind.Array)
+            if (!prop.TryGetValue("value", out var paramsArrayObj) || paramsArrayObj is not IList<object?> paramsArray)
             {
                 break;
             }
 
-            foreach (var param in paramsArray.EnumerateArray())
+            foreach (var paramObj in paramsArray)
             {
-                if (!param.TryGetProperty("idShort", out var paramNameElement))
+                if (paramObj is not IDictionary<string, object?> param)
                 {
                     continue;
                 }
 
-                var paramName = paramNameElement.GetString();
+                var paramName = JsonFacade.GetPathAsString(param, new[] { "idShort" });
                 if (string.IsNullOrEmpty(paramName))
                 {
                     continue;
                 }
 
                 string? valueType = null;
-                if (param.TryGetProperty("valueType", out var valueTypeElement))
+                if (param.TryGetValue("valueType", out var valueTypeObj))
                 {
-                    valueType = valueTypeElement.GetString();
+                    valueType = JsonFacade.ToStringValue(valueTypeObj);
                 }
 
-                if (param.TryGetProperty("value", out var paramValue))
+                if (param.TryGetValue("value", out var paramValue))
                 {
                     var typedValue = ExtractTypedValue(paramValue, valueType);
                     inputParams[paramName] = typedValue;
@@ -434,32 +447,49 @@ public class ReadMqttSkillRequestNode : BTNode
         }
     }
 
-    private string ExtractPropertyValue(JsonElement valueArray, string propertyName)
+    private string ExtractPropertyValue(object? valueArray, string propertyName)
     {
-        foreach (var element in valueArray.EnumerateArray())
+        if (valueArray is not IList<object?> elements)
         {
-            if (element.TryGetProperty("idShort", out var idShort) && 
-                idShort.GetString() == propertyName)
+            return string.Empty;
+        }
+
+        foreach (var elementObj in elements)
+        {
+            if (elementObj is not IDictionary<string, object?> element)
             {
-                if (element.TryGetProperty("value", out var value))
+                continue;
+            }
+
+            var idShort = JsonFacade.GetPathAsString(element, new[] { "idShort" });
+            if (string.Equals(idShort, propertyName, StringComparison.Ordinal))
+            {
+                if (element.TryGetValue("value", out var value))
                 {
-                    return value.GetString() ?? "";
+                    return JsonFacade.ToStringValue(value) ?? string.Empty;
                 }
+                return string.Empty;
             }
         }
-        return "";
+
+        return string.Empty;
     }
     
     /// <summary>
-    /// Extrahiert einen typisierten Wert aus einem JsonElement basierend auf seinem ValueKind und optionalem XSD ValueType
+    /// Extrahiert einen typisierten Wert aus einem losen Objektwert (primitive/Dictionary/List) und optionalem XSD ValueType.
     /// </summary>
-    private object ExtractTypedValue(JsonElement element, string? xsdValueType = null)
+    private object ExtractTypedValue(object? value, string? xsdValueType = null)
     {
         // Wenn ein XSD ValueType angegeben ist, nutze diesen für die Konvertierung
         if (!string.IsNullOrEmpty(xsdValueType))
         {
-            var valueStr = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
-            if (string.IsNullOrEmpty(valueStr)) return "";
+            if (value is bool or int or long or double or float)
+            {
+                return value;
+            }
+
+            var valueStr = JsonFacade.ToStringValue(value) ?? string.Empty;
+            if (string.IsNullOrEmpty(valueStr)) return string.Empty;
             
             // Normalisiere XSD Type (entferne "xs:" Prefix falls vorhanden)
             var normalizedType = xsdValueType.ToLowerInvariant();
@@ -508,176 +538,29 @@ public class ReadMqttSkillRequestNode : BTNode
             }
         }
         
-        // Fallback: Versuche JSON ValueKind zu nutzen
-        switch (element.ValueKind)
+        // Fallback: nutze runtime-Typen / heuristische Konvertierung
+        switch (value)
         {
-            case JsonValueKind.String:
-                var str = element.GetString() ?? "";
-                // Auto-detect: versuche String als Boolean zu parsen
-                if (bool.TryParse(str, out var autoBool))
-                    return autoBool;
-                // Auto-detect: versuche String als Number zu parsen
-                if (int.TryParse(str, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var autoInt))
-                    return autoInt;
-                if (double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var autoDouble))
-                    return autoDouble;
-                return str;
-                
-            case JsonValueKind.Number:
-                // Versuche zuerst Int32, dann Int64, dann Double
-                if (element.TryGetInt32(out var intValue))
-                    return intValue;
-                if (element.TryGetInt64(out var longValue))
-                    return longValue;
-                if (element.TryGetDouble(out var doubleValue))
-                    return doubleValue;
-                return element.GetRawText();
-                
-            case JsonValueKind.True:
-                return true;
-                
-            case JsonValueKind.False:
-                return false;
-                
-            case JsonValueKind.Null:
-                return "";
-                
+            case null:
+                return string.Empty;
+            case bool:
+            case int:
+            case long:
+            case double:
+            case float:
+                return value;
+            case string s:
+                if (bool.TryParse(s, out var autoBool)) return autoBool;
+                if (int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var autoInt)) return autoInt;
+                if (long.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out var autoLong)) return autoLong;
+                if (double.TryParse(s, NumberStyles.Float, CultureInfo.InvariantCulture, out var autoDouble)) return autoDouble;
+                return s;
+            case IDictionary<string, object?>:
+            case IList<object?>:
+                return JsonFacade.Serialize(value);
             default:
-                // Für Arrays, Objects, etc. - gebe String-Repräsentation zurück
-                return element.GetRawText();
+                return value.ToString() ?? string.Empty;
         }
-    }
-
-    private static SubmodelElementCollection BuildCollectionFromElement(JsonElement element)
-    {
-        var idShort = element.TryGetProperty("idShort", out var idShortNode)
-            ? idShortNode.GetString() ?? "Collection"
-            : "Collection";
-
-        var collection = new SubmodelElementCollection(idShort);
-
-        if (element.TryGetProperty("value", out var val) && val.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var child in val.EnumerateArray())
-            {
-                try
-                {
-                    var sme = JsonLoader.DeserializeElement(child);
-                    if (sme != null)
-                    {
-                        collection.Add(sme);
-                        continue;
-                    }
-                }
-                catch (Exception)
-                {
-                    // deserialization may fail for abstract/interface types (IReference etc.) - fall back to manual parsing
-                }
-
-                var fallback = CreateFallbackElement(child);
-                if (fallback != null)
-                {
-                    collection.Add(fallback);
-                }
-            }
-        }
-
-        return collection;
-    }
-
-    private static ISubmodelElement? CreateFallbackElement(JsonElement element)
-    {
-        if (!element.TryGetProperty("idShort", out var idShortNode))
-        {
-            return null;
-        }
-
-        var idShort = idShortNode.GetString() ?? string.Empty;
-        var modelType = element.TryGetProperty("modelType", out var mtNode) ? mtNode.GetString() : null;
-
-        if (string.Equals(modelType, "SubmodelElementCollection", StringComparison.OrdinalIgnoreCase))
-        {
-            return BuildNestedCollection(element, idShort);
-        }
-
-        if (string.Equals(modelType, "Property", StringComparison.OrdinalIgnoreCase))
-        {
-            var value = element.TryGetProperty("value", out var valueNode) ? valueNode.GetString() ?? string.Empty : string.Empty;
-            return new Property<string>(idShort, value);
-        }
-
-        if (string.Equals(modelType, "ReferenceElement", StringComparison.OrdinalIgnoreCase))
-        {
-            try
-            {
-                if (element.TryGetProperty("value", out var valueEl) && valueEl.ValueKind == JsonValueKind.Object)
-                {
-                    var refType = valueEl.TryGetProperty("type", out var typeEl) ? typeEl.GetString() ?? string.Empty : string.Empty;
-                    var keyTuples = new List<(KeyType, string)>();
-                    if (valueEl.TryGetProperty("keys", out var keysEl) && keysEl.ValueKind == JsonValueKind.Array)
-                    {
-                        foreach (var k in keysEl.EnumerateArray())
-                        {
-                            var kt = k.TryGetProperty("type", out var ktEl) ? ktEl.GetString() ?? string.Empty : string.Empty;
-                            var kv = k.TryGetProperty("value", out var kvEl) ? kvEl.GetString() ?? string.Empty : string.Empty;
-                            var mapped = MapKeyType(kt);
-                            keyTuples.Add((mapped, kv));
-                        }
-                    }
-
-                    Reference reference = string.Equals(refType, "ModelReference", StringComparison.OrdinalIgnoreCase)
-                        ? new Reference(keyTuples.Select(t => new Key(t.Item1, t.Item2)).ToArray()) { Type = ReferenceType.ModelReference }
-                        : new Reference(keyTuples.Select(t => new Key(t.Item1, t.Item2)).ToArray()) { Type = ReferenceType.ExternalReference };
-
-                    var refElem = new ReferenceElement(idShort)
-                    {
-                        Value = new ReferenceElementValue(reference)
-                    };
-
-                    return refElem;
-                }
-            }
-            catch
-            {
-                // ignore and fall through to null
-            }
-        }
-
-        return null;
-    }
-
-    private static KeyType MapKeyType(string? type)
-    {
-        if (string.IsNullOrWhiteSpace(type)) return KeyType.Undefined;
-        return type.ToLowerInvariant() switch
-        {
-            "globalreference" => KeyType.GlobalReference,
-            "submodel" => KeyType.Submodel,
-            "submodelelementcollection" => KeyType.SubmodelElementCollection,
-            "property" => KeyType.Property,
-            "referable" => KeyType.Referable,
-            "submodelelement" => KeyType.SubmodelElement,
-            "submodelelementlist" => KeyType.SubmodelElementList,
-            _ => KeyType.GlobalReference
-        };
-    }
-
-    private static SubmodelElementCollection BuildNestedCollection(JsonElement element, string idShort)
-    {
-        var collection = new SubmodelElementCollection(idShort);
-        if (element.TryGetProperty("value", out var valNode) && valNode.ValueKind == JsonValueKind.Array)
-        {
-            foreach (var child in valNode.EnumerateArray())
-            {
-                var sme = JsonLoader.DeserializeElement(child) ?? CreateFallbackElement(child);
-                if (sme != null)
-                {
-                    collection.Add(sme);
-                }
-            }
-        }
-
-        return collection;
     }
 
     private static IEnumerable<ISubmodelElement> Elements(SubmodelElementCollection? coll)
@@ -710,7 +593,7 @@ public class ReadMqttSkillRequestNode : BTNode
     private static void PopulatePreconditions(
         ActionModel actionModel,
         SubmodelElementCollection? actionCollection,
-        JsonElement? rawActionElement)
+        IDictionary<string, object?>? rawActionElement)
     {
         if (actionModel == null)
         {
@@ -727,9 +610,9 @@ public class ReadMqttSkillRequestNode : BTNode
             }
         }
 
-        if (rawActionElement.HasValue)
+        if (rawActionElement != null)
         {
-            var rawPreconditions = ExtractPreconditionsFromRaw(rawActionElement.Value);
+            var rawPreconditions = ExtractPreconditionsFromRaw(rawActionElement);
             if (rawPreconditions != null)
             {
                 CopyPreconditions(rawPreconditions, actionModel.Preconditions);
@@ -750,38 +633,36 @@ public class ReadMqttSkillRequestNode : BTNode
         }
     }
 
-    private static SubmodelElementCollection? ExtractPreconditionsFromRaw(JsonElement actionElement)
+    private static SubmodelElementCollection? ExtractPreconditionsFromRaw(IDictionary<string, object?> actionElement)
     {
-        if (!actionElement.TryGetProperty("value", out var valueArray) || valueArray.ValueKind != JsonValueKind.Array)
+        if (!actionElement.TryGetValue("value", out var valueArrayObj) || valueArrayObj is not IList<object?> valueArray)
         {
             return null;
         }
 
-        foreach (var element in valueArray.EnumerateArray())
+        foreach (var elementObj in valueArray)
         {
-            if (!element.TryGetProperty("idShort", out var idShortNode))
+            if (elementObj is not IDictionary<string, object?> element)
             {
                 continue;
             }
 
-            var idShort = idShortNode.GetString();
+            var idShort = JsonFacade.GetPathAsString(element, new[] { "idShort" });
             if (!string.Equals(idShort, "Preconditions", StringComparison.OrdinalIgnoreCase))
             {
                 continue;
             }
 
-            if (!element.TryGetProperty("modelType", out var modelTypeNode))
+            var raw = JsonFacade.Serialize(element);
+            try
             {
-                continue;
+                var sme = JsonLoader.DeserializeElement(raw);
+                return sme as SubmodelElementCollection;
             }
-
-            var modelType = modelTypeNode.GetString();
-            if (!string.Equals(modelType, "SubmodelElementCollection", StringComparison.OrdinalIgnoreCase))
+            catch
             {
-                continue;
+                return null;
             }
-
-            return BuildNestedCollection(element, idShort ?? "Preconditions");
         }
 
         return null;
@@ -900,72 +781,11 @@ public class ReadMqttSkillRequestNode : BTNode
                 if (long.TryParse(s, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var l)) return l;
                 if (double.TryParse(s, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)) return d;
                 return s;
-            case JsonElement je:
-                return ExtractTypedValueStatic(je, null);
+            case IDictionary<string, object?>:
+            case IList<object?>:
+                return JsonFacade.Serialize(raw);
             default:
                 return raw;
-        }
-    }
-
-    private static object ExtractTypedValueStatic(JsonElement element, string? xsdValueType)
-    {
-        // reuse logic from instance method but static for converter helper
-        if (!string.IsNullOrEmpty(xsdValueType))
-        {
-            var valueStr = element.ValueKind == JsonValueKind.String ? element.GetString() : element.GetRawText();
-            if (string.IsNullOrEmpty(valueStr)) return string.Empty;
-
-            var normalizedType = xsdValueType.ToLowerInvariant();
-            if (normalizedType.StartsWith("xs:")) normalizedType = normalizedType.Substring(3);
-
-            switch (normalizedType)
-            {
-                case "boolean":
-                case "bool":
-                    if (bool.TryParse(valueStr, out var boolValue)) return boolValue;
-                    if (valueStr == "1") return true;
-                    if (valueStr == "0") return false;
-                    return false;
-                case "integer":
-                case "int":
-                    if (int.TryParse(valueStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var intValue)) return intValue;
-                    return 0;
-                case "long":
-                    if (long.TryParse(valueStr, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var longValue)) return longValue;
-                    return 0L;
-                case "double":
-                    if (double.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var doubleValue)) return doubleValue;
-                    return 0.0;
-                case "float":
-                    if (float.TryParse(valueStr, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var floatValue)) return floatValue;
-                    return 0.0f;
-                case "string":
-                default:
-                    return valueStr;
-            }
-        }
-
-        switch (element.ValueKind)
-        {
-            case JsonValueKind.String:
-                var str = element.GetString() ?? string.Empty;
-                if (bool.TryParse(str, out var autoBool)) return autoBool;
-                if (int.TryParse(str, System.Globalization.NumberStyles.Integer, System.Globalization.CultureInfo.InvariantCulture, out var autoInt)) return autoInt;
-                if (double.TryParse(str, System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var autoDouble)) return autoDouble;
-                return str;
-            case JsonValueKind.Number:
-                if (element.TryGetInt32(out var i)) return i;
-                if (element.TryGetInt64(out var l)) return l;
-                if (element.TryGetDouble(out var d)) return d;
-                return element.GetRawText();
-            case JsonValueKind.True:
-                return true;
-            case JsonValueKind.False:
-                return false;
-            case JsonValueKind.Null:
-                return string.Empty;
-            default:
-                return element.GetRawText();
         }
     }
 

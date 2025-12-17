@@ -3,8 +3,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Reflection;
-using System.Text.Json;
 using System.Threading.Tasks;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 using Opc.Ua;
 using UAClient.Client;
@@ -56,7 +56,7 @@ internal static class SkillFinalResultHelper
 
         try
         {
-            return JsonSerializer.Serialize(raw);
+            return JsonFacade.Serialize(raw);
         }
         catch
         {

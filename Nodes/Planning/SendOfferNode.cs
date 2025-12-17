@@ -6,6 +6,7 @@ using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
+using MAS_BT.Tools;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Planning;
@@ -68,20 +69,6 @@ public class SendOfferNode : BTNode
             return;
         }
 
-        if (offer is System.Text.Json.JsonElement jsonElement)
-        {
-            var loaded = JsonLoader.DeserializeElement(jsonElement);
-            if (loaded is SubmodelElement loadedElement)
-            {
-                builder.AddElement(loadedElement);
-            }
-            else
-            {
-                builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(jsonElement.GetRawText()) });
-            }
-            return;
-        }
-
         if (offer is string jsonString)
         {
             var loaded = JsonLoader.DeserializeElement(jsonString);
@@ -92,6 +79,23 @@ public class SendOfferNode : BTNode
             else
             {
                 builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(jsonString) });
+            }
+            return;
+        }
+
+        // If an object-graph (Dictionary/List/primitives) was provided, serialize it via JsonFacade,
+        // then try to deserialize into a typed AAS element.
+        if (offer is System.Collections.Generic.IDictionary<string, object?> || offer is System.Collections.Generic.IList<object?>)
+        {
+            var json = JsonFacade.Serialize(offer);
+            var loaded = JsonLoader.DeserializeElement(json);
+            if (loaded is SubmodelElement loadedElement)
+            {
+                builder.AddElement(loadedElement);
+            }
+            else
+            {
+                builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(json) });
             }
             return;
         }

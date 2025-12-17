@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Text.Json;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
 using AasSharpClient.Models.Messages;
@@ -215,22 +214,7 @@ public class SendProductSummaryLogNode : BTNode
             .OfType<IProperty>()
             .FirstOrDefault(p => string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
 
-        var raw = AasValueUnwrap.Unwrap(property?.Value);
-        if (raw is JsonElement je)
-        {
-            return je.ValueKind switch
-            {
-                JsonValueKind.String => je.GetString(),
-                JsonValueKind.Number => je.ToString(),
-                JsonValueKind.True => bool.TrueString,
-                JsonValueKind.False => bool.FalseString,
-                JsonValueKind.Null => null,
-                JsonValueKind.Undefined => null,
-                _ => je.ToString()
-            };
-        }
-
-        return raw?.ToString();
+        return AasValueUnwrap.UnwrapToString(property?.Value);
     }
 
     private static IEnumerable<string> CollectChildProductIds(Submodel submodel)
@@ -279,22 +263,7 @@ public class SendProductSummaryLogNode : BTNode
             .OfType<IProperty>()
             .FirstOrDefault(p => string.Equals(p.IdShort, idShort, StringComparison.OrdinalIgnoreCase));
 
-        var raw = AasValueUnwrap.Unwrap(property?.Value);
-        if (raw is JsonElement je)
-        {
-            return je.ValueKind switch
-            {
-                JsonValueKind.String => je.GetString(),
-                JsonValueKind.Number => je.ToString(),
-                JsonValueKind.True => bool.TrueString,
-                JsonValueKind.False => bool.FalseString,
-                JsonValueKind.Null => null,
-                JsonValueKind.Undefined => null,
-                _ => je.ToString()
-            };
-        }
-
-        return raw?.ToString();
+        return AasValueUnwrap.UnwrapToString(property?.Value);
     }
 
     private static IEnumerable<string> ExtractCapabilityNames(CapabilityDescriptionSubmodel? capabilityDescription)
