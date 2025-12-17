@@ -16,6 +16,7 @@ using System.Text.Json.Serialization;
 using BaSyx.Models.Extensions;
 using AasSharpClient.Models;
 using AasSharpClient.Models.Helpers;
+using AasSharpClient.Tools;
 using UAClient.Client;
 using ActionModel = AasSharpClient.Models.Action;
 
@@ -34,13 +35,6 @@ public class ReadMqttSkillRequestNode : BTNode
     private SkillRequestQueue? _skillRequestQueue;
     private bool _subscribed = false;
 
-    private static readonly JsonSerializerOptions BasyxOptions = new()
-    {
-        Converters = { new FullSubmodelElementConverter(new ConverterOptions()), new ReferenceJsonConverter(), new JsonStringEnumConverter() },
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        PropertyNameCaseInsensitive = true
-    };
-    
     public ReadMqttSkillRequestNode() : base("ReadMqttSkillRequest")
     {
     }
@@ -262,7 +256,7 @@ public class ReadMqttSkillRequestNode : BTNode
                         break;
                     }
 
-                    var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(raw, BasyxOptions);
+                    var sme = JsonLoader.DeserializeElement(raw);
                     if (sme is SubmodelElementCollection col && !string.IsNullOrEmpty(col.IdShort) && col.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
                     {
                         actionCollection = col;
@@ -568,7 +562,7 @@ public class ReadMqttSkillRequestNode : BTNode
             {
                 try
                 {
-                    var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(child.GetRawText(), BasyxOptions);
+                    var sme = JsonLoader.DeserializeElement(child);
                     if (sme != null)
                     {
                         collection.Add(sme);
@@ -675,7 +669,7 @@ public class ReadMqttSkillRequestNode : BTNode
         {
             foreach (var child in valNode.EnumerateArray())
             {
-                var sme = System.Text.Json.JsonSerializer.Deserialize<ISubmodelElement>(child.GetRawText(), BasyxOptions) ?? CreateFallbackElement(child);
+                var sme = JsonLoader.DeserializeElement(child) ?? CreateFallbackElement(child);
                 if (sme != null)
                 {
                     collection.Add(sme);

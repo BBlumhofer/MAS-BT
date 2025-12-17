@@ -38,6 +38,7 @@ namespace MAS_BT.Nodes.Dispatching
             try
             {
                 // Diagnostic logging: inspect incoming InteractionElements and children
+                try { Console.WriteLine($"[DEBUG] HandleTransportPlanRequest: invoked conversationId={conversationId} incomingElements={incomingMessage.InteractionElements?.Count ?? 0}"); } catch {}
                 if (incomingMessage.InteractionElements != null)
                 {
                     Logger.LogInformation("HandleTransportPlanRequest: incoming InteractionElements count={Count}", incomingMessage.InteractionElements.Count);
@@ -85,7 +86,9 @@ namespace MAS_BT.Nodes.Dispatching
 
                 var response = builder.Build();
                 var publishedAt = DateTimeOffset.UtcNow;
+                try { Console.WriteLine($"[DEBUG] HandleTransportPlanRequest: publishing response frameType={response.Frame?.Type} elements={response.InteractionElements?.Count ?? 0} convId={response.Frame?.ConversationId}"); } catch {}
                 await client.PublishAsync(response, topic).ConfigureAwait(false);
+                try { Console.WriteLine($"[DEBUG] HandleTransportPlanRequest: published response to {topic} convId={response.Frame?.ConversationId}"); } catch {}
                 Logger.LogInformation("HandleTransportPlanRequest: sent dummy response to {Topic} at {Timestamp:o} (conversationId={Conv}, requester={Requester})",
                     topic,
                     publishedAt,
@@ -148,6 +151,8 @@ namespace MAS_BT.Nodes.Dispatching
             transportOffer = BuildTransportOffer(resolvedGoal, resolvedIdentifierValue, resolvedIdentifierType);
             req.CapabilitiesSequence.AddCapability(transportOffer);
 
+            try { Console.WriteLine($"[DEBUG] HandleTransportPlanRequest: built transport offer id={transportOffer.InstanceIdentifier.GetText()} identifierKey={reqKey(resolvedIdentifierType)} identifierValue={resolvedIdentifierValue}"); } catch {}
+
             return req;
         }
 
@@ -202,10 +207,11 @@ namespace MAS_BT.Nodes.Dispatching
                 skillReference: null,
                 machineName: goal ?? "Transport");
 
-            // Response requirement: return only the extracted identifier as a single input parameter.
-            // Use the key format: "ProductID: https://..." (cosmetic normalization handled in message helper).
-            var identifierKey = $"{reqKey(identifierType)}: {identifierValue}";
-            action.InputParameters.SetParameter(identifierKey, string.Empty);
+            // Response requirement: return the extracted identifier as input parameter.
+            // IMPORTANT: InputParameters keys become AAS idShorts; keep them valid (no ':' / spaces / URLs).
+            // Therefore use Key='ProductID' (etc.) and store the identifier in the value.
+            var identifierKey = reqKey(identifierType);
+            action.InputParameters.SetParameter(identifierKey, identifierValue);
             offer.AddAction(action);
 
             return offer;

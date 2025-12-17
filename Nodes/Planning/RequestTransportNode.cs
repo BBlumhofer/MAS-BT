@@ -74,6 +74,16 @@ public class RequestTransportNode : BTNode
         }
 
         var topic = $"/{ns}/TransportPlan";
+        // Ensure we are subscribed to the transport topic to receive responses in this in-process test transport.
+        try
+        {
+            await client.SubscribeAsync(topic).ConfigureAwait(false);
+            try { Console.WriteLine($"[DEBUG] RequestTransport: subscribed to topic {topic}"); } catch {}
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "RequestTransport: failed to subscribe to {Topic}", topic);
+        }
         var aggregatedOffers = new List<OfferedCapability>();
         var sequenceItems = new List<TransportSequenceItem>();
         var allAccepted = true;
@@ -113,6 +123,19 @@ public class RequestTransportNode : BTNode
                 convId,
                 element);
 
+            try { Console.WriteLine($"[DEBUG] BuildTransportRequest: InstanceId={element.InstanceIdentifier?.Value?.Value} IdentifierValue={element.IdentifierValue?.Value?.Value} GoalStation={element.TransportGoalStation?.Value?.Value}"); } catch {}
+            // Attach a generic OnMessage logger to help debug in-process delivery (will not interfere with OnConversation)
+            try
+            {
+                client.OnMessage(msg =>
+                {
+                    try { Console.WriteLine($"[DEBUG] OnMessage (planning client): frameType={msg?.Frame?.Type} convId={msg?.Frame?.ConversationId} elements={msg?.InteractionElements?.Count ?? 0}"); } catch {}
+                });
+            }
+            catch { }
+
+            // Start listening for the response before publishing to avoid races in in-process tests
+            var responseTask = AwaitTransportResponseAsync(client, convId);
             var publishedAt = DateTimeOffset.UtcNow;
             await request.PublishAsync(client, topic).ConfigureAwait(false);
             Logger.LogInformation(
@@ -124,14 +147,17 @@ public class RequestTransportNode : BTNode
                 requirement.SourceId ?? requestContext.RequirementId,
                 convId,
                 publishedAt);
+            try { Console.WriteLine($"[DEBUG] RequestTransport: published transport request #{index+1} topic={topic} convId={convId}"); } catch {}
 
-            var response = await AwaitTransportResponseAsync(client, convId).ConfigureAwait(false);
+            var response = await responseTask.ConfigureAwait(false);
             if (response == null)
             {
                 Logger.LogWarning("RequestTransport: no transport response for convId={Conv} (timeout {Timeout}s)", convId, ResponseTimeoutSeconds);
                 allAccepted = false;
                 continue;
             }
+
+                try { Console.WriteLine($"[DEBUG] RequestTransport: received response for convId={convId} elements={response.InteractionElements?.Count ?? 0}"); } catch {}
 
             var transportOffers = ExtractTransportOffers(response);
             if (transportOffers.Count == 0)
@@ -282,6 +308,9 @@ public class RequestTransportNode : BTNode
         {
             try
             {
+                // print raw frame type for debugging
+                try { Console.WriteLine($"[DEBUG] AwaitTransportResponse: received frameType={msg?.Frame?.Type} interactionElements={msg?.InteractionElements?.Count ?? 0} for conv={conversationId}"); } catch {}
+
                 if (!IsTransportResponseFrame(msg?.Frame?.Type))
                 {
                     Logger.LogDebug("RequestTransport: ignoring message Type={Type} for conversation {Conv}", msg?.Frame?.Type, conversationId);
@@ -290,6 +319,41 @@ public class RequestTransportNode : BTNode
 
                 if (msg != null)
                 {
+                    // dump info about interaction elements
+                    try
+                    {
+                        if (msg.InteractionElements != null)
+                        {
+                            foreach (var el in msg.InteractionElements)
+                            {
+                                if (el is OfferedCapability oc)
+                                {
+                                    try
+                                    {
+                                        var idVal = string.Empty;
+                                        try { if (oc.InstanceIdentifier?.Value != null) idVal = AasValueUnwrap.UnwrapToString(oc.InstanceIdentifier.Value) ?? string.Empty; } catch {}
+                                        var stationVal = string.Empty;
+                                        try { if (oc.Station?.Value != null) stationVal = AasValueUnwrap.UnwrapToString(oc.Station.Value) ?? string.Empty; } catch {}
+                                        var actionsCount = 0;
+                                        try { actionsCount = oc.Actions != null ? oc.Actions.OfType<ISubmodelElement>().Count() : 0; } catch {}
+                                        Console.WriteLine($"[DEBUG] AwaitTransportResponse: element OfferedCapability InstanceId={idVal} Station={stationVal} Actions={actionsCount}");
+                                    }
+                                    catch { }
+                                }
+                                else if (el is SubmodelElementCollection col)
+                                {
+                                    try
+                                    {
+                                        var childCount = col.Values != null ? col.Values.Count() : 0;
+                                        Console.WriteLine($"[DEBUG] AwaitTransportResponse: element Collection IdShort={col.IdShort} children={childCount}");
+                                    }
+                                    catch { }
+                                }
+                            }
+                        }
+                    }
+                    catch { }
+
                     tcs.TrySetResult(msg);
                 }
             }
@@ -418,7 +482,7 @@ public class RequestTransportNode : BTNode
         return hasInstanceId || hasReference;
     }
 
-    private static OfferedCapability CreateOfferedCapabilityFromCollection(SubmodelElementCollection source)
+    private OfferedCapability CreateOfferedCapabilityFromCollection(SubmodelElementCollection source)
     {
         var offer = new OfferedCapability(string.Empty);
         if (source == null)
@@ -457,15 +521,49 @@ public class RequestTransportNode : BTNode
                     CopyScheduling(collection, offer);
                     break;
                 case SubmodelElementList list when string.Equals(list.IdShort, OfferedCapability.ActionsIdShort, StringComparison.OrdinalIgnoreCase):
-                    foreach (var actionElement in list)
+                    // iterate by index to allow grouping consecutive primitive elements into a synthetic action collection
+                    for (var ai = 0; ai < list.Count; ai++)
                     {
+                        var actionElement = list[ai];
                         if (actionElement is AasSharpClient.Models.Action action)
                         {
+                            Logger.LogDebug("CreateOfferedCapabilityFromCollection: found typed Action {Title} with InputParameters={Count}", action.ActionTitle, action.InputParameters?.Parameters?.Count ?? 0);
+                            try { Console.WriteLine($"[DEBUG] CreateOfferedCapabilityFromCollection: found typed Action {action.ActionTitle} inputParams={action.InputParameters?.Parameters?.Count ?? 0}"); } catch {}
                             offer.AddAction(action);
+                            continue;
                         }
-                        else if (actionElement is ISubmodelElement smElement)
+
+                        if (actionElement is SubmodelElementCollection actionCollection)
                         {
-                            offer.Actions.Add(smElement);
+                            var mat = MaterializeAction(actionCollection);
+                            Logger.LogDebug("CreateOfferedCapabilityFromCollection: materialized action from collection {IdShort} with InputParameters={Count}", actionCollection.IdShort, mat.InputParameters?.Parameters?.Count ?? 0);
+                            try { Console.WriteLine($"[DEBUG] CreateOfferedCapabilityFromCollection: materialized action from {actionCollection.IdShort} inputParams={mat.InputParameters?.Parameters?.Count ?? 0}"); } catch {}
+                            offer.AddAction(mat);
+                            continue;
+                        }
+
+                        // If we encounter primitive elements (Property, ReferenceElement, etc.) fold consecutive primitives into one Action collection
+                        if (actionElement is Property || actionElement is ReferenceElement || actionElement is SubmodelElementList || actionElement is ISubmodelElement)
+                        {
+                            var synthetic = new SubmodelElementCollection("Action");
+                            // gather this and following consecutive primitive elements that are not SubmodelElementCollection
+                            var j = ai;
+                            for (; j < list.Count; j++)
+                            {
+                                var el = list[j];
+                                if (el is SubmodelElementCollection) break;
+                                synthetic.Add(el);
+                            }
+
+                            // advance outer index
+                            ai = j - 1;
+
+                            // materialize synthetic collection
+                            var mat = MaterializeAction(synthetic);
+                            Logger.LogDebug("CreateOfferedCapabilityFromCollection: materialized synthetic action from primitives with InputParameters={Count}", mat.InputParameters?.Parameters?.Count ?? 0);
+                            try { Console.WriteLine($"[DEBUG] CreateOfferedCapabilityFromCollection: materialized synthetic action inputParams={mat.InputParameters?.Parameters?.Count ?? 0}"); } catch {}
+                            offer.AddAction(mat);
+                            continue;
                         }
                     }
                     break;
@@ -473,6 +571,82 @@ public class RequestTransportNode : BTNode
         }
 
         return offer;
+    }
+
+    private AasSharpClient.Models.Action MaterializeAction(SubmodelElementCollection source)
+    {
+        // Default values; we keep this strict/simple and only map what we need downstream.
+        var title = FindPropertyValue(source, "ActionTitle") ?? "Action";
+        var machineName = FindPropertyValue(source, "MachineName") ?? string.Empty;
+
+        var statusRaw = FindPropertyValue(source, "Status") ?? string.Empty;
+        var status = ActionStatusEnum.PLANNED;
+        if (!string.IsNullOrWhiteSpace(statusRaw) && Enum.TryParse<ActionStatusEnum>(statusRaw, ignoreCase: true, out var parsed))
+        {
+            status = parsed;
+        }
+
+        // Copy InputParameters (typed) if present.
+        InputParameters? inputParameters = null;
+        try
+        {
+            var ip = source.Values?.OfType<SubmodelElementCollection>()
+                .FirstOrDefault(c => string.Equals(c.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase));
+            if (ip != null)
+            {
+                inputParameters = new InputParameters();
+                foreach (var prop in ip.OfType<Property>())
+                {
+                    var key = prop.IdShort ?? string.Empty;
+                    if (string.IsNullOrWhiteSpace(key))
+                    {
+                        continue;
+                    }
+
+                    var value = AasValueUnwrap.UnwrapToString(prop.Value) ?? string.Empty;
+                    inputParameters.SetParameter(key, value);
+                }
+                Logger.LogDebug("MaterializeAction: created InputParameters with {Count} entries from collection {IdShort}", inputParameters.Parameters.Count, source.IdShort);
+                try { Console.WriteLine($"[DEBUG] MaterializeAction: created InputParameters with {inputParameters.Parameters.Count} entries from collection {source.IdShort}"); } catch {}
+            }
+            else
+            {
+                Logger.LogDebug("MaterializeAction: no InputParameters collection found in {IdShort}", source.IdShort);
+                try { Console.WriteLine($"[DEBUG] MaterializeAction: no InputParameters collection found in {source.IdShort}"); } catch {}
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "MaterializeAction: failed to extract InputParameters from {IdShort}", source?.IdShort);
+        }
+
+        return new AasSharpClient.Models.Action(
+            idShort: "",
+            actionTitle: title,
+            status: status,
+            inputParameters: inputParameters,
+            finalResultData: null,
+            preconditions: null,
+            skillReference: null,
+            machineName: machineName);
+    }
+
+    private static string? FindPropertyValue(SubmodelElementCollection? collection, string idShort)
+    {
+        if (collection?.Values == null)
+        {
+            return null;
+        }
+
+        foreach (var element in collection.Values)
+        {
+            if (element is Property prop && string.Equals(prop.IdShort, idShort, StringComparison.OrdinalIgnoreCase))
+            {
+                return AasValueUnwrap.UnwrapToString(prop.Value);
+            }
+        }
+
+        return null;
     }
 
     private static void CopyScheduling(SubmodelElementCollection scheduling, OfferedCapability offer)

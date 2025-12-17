@@ -5,6 +5,7 @@ using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using BaSyx.Models.AdminShell;
+using AasSharpClient.Tools;
 
 namespace MAS_BT.Nodes.Messaging;
 
@@ -58,18 +59,33 @@ public class SendMessageNode : BTNode
             }
             else if (Payload != null)
             {
-                try
+                if (Payload is System.Text.Json.JsonElement jsonElement)
                 {
-                    // attempt to serialize object into a SubmodelElement using existing helpers
-                    // fallback: add as a simple Property<string>
-                    var json = System.Text.Json.JsonSerializer.Serialize(Payload);
-                    var prop = new BaSyx.Models.AdminShell.Property<string>("Payload") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>(json) };
-                    builder.AddElement(prop);
+                    var loaded = JsonLoader.DeserializeElement(jsonElement);
+                    if (loaded is SubmodelElement loadedElement)
+                    {
+                        builder.AddElement(loadedElement);
+                    }
+                    else
+                    {
+                        builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(jsonElement.GetRawText()) });
+                    }
                 }
-                catch
+                else if (Payload is string jsonString)
                 {
-                    var prop = new BaSyx.Models.AdminShell.Property<string>("Payload") { Value = new BaSyx.Models.AdminShell.PropertyValue<string>(Payload.ToString() ?? string.Empty) };
-                    builder.AddElement(prop);
+                    var loaded = JsonLoader.DeserializeElement(jsonString);
+                    if (loaded is SubmodelElement loadedElement)
+                    {
+                        builder.AddElement(loadedElement);
+                    }
+                    else
+                    {
+                        builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(jsonString) });
+                    }
+                }
+                else
+                {
+                    builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(Payload.ToString() ?? string.Empty) });
                 }
             }
 

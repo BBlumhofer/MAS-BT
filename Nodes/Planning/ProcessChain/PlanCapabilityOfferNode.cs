@@ -116,6 +116,7 @@ public class PlanCapabilityOfferNode : BTNode
         if (requestContainer != null)
         {
             CopyPropertyContainersToInputParameters(action, requestContainer);
+            CopyPostConstraintsToPostconditions(action, requestContainer);
         }
         else if (resourceContainer != null)
         {
@@ -130,6 +131,7 @@ public class PlanCapabilityOfferNode : BTNode
         if (resourceContainer != null)
         {
             CopyPreConstraintsToPreconditions(action, resourceContainer);
+            CopyPostConstraintsToPostconditions(action, resourceContainer);
             if (!TryLinkSkillReference(action, resourceContainer))
             {
                 Logger.LogWarning("PlanCapabilityOffer: Local capability container {Container} lacks a RealizedBy relation.", resourceContainer.IdShort ?? resourceContainer.GetCapabilityName());
@@ -193,18 +195,28 @@ public class PlanCapabilityOfferNode : BTNode
         return NodeStatus.Success;
     }
 
-    private static void EnsureOfferHasActionInputParameters(OfferedCapability offer, string fallbackActionTitle)
+    private void EnsureOfferHasActionInputParameters(OfferedCapability offer, string fallbackActionTitle)
     {
         if (offer == null)
         {
+            Logger.LogDebug("EnsureOfferHasActionInputParameters: offer is null");
+            try { Console.WriteLine("[DEBUG] EnsureOfferHasActionInputParameters: offer is null"); } catch {}
             return;
         }
 
+        Logger.LogDebug("EnsureOfferHasActionInputParameters: inspecting offer instanceId={Instance}", offer.InstanceIdentifier.GetText());
+        try { Console.WriteLine($"[DEBUG] EnsureOfferHasActionInputParameters: inspecting offer instanceId={offer.InstanceIdentifier.GetText()}"); } catch {}
+
         // Accept both typed ActionModel and generic SubmodelElementCollection actions.
+        // IMPORTANT: Keep transport actions 1:1 when possible.
+        var hadAnyAction = false;
         foreach (var actionElement in offer.Actions)
         {
+            hadAnyAction = true;
             if (actionElement is ActionModel actionModel)
             {
+                var pcount = actionModel.InputParameters?.Parameters?.Count ?? 0;
+                Logger.LogDebug("EnsureOfferHasActionInputParameters: found typed action {Title} inputParams={Count}", actionModel.ActionTitle, pcount);
                 if (actionModel.InputParameters != null)
                 {
                     return;
@@ -216,11 +228,32 @@ public class PlanCapabilityOfferNode : BTNode
                     .OfType<SubmodelElementCollection>()
                     .Any(smc => string.Equals(smc.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase));
 
+                Logger.LogDebug("EnsureOfferHasActionInputParameters: found action collection {IdShort} hasInputParameters={HasIp}", actionCollection.IdShort, hasInputParameters);
+
                 if (hasInputParameters)
                 {
                     return;
                 }
+
+                try
+                {
+                    actionCollection.Add(new InputParameters());
+                    Logger.LogDebug("EnsureOfferHasActionInputParameters: injected InputParameters collection into action collection {IdShort}", actionCollection.IdShort);
+                    try { Console.WriteLine($"[DEBUG] EnsureOfferHasActionInputParameters: injected InputParameters into {actionCollection.IdShort}"); } catch {}
+                    return;
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogDebug(ex, "EnsureOfferHasActionInputParameters: failed to mutate action collection {IdShort}", actionCollection.IdShort);
+                    try { Console.WriteLine($"[DEBUG] EnsureOfferHasActionInputParameters: failed to inject InputParameters into {actionCollection.IdShort}: {ex.Message}"); } catch {}
+                    // If we cannot mutate the collection, fall back to adding a new action below.
+                }
             }
+        }
+
+        if (hadAnyAction)
+        {
+            Logger.LogDebug("EnsureOfferHasActionInputParameters: had actions but none with InputParameters and mutation failed; will add fallback action");
         }
 
         var machineName = offer.Station.GetText() ?? string.Empty;
@@ -238,6 +271,8 @@ public class PlanCapabilityOfferNode : BTNode
             machineName: machineName);
 
         offer.AddAction(fallbackAction);
+        Logger.LogDebug("EnsureOfferHasActionInputParameters: added fallback action {Title}", title);
+        try { Console.WriteLine($"[DEBUG] EnsureOfferHasActionInputParameters: added fallback action {title}"); } catch {}
     }
 
     private sealed record Neo4jReferenceKey(string? Type, string? Value);
@@ -424,6 +459,32 @@ public class PlanCapabilityOfferNode : BTNode
             if (conditionValue != null)
             {
                 preconditions.Add(conditionValue);
+            }
+        }
+    }
+
+    private static void CopyPostConstraintsToPostconditions(ActionModel action, CapabilityContainer container)
+    {
+        var postconditions = action.Postconditions;
+        if (postconditions == null)
+        {
+            return;
+        }
+
+        var nextIndex = GetNextConditionValueIndex(postconditions);
+
+        foreach (var constraint in container.Constraints)
+        {
+            var conditionalType = GetStringValue(constraint.ConditionalType);
+            if (!string.Equals(conditionalType, "post", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            var conditionValue = CreateConditionValueEntry(constraint, ++nextIndex);
+            if (conditionValue != null)
+            {
+                postconditions.Add(conditionValue);
             }
         }
     }

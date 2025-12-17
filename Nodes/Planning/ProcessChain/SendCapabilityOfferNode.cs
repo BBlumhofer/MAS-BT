@@ -8,6 +8,7 @@ using AasSharpClient.Models.ProcessChain;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Planning;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Planning.ProcessChain;
@@ -62,6 +63,32 @@ public class SendCapabilityOfferNode : BTNode
             .Where(c => c != null && IsPostPlacement(c))
             .ToList();
 
+        // Also include any transport offers that may still be in the context (defensive: PlanCapabilityOfferNode may or may not have consumed them).
+        var transportSequence = Context.Get<System.Collections.Generic.List<MAS_BT.Nodes.Planning.ProcessChain.TransportSequenceItem>>("Planning.TransportSequence");
+        if (transportSequence != null && transportSequence.Count > 0)
+        {
+            foreach (var entry in transportSequence)
+            {
+                if (entry?.Capability == null) continue;
+                var cap = entry.Capability;
+                cap.SetSequencePlacement(entry.Placement == MAS_BT.Nodes.Planning.ProcessChain.TransportPlacement.AfterCapability ? "post" : "pre");
+                if (!IsPostPlacement(cap)) pre.Add(cap);
+                else post.Add(cap);
+            }
+        }
+
+        var transportOffers = Context.Get<System.Collections.Generic.List<AasSharpClient.Models.ProcessChain.OfferedCapability>>("Planning.TransportOffers");
+        if (transportOffers != null && transportOffers.Count > 0)
+        {
+            foreach (var cap in transportOffers)
+            {
+                if (cap == null) continue;
+                // respect declared placement if any, otherwise treat as pre
+                if (IsPostPlacement(cap)) post.Add(cap);
+                else pre.Add(cap);
+            }
+        }
+
         foreach (var cap in pre)
         {
             offeredSequence.AddCapability(cap);
@@ -72,6 +99,77 @@ public class SendCapabilityOfferNode : BTNode
         foreach (var cap in post)
         {
             offeredSequence.AddCapability(cap);
+        }
+
+        // Diagnostic: log payload shape before publishing
+        try
+        {
+            var caps = offeredSequence.GetCapabilities().ToList();
+            Logger.LogDebug("SendCapabilityOffer: offered sequence contains {Count} capabilities", caps.Count);
+            try { Console.WriteLine($"[DEBUG] SendCapabilityOffer: offered sequence contains {caps.Count} capabilities"); } catch {}
+            for (var i = 0; i < caps.Count; i++)
+            {
+                var c = caps[i];
+                var instance = c.InstanceIdentifier.GetText();
+                var actions = c.Actions;
+                var actionArray = actions != null ? actions.ToArray() : System.Array.Empty<ISubmodelElement>();
+                Logger.LogDebug("SendCapabilityOffer: capability #{Index} id={Instance} actions={Count}", i + 1, instance, actionArray.Length);
+                try { Console.WriteLine($"[DEBUG] SendCapabilityOffer: capability #{i+1} id={instance} actions={actionArray.Length}"); } catch {}
+                foreach (var ae in actionArray)
+                {
+                    try
+                    {
+                        var typeName = ae.GetType().FullName ?? ae.GetType().Name;
+                        if (ae is AasSharpClient.Models.Action am)
+                        {
+                            var pcount = am.InputParameters?.Parameters?.Count ?? 0;
+                            Logger.LogDebug("SendCapabilityOffer: action {Title} typed InputParameters={ParamCount}", am.ActionTitle, pcount);
+                            Console.WriteLine($"[DEBUG] SendCapabilityOffer: action (typed) Title={am.ActionTitle} InputParametersCount={pcount} Type={typeName}");
+                        }
+                        else if (ae is BaSyx.Models.AdminShell.SubmodelElementCollection coll)
+                        {
+                            var hasIp = (coll.Values ?? System.Array.Empty<BaSyx.Models.AdminShell.ISubmodelElement>())
+                                .OfType<BaSyx.Models.AdminShell.SubmodelElementCollection>()
+                                .Any(smc => string.Equals(smc.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase));
+                            Logger.LogDebug("SendCapabilityOffer: action collection idShort={IdShort} hasInputParameters={HasIp}", coll.IdShort, hasIp);
+                            Console.WriteLine($"[DEBUG] SendCapabilityOffer: action collection IdShort={coll.IdShort} hasInputParameters={hasIp} Type={typeName}");
+                            // enumerate children for more context
+                            try
+                            {
+                                foreach (var child in coll.Values ?? System.Array.Empty<ISubmodelElement>())
+                                {
+                                    var childType = child.GetType().FullName ?? child.GetType().Name;
+                                    Console.WriteLine($"[DEBUG] SendCapabilityOffer:   child IdShort={child.IdShort} Type={childType}");
+                                    if (child is BaSyx.Models.AdminShell.SubmodelElementCollection childCol && string.Equals(childCol.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        foreach (var p in childCol.OfType<Property>())
+                                        {
+                                            Console.WriteLine($"[DEBUG] SendCapabilityOffer:     InputParameter {p.IdShort} = {p.GetText()}");
+                                        }
+                                    }
+                                }
+                            }
+                            catch { }
+                        }
+                        else if (ae is Property prop)
+                        {
+                            Console.WriteLine($"[DEBUG] SendCapabilityOffer: action element is Property IdShort={prop.IdShort} Value={prop.GetText()} Type={typeName}");
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[DEBUG] SendCapabilityOffer: action element unknown Type={typeName} IdShort={ae.IdShort}");
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Logger.LogDebug(ex, "SendCapabilityOffer: failed to inspect action element");
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "SendCapabilityOffer: diagnostics logging failed");
         }
 
         var proposal = new CapabilityOfferProposalMessage(

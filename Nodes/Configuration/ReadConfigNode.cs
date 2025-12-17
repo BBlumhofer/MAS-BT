@@ -1,9 +1,8 @@
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
-using System.Globalization;
-using System.Text.Json;
 using System.IO;
 using System.Linq;
+using MAS_BT.Tools;
 
 namespace MAS_BT.Nodes.Configuration;
 
@@ -50,10 +49,10 @@ public class ReadConfigNode : BTNode
                 return NodeStatus.Failure;
             }
             var jsonContent = await File.ReadAllTextAsync(resolvedPath);
-            var config = JsonSerializer.Deserialize<JsonElement>(jsonContent);
+            var config = JsonFacade.Parse(jsonContent);
             
             Context.Set("config", config);
-            if (config.ValueKind == JsonValueKind.Object)
+            if (config is System.Collections.Generic.IDictionary<string, object?>)
             {
                 FlattenObject(config, "config");
 
@@ -91,44 +90,27 @@ public class ReadConfigNode : BTNode
         return Directory.EnumerateFiles(configsRoot, fileName, SearchOption.AllDirectories).FirstOrDefault();
     }
 
-    private void FlattenObject(JsonElement element, string prefix)
+    private void FlattenObject(object? element, string prefix)
     {
-        if (element.ValueKind == JsonValueKind.Object)
+        if (element is System.Collections.Generic.IDictionary<string, object?> obj)
         {
             Context.Set(prefix, element);
-            foreach (var property in element.EnumerateObject())
+            foreach (var property in obj)
             {
                 var childPrefix = string.IsNullOrEmpty(prefix)
-                    ? property.Name
-                    : $"{prefix}.{property.Name}";
+                    ? property.Key
+                    : $"{prefix}.{property.Key}";
                 FlattenObject(property.Value, childPrefix);
             }
             return;
         }
 
-        if (element.ValueKind == JsonValueKind.Array)
+        if (element is System.Collections.Generic.IList<object?>)
         {
             Context.Set(prefix, element);
             return;
         }
 
-        Context.Set(prefix, ConvertPrimitive(element));
-    }
-
-    private static object? ConvertPrimitive(JsonElement element)
-    {
-        return element.ValueKind switch
-        {
-            JsonValueKind.String => element.GetString(),
-            JsonValueKind.Number => element.TryGetInt64(out var longValue)
-                ? longValue.ToString(CultureInfo.InvariantCulture)
-                : element.TryGetDouble(out var doubleValue)
-                    ? doubleValue.ToString(CultureInfo.InvariantCulture)
-                    : element.GetRawText(),
-            JsonValueKind.True => true,
-            JsonValueKind.False => false,
-            JsonValueKind.Null => null,
-            _ => element.GetRawText()
-        };
+        Context.Set(prefix, element);
     }
 }
