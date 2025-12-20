@@ -21,7 +21,7 @@ class RegisterMessage {
 
 **Wichtig:**
 - Capabilities werden nur als Namen übertragen (nicht die vollständigen Container)
-- Sub-Holons (Planning/Execution) senden MessageType "subHolonRegister"
+- Sub-Holons (Planning/Execution) senden MessageType "registerMessage"
 - Module/Dispatcher senden MessageType "registerMessage"
 
 ### 1.2 InventoryMessage

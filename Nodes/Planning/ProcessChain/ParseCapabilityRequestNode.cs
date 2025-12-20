@@ -15,21 +15,40 @@ public class ParseCapabilityRequestNode : BTNode
         var incoming = Context.Get<I40Message>("LastReceivedMessage");
         if (incoming == null)
         {
-            Logger.LogWarning("ParseCapabilityRequest: no incoming message");
+            Logger.LogDebug("ParseCapabilityRequest: no incoming message");
             return Task.FromResult(NodeStatus.Failure);
         }
 
         var request = CapabilityRequestContext.FromMessage(incoming);
         if (string.IsNullOrWhiteSpace(request.Capability))
         {
-            Logger.LogWarning("ParseCapabilityRequest: capability missing in CfP message");
+            Logger.LogDebug("ParseCapabilityRequest: capability missing in CfP message");
+            return Task.FromResult(NodeStatus.Failure);
+        }
+
+        // Guard: check if this conversation was already processed to prevent reprocessing loops
+        var processedKey = $"Planning.Processed:{request.ConversationId}";
+        if (Context.Get<bool>(processedKey))
+        {
+            Logger.LogDebug("ParseCapabilityRequest: conversation {Conv} already processed, skipping", request.ConversationId);
+            // Clear message to prevent infinite loop
+            Context.Set("LastReceivedMessage", (I40Message?)null);
+            Context.Set("CurrentMessage", (I40Message?)null);
             return Task.FromResult(NodeStatus.Failure);
         }
 
         Context.Set("Planning.CapabilityRequest", request);
         Context.Set("RequiredCapability", request.Capability);
         Context.Set("RequesterId", request.RequesterId);
+        Context.Set("RequesterRole", request.RequesterRole);
         Context.Set("ConversationId", request.ConversationId);
+        
+        // Mark conversation as being processed
+        Context.Set(processedKey, true);
+        
+        // Clear CurrentMessage immediately after parsing to prevent reprocessing in the same loop iteration
+        Context.Set("CurrentMessage", (I40Message?)null);
+        
         Logger.LogInformation("ParseCapabilityRequest: capability={Capability} requirement={Requirement}", request.Capability, request.RequirementId);
         return Task.FromResult(NodeStatus.Success);
     }

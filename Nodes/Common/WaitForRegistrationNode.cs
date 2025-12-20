@@ -21,9 +21,11 @@ namespace MAS_BT.Nodes.Common
     public class WaitForRegistrationNode : BTNode
     {
         public string ExpectedAgents { get; set; } = string.Empty;
-        public string ExpectedTypes { get; set; } = "subHolonRegister";
+        public string ExpectedAgentsPath { get; set; } = string.Empty;
+        public string ExpectedTypes { get; set; } = "registerMessage";
         public int TimeoutSeconds { get; set; } = 10;
         public string Namespace { get; set; } = string.Empty;
+        public string TopicOverride { get; set; } = string.Empty;
 
         /// <summary>
         /// Optional explicit expected count. When 0, we will try to infer it:
@@ -48,10 +50,35 @@ namespace MAS_BT.Nodes.Common
                 ? ResolveTemplates(Namespace)
                 : (Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket");
             var moduleId = ModuleContextHelper.ResolveModuleId(Context);
-            var topic = $"/{ns}/{moduleId}/register";
+            var topic = !string.IsNullOrWhiteSpace(TopicOverride)
+                ? ResolveTemplates(TopicOverride)
+                : $"/{ns}/{moduleId}/register";
 
-            var expectedTypeSet = ParseCsvOrDefault(ResolveTemplates(ExpectedTypes), new[] { "subHolonRegister" });
+            // Subscribe to namespace wildcard as well to catch registrations published
+            // on per-module topics (e.g. /{ns}/{moduleId}/register) and namespace-level
+            // topics (e.g. /{ns}/register). Use ns-based wildcard for broader matching.
+            var subscribeTopic = topic.EndsWith("/register", StringComparison.OrdinalIgnoreCase)
+                ? $"/{ns}/#"
+                : topic;
+
+            var expectedTypeSet = ParseCsvOrDefault(ResolveTemplates(ExpectedTypes), new[] { "registerMessage" });
             var expectedAgents = ParseExpectedAgents(ResolveTemplates(ExpectedAgents));
+
+            if (expectedAgents.Count == 0 && !string.IsNullOrWhiteSpace(ExpectedAgentsPath))
+            {
+                var fromPath = ResolveExpectedAgentsFromPath(ExpectedAgentsPath);
+                foreach (var agent in fromPath)
+                {
+                    expectedAgents.Add(agent);
+                }
+
+                if (fromPath.Count == 0)
+                {
+                    Logger.LogDebug(
+                        "WaitForRegistration: ExpectedAgentsPath '{Path}' resolved to empty set",
+                        ExpectedAgentsPath);
+                }
+            }
 
             var expectedCount = ResolveExpectedCount(expectedAgents);
             if (expectedCount < 1)
@@ -59,10 +86,19 @@ namespace MAS_BT.Nodes.Common
                 expectedCount = 1;
             }
 
-            Logger.LogInformation("WaitForRegistration: waiting for {Count} registrations on {Topic}", expectedCount, topic);
+            Logger.LogInformation(
+                "WaitForRegistration: waiting for {Count} registrations on {Topic} (expected agents: {Agents}, types: {Types})",
+                expectedCount,
+                topic,
+                expectedAgents.Count > 0 ? string.Join(",", expectedAgents) : "<any>",
+                string.Join(",", expectedTypeSet));
 
             var queue = new ConcurrentQueue<I40Message>();
-            await client.SubscribeAsync(topic).ConfigureAwait(false);
+            await client.SubscribeAsync(subscribeTopic).ConfigureAwait(false);
+
+            var topicMatcher = new TopicMatcher(topic, ns);
+            var filterAgents = expectedAgents.Count > 0;
+
             client.OnMessage(m =>
             {
                 if (m?.Frame?.Type == null)
@@ -75,7 +111,7 @@ namespace MAS_BT.Nodes.Common
                     return;
                 }
 
-                if (expectedAgents.Count > 0)
+                if (filterAgents)
                 {
                     var senderId = m.Frame?.Sender?.Identification?.Id ?? string.Empty;
                     if (!expectedAgents.Contains(senderId))
@@ -84,16 +120,31 @@ namespace MAS_BT.Nodes.Common
                     }
                 }
 
+                Logger.LogDebug("WaitForRegistration: OnMessage received type={Type} sender={Sender}", m.Frame.Type, m.Frame?.Sender?.Identification?.Id);
                 queue.Enqueue(m);
             });
+
+            var initialDrained = DrainBufferedMessages(client, topicMatcher, expectedTypeSet, expectedAgents, queue);
+            if (initialDrained > 0)
+            {
+                Logger.LogInformation("WaitForRegistration: drained {Count} buffered registration message(s)", initialDrained);
+            }
 
             var start = DateTime.UtcNow;
             var timeout = TimeSpan.FromSeconds(Math.Max(1, TimeoutSeconds));
 
             var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var seenAgents = new Dictionary<string, I40Message>(StringComparer.OrdinalIgnoreCase);
             var seenCapabilities = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var firstSeenByAgent = new Dictionary<string, DateTime>(StringComparer.OrdinalIgnoreCase);
             while (DateTime.UtcNow - start < timeout)
             {
+                var drained = DrainBufferedMessages(client, topicMatcher, expectedTypeSet, expectedAgents, queue);
+                if (drained > 0)
+                {
+                    Logger.LogDebug("WaitForRegistration: drained {Count} buffered registration message(s) during wait loop", drained);
+                }
+
                 if (queue.TryDequeue(out var msg))
                 {
                     Context.Set("LastReceivedMessage", msg);
@@ -114,6 +165,16 @@ namespace MAS_BT.Nodes.Common
                     if (!string.IsNullOrWhiteSpace(seenKey))
                     {
                         seen.Add(seenKey);
+
+                        var agentId = msg.Frame?.Sender?.Identification?.Id ?? seenKey;
+                        if (!seenAgents.ContainsKey(agentId))
+                        {
+                            seenAgents.Add(agentId, msg);
+                        }
+                        if (!firstSeenByAgent.ContainsKey(agentId))
+                        {
+                            firstSeenByAgent[agentId] = DateTime.UtcNow;
+                        }
                     }
 
                     if (info.Capabilities != null)
@@ -127,7 +188,8 @@ namespace MAS_BT.Nodes.Common
                         }
                     }
 
-                    Logger.LogInformation("WaitForRegistration: received registration from {Id} ({Seen}/{Expected})",
+                    Logger.LogInformation(
+                        "WaitForRegistration: received registration from {Id} ({Seen}/{Expected})",
                         DescribeSource(msg, info),
                         seen.Count,
                         expectedCount);
@@ -159,6 +221,18 @@ namespace MAS_BT.Nodes.Common
                             // best-effort
                         }
 
+                        var seenDetails = seenAgents.Select(kvp =>
+                        {
+                            var firstSeen = firstSeenByAgent.TryGetValue(kvp.Key, out var ts)
+                                ? ts.ToString("O")
+                                : "<unknown>";
+                            return $"{kvp.Key}@{firstSeen}";
+                        }).ToList();
+
+                        Logger.LogInformation(
+                            "WaitForRegistration: expected set reached. Seen agents: {SeenAgents}",
+                            string.Join(",", seenDetails));
+
                         return NodeStatus.Success;
                     }
                 }
@@ -166,8 +240,135 @@ namespace MAS_BT.Nodes.Common
                 await Task.Delay(100).ConfigureAwait(false);
             }
 
-            Logger.LogWarning("WaitForRegistration: timeout waiting for registration on {Topic}", topic);
+            if (expectedAgents.Count > 0)
+            {
+                var missingAgents = expectedAgents.Where(a => !seenAgents.ContainsKey(a)).ToList();
+                var seenDetails = FormatSeenDetails(seenAgents, firstSeenByAgent);
+                Logger.LogWarning(
+                    "WaitForRegistration: timeout waiting on {Topic}. Missing agents: {Missing}. Seen agents: {SeenAgents}",
+                    topic,
+                    missingAgents.Count > 0 ? string.Join(",", missingAgents) : "<unknown>",
+                    seenDetails.Count > 0 ? string.Join(",", seenDetails) : "<none>");
+            }
+            else
+            {
+                var seenDetails = FormatSeenDetails(seenAgents, firstSeenByAgent);
+                Logger.LogWarning(
+                    "WaitForRegistration: timeout waiting for registration on {Topic}. Seen agents: {SeenAgents}",
+                    topic,
+                    seenDetails.Count > 0 ? string.Join(",", seenDetails) : "<none>");
+            }
             return NodeStatus.Failure;
+        }
+
+        private int DrainBufferedMessages(
+            MessagingClient client,
+            TopicMatcher matcher,
+            HashSet<string> expectedTypes,
+            HashSet<string> expectedAgents,
+            ConcurrentQueue<I40Message> queue)
+        {
+            if (client == null)
+            {
+                return 0;
+            }
+
+            var filterAgents = expectedAgents.Count > 0;
+            var matches = client.DequeueMatchingAll((msg, receivedTopic) =>
+                matcher.Matches(receivedTopic)
+                && msg?.Frame?.Type != null
+                && expectedTypes.Contains(msg.Frame.Type)
+                && (!filterAgents || expectedAgents.Contains(msg.Frame?.Sender?.Identification?.Id ?? string.Empty)));
+
+            foreach (var (message, matchedTopic) in matches)
+            {
+                try
+                {
+                    Logger.LogDebug("WaitForRegistration: buffered match type={Type} topic={Topic} sender={Sender}", message.Frame?.Type, matchedTopic, message.Frame?.Sender?.Identification?.Id);
+                }
+                catch { }
+
+                queue.Enqueue(message);
+            }
+
+            return matches.Count;
+        }
+
+        private sealed class TopicMatcher
+        {
+            private readonly string _moduleTopic;
+            private readonly string _namespaceTopic;
+            private readonly string _namespacePrefix;
+
+            public TopicMatcher(string configuredTopic, string ns)
+            {
+                _moduleTopic = NormalizeTopic(configuredTopic);
+                _namespacePrefix = BuildNamespacePrefix(configuredTopic, ns);
+                _namespaceTopic = string.IsNullOrWhiteSpace(_namespacePrefix)
+                    ? string.Empty
+                    : _namespacePrefix + "register";
+            }
+
+            public bool Matches(string? topic)
+            {
+                if (string.IsNullOrWhiteSpace(topic))
+                {
+                    return false;
+                }
+
+                var normalized = NormalizeTopic(topic);
+                if (string.Equals(normalized, _moduleTopic, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(_namespaceTopic)
+                    && string.Equals(normalized, _namespaceTopic, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(_namespacePrefix)
+                    && normalized.StartsWith(_namespacePrefix, StringComparison.OrdinalIgnoreCase)
+                    && normalized.EndsWith("/register", StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            private static string NormalizeTopic(string? topic)
+            {
+                var trimmed = (topic ?? string.Empty).Trim();
+                if (!trimmed.StartsWith('/'))
+                {
+                    trimmed = "/" + trimmed;
+                }
+
+                return trimmed.TrimEnd('/');
+            }
+
+            private static string BuildNamespacePrefix(string topic, string ns)
+            {
+                if (!string.IsNullOrWhiteSpace(ns))
+                {
+                    var sanitized = ns.Trim('/');
+                    if (!string.IsNullOrWhiteSpace(sanitized))
+                    {
+                        return "/" + sanitized + "/";
+                    }
+                }
+
+                var normalized = NormalizeTopic(topic);
+                var parts = normalized.Trim('/').Split('/', StringSplitOptions.RemoveEmptyEntries);
+                if (parts.Length > 0)
+                {
+                    return "/" + parts[0] + "/";
+                }
+
+                return string.Empty;
+            }
         }
 
         private static string BuildSeenKey(I40Message msg, DispatchingModuleInfo info)
@@ -216,6 +417,20 @@ namespace MAS_BT.Nodes.Common
             }
 
             return string.IsNullOrWhiteSpace(id) ? "<unknown>" : id;
+        }
+
+        private static List<string> FormatSeenDetails(Dictionary<string, I40Message> seenAgents, Dictionary<string, DateTime> firstSeenByAgent)
+        {
+            var list = new List<string>(seenAgents.Count);
+            foreach (var kvp in seenAgents)
+            {
+                var firstSeen = firstSeenByAgent.TryGetValue(kvp.Key, out var ts)
+                    ? ts.ToString("O")
+                    : "<unknown>";
+                list.Add($"{kvp.Key}@{firstSeen}");
+            }
+
+            return list;
         }
 
         private async Task TrySyncRegistrationToNeo4jAsync()
@@ -388,6 +603,121 @@ namespace MAS_BT.Nodes.Common
             }
 
             return result;
+        }
+
+        private HashSet<string> ResolveExpectedAgentsFromPath(string path)
+        {
+            var set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var value = ResolveContextValue(path);
+            if (value == null)
+            {
+                return set;
+            }
+
+            var serialized = SerializeContextValue(value);
+            if (string.IsNullOrWhiteSpace(serialized))
+            {
+                return set;
+            }
+
+            return ParseExpectedAgents(serialized);
+        }
+
+        private object? ResolveContextValue(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            var trimmed = path.Trim();
+
+            if (Context.Has(trimmed))
+            {
+                try
+                {
+                    return Context.Get<object>(trimmed);
+                }
+                catch
+                {
+                    return null;
+                }
+            }
+
+            var segments = trimmed.Split('.', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            object? root = null;
+            var startIndex = 0;
+
+            if (Context.Has(segments[0]))
+            {
+                try
+                {
+                    root = Context.Get<object>(segments[0]);
+                    startIndex = 1;
+                }
+                catch
+                {
+                    root = null;
+                }
+            }
+
+            if (root == null && Context.Has("config"))
+            {
+                try
+                {
+                    root = Context.Get<object>("config");
+                    startIndex = string.Equals(segments[0], "config", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+                }
+                catch
+                {
+                    root = null;
+                }
+            }
+
+            if (root == null)
+            {
+                return null;
+            }
+
+            if (startIndex >= segments.Length)
+            {
+                return root;
+            }
+
+            try
+            {
+                var subPath = segments.Skip(startIndex).ToArray();
+                return JsonFacade.GetPath(root, subPath);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static string? SerializeContextValue(object? value)
+        {
+            if (value == null)
+            {
+                return null;
+            }
+
+            if (value is string s)
+            {
+                return s;
+            }
+
+            if (value is IDictionary<string, object?> || value is IList<object?>)
+            {
+                return JsonFacade.Serialize(value);
+            }
+
+            return JsonFacade.ToStringValue(value);
         }
     }
 }

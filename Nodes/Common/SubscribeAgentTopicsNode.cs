@@ -9,16 +9,20 @@ using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
 using MAS_BT.Nodes.ModuleHolon;
+using MAS_BT.Utilities;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Common
 {
     /// <summary>
-    /// Generic subscription node.
-    /// - Dispatching roles subscribe to dispatching-wide topics.
-    /// - All other roles subscribe to module-holon style topics (including /{ns}/{moduleId}/register).
-    ///
-    /// Designed to replace NodeRegistry aliases so BTs can consistently reference `SubscribeAgentTopics`.
+    /// Generic subscription node with role-based topic patterns.
+    /// Uses the new generalized topic pattern: /{ns}/{targetRole}/broadcast/{MessageType}
+    /// 
+    /// - Dispatching: namespace-level requests and responses
+    /// - ModuleHolon: role-based broadcasts and direct module topics
+    /// - PlanningHolon: only parent module's internal topics
+    /// - ExecutionHolon: only parent module's skill execution topics
+    /// - TransportManager: transport-specific topics
     /// </summary>
     public class SubscribeAgentTopicsNode : BTNode
     {
@@ -37,120 +41,206 @@ namespace MAS_BT.Nodes.Common
 
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
             var role = !string.IsNullOrWhiteSpace(Role) ? ResolveTemplates(Role) : (Context.AgentRole ?? string.Empty);
+            var agentId = Context.Get<string>("config.Agent.AgentId") ?? Context.AgentId ?? string.Empty;
 
+            HashSet<string> topics;
+
+            // Role-specific topic selection
             if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase))
             {
-                // Minimal dispatching subscriptions (plus registration topics)
-                var topics = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+                topics = BuildDispatchingTopics(ns);
+                return await SubscribeDispatchingTopics(client, topics, ns);
+            }
+            else if (role.Contains("ModuleHolon", StringComparison.OrdinalIgnoreCase) 
+                     && !role.Contains("Planning", StringComparison.OrdinalIgnoreCase)
+                     && !role.Contains("Execution", StringComparison.OrdinalIgnoreCase))
+            {
+                var moduleId = Context.Get<string>("config.Agent.ModuleId") ?? agentId;
+                topics = BuildModuleHolonTopics(ns, moduleId);
+                return await SubscribeModuleHolonTopics(client, topics, ns, moduleId);
+            }
+            else if (role.Contains("Planning", StringComparison.OrdinalIgnoreCase))
+            {
+                var parentModuleId = Context.Get<string>("config.Agent.ModuleId");
+                if (string.IsNullOrWhiteSpace(parentModuleId))
                 {
-                    $"/{ns}/ProcessChain",
-                    $"/{ns}/request/ManufacturingSequence",
-                    $"/{ns}/request/BookStep",
-                    $"/{ns}/TransportPlan",
+                    Logger.LogError("SubscribeAgentTopics: PlanningHolon requires config.Agent.ModuleId (parent module ID)");
+                    return NodeStatus.Failure;
+                }
+                topics = BuildPlanningHolonTopics(ns, parentModuleId);
+            }
+            else if (role.Contains("Execution", StringComparison.OrdinalIgnoreCase))
+            {
+                var parentModuleId = Context.Get<string>("config.Agent.ModuleId");
+                if (string.IsNullOrWhiteSpace(parentModuleId))
+                {
+                    Logger.LogError("SubscribeAgentTopics: ExecutionHolon requires config.Agent.ModuleId (parent module ID)");
+                    return NodeStatus.Failure;
+                }
+                topics = BuildExecutionHolonTopics(ns, parentModuleId);
+            }
+            else if (role.Contains("TransportManager", StringComparison.OrdinalIgnoreCase))
+            {
+                topics = BuildTransportManagerTopics(ns);
+            }
+            else
+            {
+                Logger.LogWarning("SubscribeAgentTopics: Unknown role '{Role}', using minimal default topics", role);
+                topics = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { $"/{ns}/register" };
+            }
 
-                    // Offer request/response topics (CfP broadcast + module proposals)
-                    $"/{ns}/Offer",
+            // Generic subscription for non-dispatching, non-ModuleHolon roles
+            return await SubscribeGenericTopics(client, topics);
+        }
 
-                    $"/{ns}/register",
-                    $"/{ns}/Register",
-                    $"/{ns}/ModuleRegistration",
+        private HashSet<string> BuildDispatchingTopics(string ns)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                // External requests (from products)
+                $"/{ns}/ManufacturingSequence/Request",
+                $"/{ns}/BookStep/Request",
 
-                    // Inventory updates are published per module: /{ns}/{moduleId}/Inventory
-                    // Use MQTT wildcard subscription so the dispatcher can aggregate inventories.
-                    $"/{ns}/+/Inventory"
-                };
+                // Responses from modules/planning agents
+                $"/{ns}/ManufacturingSequence/Response",
+                $"/{ns}/Planning/OfferedCapability/Response",
 
-                var ok = 0;
-                foreach (var topic in topics)
+                // Registration topics (all agents register with dispatcher)
+                $"/{ns}/register",
+                $"/{ns}/Register",
+                $"/{ns}/ModuleRegistration",
+                $"/{ns}/+/register",            // Wildcard: all module/sub-agent registrations
+
+                // Inventory aggregation (from all modules)
+                $"/{ns}/+/Inventory"
+            };
+
+        }
+
+        private HashSet<string> BuildModuleHolonTopics(string ns, string moduleId)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                // Role-based broadcasts from Dispatcher (NEW PATTERN)
+                $"/{ns}/ModuleHolon/broadcast/OfferedCapability/Request",
+                $"/{ns}/ModuleHolon/broadcast/TransportPlan/Request",
+
+                // Direct messages to this specific module
+                $"/{ns}/{moduleId}/ScheduleAction",
+                $"/{ns}/{moduleId}/BookingConfirmation",
+                $"/{ns}/{moduleId}/TransportPlan",
+                $"/{ns}/{moduleId}/register",          // Sub-holon registrations
+                $"/{ns}/{moduleId}/Neighbors"          // Neighbor updates
+            };
+        }
+
+        private HashSet<string> BuildPlanningHolonTopics(string ns, string parentModuleId)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                // ONLY internal topics from parent ModuleHolon
+                $"/{ns}/{parentModuleId}/Planning/OfferedCapability/Request",
+                $"/{ns}/{parentModuleId}/Planning/ScheduleAction",
+                $"/{ns}/{parentModuleId}/Planning/TransportRequest",
+
+                // Direct responses from TransportManager
+                $"/{ns}/TransportPlan/Response"
+            };
+        }
+
+        private HashSet<string> BuildExecutionHolonTopics(string ns, string parentModuleId)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                // ONLY internal topics from parent ModuleHolon
+                $"/{ns}/{parentModuleId}/Execution/SkillRequest"
+            };
+        }
+
+        private HashSet<string> BuildTransportManagerTopics(string ns)
+        {
+            return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                // Transport requests from planning agents
+                $"/{ns}/TransportPlan/Request"
+            };
+        }
+
+        private async Task<NodeStatus> SubscribeDispatchingTopics(MessagingClient client, HashSet<string> topics, string ns)
+        {
+            var ok = 0;
+            foreach (var topic in topics)
+            {
+                try
+                {
+                    await client.SubscribeAsync(topic).ConfigureAwait(false);
+                    ok++;
+                    Logger.LogInformation("SubscribeAgentTopics: subscribed {Topic}", topic);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "SubscribeAgentTopics: failed to subscribe {Topic}", topic);
+                }
+            }
+
+            // Register message handler for dispatching state updates
+            if (!Context.Get<bool>("DispatchingTopicsHandlerRegistered"))
+            {
+                client.OnMessage(m =>
                 {
                     try
                     {
-                        await client.SubscribeAsync(topic).ConfigureAwait(false);
-                        ok++;
-                        Logger.LogInformation("SubscribeAgentTopics: subscribed {Topic}", topic);
+                        if (m == null) return;
+
+                        var type = m.Frame?.Type ?? string.Empty;
+                        var state = Context.Get<DispatchingState>("DispatchingState") ?? new DispatchingState();
+
+                        if (string.Equals(type, "registerMessage", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(type, "moduleRegistration", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var now = DateTime.UtcNow;
+                            var info = DispatchingModuleInfo.FromMessage(m);
+                            if (!string.IsNullOrWhiteSpace(info.ModuleId))
+                            {
+                                info.LastRegistrationUtc = now;
+                                info.LastSeenUtc = now;
+                                state.Upsert(info);
+                                Context.Set("DispatchingState", state);
+                                Logger.LogDebug("SubscribeAgentTopics: upserted module {ModuleId} (caps={Count})", info.ModuleId, info.Capabilities?.Count ?? 0);
+                            }
+                            return;
+                        }
+
+                        if (string.Equals(type, "inventoryUpdate", StringComparison.OrdinalIgnoreCase)
+                            || InventoryMessage.ContainsStorageUnits(m.InteractionElements))
+                        {
+                            var senderId = m.Frame?.Sender?.Identification?.Id ?? string.Empty;
+                            var moduleId = NormalizeModuleId(senderId);
+                            if (!string.IsNullOrWhiteSpace(moduleId)
+                                && TryExtractInventorySummary(m.InteractionElements, out var free, out var occupied))
+                            {
+                                state.UpsertInventory(moduleId, free, occupied, seenAtUtc: DateTime.UtcNow);
+                                Context.Set("DispatchingState", state);
+                                Logger.LogDebug("SubscribeAgentTopics: updated inventory for {ModuleId} free={Free} occupied={Occupied}", moduleId, free, occupied);
+                            }
+                        }
                     }
                     catch (Exception ex)
                     {
-                        Logger.LogWarning(ex, "SubscribeAgentTopics: failed to subscribe {Topic}", topic);
+                        Logger.LogDebug(ex, "SubscribeAgentTopics: dispatching message handler failed");
                     }
-                }
+                });
 
-                // Ensure we update DispatchingState from incoming messages even if a BT loop misses it.
-                if (!Context.Get<bool>("DispatchingTopicsHandlerRegistered"))
-                {
-                    client.OnMessage(m =>
-                    {
-                        try
-                        {
-                            if (m == null) return;
-
-                            var type = m.Frame?.Type ?? string.Empty;
-                            var state = Context.Get<DispatchingState>("DispatchingState") ?? new DispatchingState();
-
-                            if (string.Equals(type, "registerMessage", StringComparison.OrdinalIgnoreCase)
-                                || string.Equals(type, "moduleRegistration", StringComparison.OrdinalIgnoreCase))
-                            {
-                                var now = DateTime.UtcNow;
-                                var info = DispatchingModuleInfo.FromMessage(m);
-                                if (!string.IsNullOrWhiteSpace(info.ModuleId))
-                                {
-                                    info.LastRegistrationUtc = now;
-                                    info.LastSeenUtc = now;
-                                    state.Upsert(info);
-                                    Context.Set("DispatchingState", state);
-                                    Logger.LogDebug("SubscribeAgentTopics: upserted module {ModuleId} (caps={Count})", info.ModuleId, info.Capabilities?.Count ?? 0);
-                                }
-                                return;
-                            }
-
-                            if (string.Equals(type, "inventoryUpdate", StringComparison.OrdinalIgnoreCase)
-                                || InventoryMessage.ContainsStorageUnits(m.InteractionElements))
-                            {
-                                var senderId = m.Frame?.Sender?.Identification?.Id ?? string.Empty;
-                                var moduleId = NormalizeModuleId(senderId);
-                                if (!string.IsNullOrWhiteSpace(moduleId)
-                                    && TryExtractInventorySummary(m.InteractionElements, out var free, out var occupied))
-                                {
-                                    state.UpsertInventory(moduleId, free, occupied, seenAtUtc: DateTime.UtcNow);
-                                    Context.Set("DispatchingState", state);
-                                    Logger.LogDebug("SubscribeAgentTopics: updated inventory for {ModuleId} free={Free} occupied={Occupied}", moduleId, free, occupied);
-                                }
-                            }
-                        }
-                        catch (Exception ex)
-                        {
-                            Logger.LogDebug(ex, "SubscribeAgentTopics: dispatching message handler failed");
-                        }
-                    });
-
-                    Context.Set("DispatchingTopicsHandlerRegistered", true);
-                }
-
-                return ok > 0 ? NodeStatus.Success : NodeStatus.Failure;
+                Context.Set("DispatchingTopicsHandlerRegistered", true);
             }
 
-            // Non-dispatching: reuse the established module holon topic conventions
-            var primaryModuleId = ModuleContextHelper.ResolveModuleId(Context);
-            var moduleIdentifiers = ModuleContextHelper.ResolveModuleIdentifiers(Context);
-            var moduleTopics = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-            {
-                $"/{ns}/Offer",
-                $"/{ns}/TransportPlan"
-            };
+            return ok > 0 ? NodeStatus.Success : NodeStatus.Failure;
+        }
 
-            foreach (var moduleId in moduleIdentifiers)
-            {
-                moduleTopics.Add($"/{ns}/{moduleId}/ScheduleAction");
-                moduleTopics.Add($"/{ns}/{moduleId}/BookingConfirmation");
-                moduleTopics.Add($"/{ns}/{moduleId}/TransportPlan");
-                moduleTopics.Add($"/{ns}/{moduleId}/PlanningAgent/OfferResponse");
-                moduleTopics.Add($"/{ns}/{moduleId}/register");
-                moduleTopics.Add($"/{ns}/{moduleId}/Inventory");
-                moduleTopics.Add($"/{ns}/{moduleId}/Neighbors");
-            }
-
+        private async Task<NodeStatus> SubscribeModuleHolonTopics(MessagingClient client, HashSet<string> topics, string ns, string moduleId)
+        {
             var success = 0;
-            foreach (var topic in moduleTopics)
+            foreach (var topic in topics)
             {
                 try
                 {
@@ -164,7 +254,7 @@ namespace MAS_BT.Nodes.Common
                 }
             }
 
-            // Keep the same caching behavior as SubscribeModuleHolonTopicsNode (idempotent)
+            // Register message handler for inventory/neighbor caching
             if (!Context.Get<bool>("ModuleHolonTopicsHandlerRegistered"))
             {
                 client.OnMessage(m =>
@@ -176,7 +266,7 @@ namespace MAS_BT.Nodes.Common
                         var cache = BuildInventoryCache(m);
                         if (cache != null)
                         {
-                            Context.Set($"InventoryCache_{primaryModuleId}", cache);
+                            Context.Set($"InventoryCache_{moduleId}", cache);
                             Context.Set("ModuleInventory", cache.StorageUnits);
                         }
                     }
@@ -185,12 +275,32 @@ namespace MAS_BT.Nodes.Common
                         var cache = BuildNeighborsCache(m);
                         if (cache != null)
                         {
-                            Context.Set($"NeighborsCache_{primaryModuleId}", cache);
+                            Context.Set($"NeighborsCache_{moduleId}", cache);
                             Context.Set("Neighbors", cache.Neighbors);
                         }
                     }
                 });
                 Context.Set("ModuleHolonTopicsHandlerRegistered", true);
+            }
+
+            return success > 0 ? NodeStatus.Success : NodeStatus.Failure;
+        }
+
+        private async Task<NodeStatus> SubscribeGenericTopics(MessagingClient client, HashSet<string> topics)
+        {
+            var success = 0;
+            foreach (var topic in topics)
+            {
+                try
+                {
+                    await client.SubscribeAsync(topic).ConfigureAwait(false);
+                    success++;
+                    Logger.LogInformation("SubscribeAgentTopics: subscribed {Topic}", topic);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogWarning(ex, "SubscribeAgentTopics: failed to subscribe {Topic}", topic);
+                }
             }
 
             return success > 0 ? NodeStatus.Success : NodeStatus.Failure;

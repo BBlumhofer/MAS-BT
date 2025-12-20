@@ -139,3 +139,4 @@
 /home/benjamin/AgentDevelopment/MAS-BT/obj/Debug/net10.0/MAS-BT.genruntimeconfig.cache
 /home/benjamin/AgentDevelopment/MAS-BT/obj/Debug/net10.0/ref/MAS-BT.dll
 /home/benjamin/AgentDevelopment/MAS-BT/bin/Debug/net10.0/CoverletSourceRootsMapping_MAS-BT
+/home/benjamin/AgentDevelopment/MAS-BT/bin/Debug/net10.0/System.IO.Hashing.dll

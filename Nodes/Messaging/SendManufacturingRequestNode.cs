@@ -17,7 +17,7 @@ namespace MAS_BT.Nodes.Messaging;
 /// </summary>
 public class SendManufacturingRequestNode : BTNode
 {
-    public string Topic { get; set; } = "/{Namespace}/ManufacturingSequenceRequest";
+    public string Topic { get; set; } = "/{Namespace}/ManufacturingSequence/Request";
     public string MessageType { get; set; } = I40MessageTypes.CALL_FOR_PROPOSAL;
     public I40MessageTypeSubtypes MessageSubtype { get; set; } = I40MessageTypeSubtypes.ManufacturingSequence;
 
@@ -62,6 +62,50 @@ public class SendManufacturingRequestNode : BTNode
                 WrapSubmodel(productId, "ProductIdentification")
             };
 
+            // If an AssetLocation submodel is available on the blackboard, include it in the request
+            AasSharpClient.Models.AssetLocationSubmodel? assetLocation = null;
+            try
+            {
+                assetLocation = Context.Get<AasSharpClient.Models.AssetLocationSubmodel>("AssetLocationSubmodel")
+                                ?? Context.Get<AasSharpClient.Models.AssetLocationSubmodel>("AAS.Submodel.AssetLocation")
+                                ?? Context.Get<AasSharpClient.Models.AssetLocationSubmodel>("AssetLocation");
+            }
+            catch
+            {
+                // ignore missing/typed entries
+            }
+
+            if (assetLocation != null)
+            {
+                interactionElements.Add(WrapSubmodel(assetLocation, "AssetLocation"));
+                Logger.LogDebug("SendManufacturingRequest: attached AssetLocation to request");
+            }
+
+            // Log interaction elements for debugging to ensure AssetLocation presence
+            try
+            {
+                Logger.LogInformation("SendManufacturingRequest: prepared {Count} interaction elements", interactionElements.Count);
+                foreach (var el in interactionElements)
+                {
+                    switch (el)
+                    {
+                                case SubmodelElementCollection coll:
+                                    Logger.LogInformation("  - Collection IdShort={IdShort} Values={ValuesCount}", coll.IdShort, coll.Values == null ? 0 : coll.Values.Count());
+                                    break;
+                        case Property prop:
+                            Logger.LogInformation("  - Property IdShort={IdShort} Value={Value}", prop.IdShort, prop.Value);
+                            break;
+                        default:
+                            Logger.LogInformation("  - Element Type={Type} IdShort={IdShort}", el.GetType().Name, (el as SubmodelElement)?.IdShort);
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "SendManufacturingRequest: failed to log interaction elements");
+            }
+
             if (processChainElement != null)
             {
                 interactionElements.Add(processChainElement);
@@ -105,7 +149,7 @@ public class SendManufacturingRequestNode : BTNode
 
     private string ResolveTopic(string ns)
     {
-        var template = string.IsNullOrWhiteSpace(Topic) ? "/{Namespace}/ManufacturingSequenceRequest" : Topic;
+        var template = string.IsNullOrWhiteSpace(Topic) ? "/{Namespace}/ManufacturingSequence/Request" : Topic;
         var resolved = ResolvePlaceholders(template.Replace("{Namespace}", ns));
         return resolved.StartsWith('/') ? resolved : "/" + resolved.TrimStart('/');
     }

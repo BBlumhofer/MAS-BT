@@ -32,6 +32,7 @@ This file provides a structured index of the documentation files in the `docs` f
 
 ## Predefined agents
 
+- `predefined_agents/namespace_holon` — NamespaceHolon gateway, topic bridge rules, and holarchy configuration.
 - `predefined_agents/dispatching_agent` — Dispatcher agent patterns and process chain examples.
 - `predefined_agents/execution_agent` — Execution agent notes, monitoring nodes and inventory MQTT integration.
 - `predefined_agents/module_agent` — Module/holon descriptions and lifecycle.
@@ -42,6 +43,7 @@ This file provides a structured index of the documentation files in the `docs` f
 - Use this TOC to navigate into specific topics and agent guides.
 
 Predefined agents
+- `predefined_agents/namespace_holon` — NamespaceHolon gateway, topic bridge rules, and holarchy configuration.
 - `predefined_agents/dispatching_agent` — Dispatcher agent patterns and process chain examples.
 - `predefined_agents/execution_agent` — Execution agent notes, monitoring nodes and inventory MQTT integration.
 - `predefined_agents/module_agent` — Module/holon descriptions and lifecycle.

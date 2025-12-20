@@ -31,6 +31,8 @@ public class CollectCapabilityOfferNode : BTNode
     private int _expectedModules;
     private HashSet<string>? _expectedModuleIds;
     private bool _drainedInbox;
+    private bool _expectedRespondersBound;
+    private readonly HashSet<string> _sequentiallyCompletedRequirements = new(StringComparer.OrdinalIgnoreCase);
 
     public int TimeoutSeconds { get; set; } = 5;
 
@@ -52,23 +54,10 @@ public class CollectCapabilityOfferNode : BTNode
             _startTime = DateTime.UtcNow;
             _subscribed = true;
             _drainedInbox = false;
+            _expectedRespondersBound = false;
+            TryBindExpectedResponders();
 
-            var expected = Context.Get<List<string>>("ProcessChain.ExpectedOfferResponders")
-                           ?? Context.Get<List<string>>("ProcessChain.ExpectedOfferResponders".ToLowerInvariant());
-            if (expected != null)
-            {
-                _expectedModuleIds = expected
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .Select(NormalizeModuleId)
-                    .Where(id => !string.IsNullOrWhiteSpace(id))
-                    .ToHashSet(StringComparer.OrdinalIgnoreCase);
-            }
-
-            if (_expectedModuleIds != null && _expectedModuleIds.Count > 0)
-            {
-                _expectedModules = _expectedModuleIds.Count;
-            }
-            else
+            if (!_expectedRespondersBound)
             {
                 var state = Context.Get<DispatchingState>("DispatchingState");
                 _expectedModules = state?.Modules.Count ?? 0;
@@ -76,6 +65,10 @@ public class CollectCapabilityOfferNode : BTNode
 
             Logger.LogInformation("CollectCapabilityOffer: waiting for responses from {Count} modules", _expectedModules);
             Logger.LogInformation("CollectCapabilityOffer: started at {StartUtc:o} TimeoutSeconds={TimeoutSeconds}", _startTime, TimeoutSeconds);
+        }
+        else if (!_expectedRespondersBound)
+        {
+            TryBindExpectedResponders();
         }
 
         // Drain buffered messages that may have arrived before the conversation callback was registered.
@@ -102,7 +95,7 @@ public class CollectCapabilityOfferNode : BTNode
         {
             if (timedOut)
             {
-                Logger.LogWarning("CollectCapabilityOffer: timeout after {Timeout}s", TimeoutSeconds);
+                Logger.LogInformation("CollectCapabilityOffer: timeout after {Timeout}s", TimeoutSeconds);
 
                 var state = Context.Get<DispatchingState>("DispatchingState");
                 List<string> missingModules;
@@ -128,7 +121,7 @@ public class CollectCapabilityOfferNode : BTNode
                     .Select(r => $"{r.Capability}({r.RequirementId})")
                     .ToList();
 
-                Logger.LogWarning(
+                Logger.LogInformation(
                     "CollectCapabilityOffer: respondedModules={Responded}/{Expected}. MissingModules=[{MissingModules}] MissingRequirements=[{MissingReqs}]",
                     _respondedModules.Count,
                     _expectedModules,
@@ -153,6 +146,8 @@ public class CollectCapabilityOfferNode : BTNode
         _expectedModules = 0;
         _expectedModuleIds = null;
         _drainedInbox = false;
+        _expectedRespondersBound = false;
+        _sequentiallyCompletedRequirements.Clear();
         return Task.CompletedTask;
     }
 
@@ -184,7 +179,7 @@ public class CollectCapabilityOfferNode : BTNode
         if (string.IsNullOrWhiteSpace(topic))
         {
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            topic = TopicHelper.BuildNamespaceTopic(Context, "Offer");
+            topic = TopicHelper.BuildNamespaceTopic(Context, "ProcessChain/Request");
         }
 
         DateTime dispatchUtc;
@@ -292,12 +287,14 @@ public class CollectCapabilityOfferNode : BTNode
         }
 
         var messageType = message.Frame?.Type ?? string.Empty;
+        // Support message types with semantic subtypes (e.g. "proposal/ManufacturingSequence").
+        var messageBaseType = messageType.Split('/')[0];
         var sender = message.Frame?.Sender?.Identification?.Id;
         var senderModuleId = NormalizeModuleId(sender);
         var now = DateTime.UtcNow;
         var sinceStartMs = (_startTime == default) ? 0.0 : (now - _startTime).TotalMilliseconds;
         Logger.LogInformation("CollectCapabilityOffer: processing incoming {Type} from {SenderModule} at {Now:o} (+{SinceStart:F1}ms since start)", messageType, senderModuleId ?? "<unknown>", now, sinceStartMs);
-        if (string.Equals(messageType, I40MessageTypes.PROPOSAL, StringComparison.OrdinalIgnoreCase))
+        if (string.Equals(messageBaseType, I40MessageTypes.PROPOSAL, StringComparison.OrdinalIgnoreCase))
         {
             var requestType = Context.Get<string>("ProcessChain.RequestType") ?? string.Empty;
             var isManufacturing = string.Equals(requestType, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase);
@@ -343,6 +340,7 @@ public class CollectCapabilityOfferNode : BTNode
                             now,
                             sinceStartMs);
                     }
+                    UpdateManufacturingSequenceSnapshot(ctx);
 
                     // Populate legacy offers list with the first element (for non-manufacturing consumers).
                     var first = sequences.SelectMany(s => s.GetCapabilities()).FirstOrDefault();
@@ -350,6 +348,8 @@ public class CollectCapabilityOfferNode : BTNode
                     {
                         requirement.AddOffer(first);
                     }
+
+                    TryNotifySequentialRequirementSatisfied(requirement);
                 }
                 else
                 {
@@ -364,6 +364,8 @@ public class CollectCapabilityOfferNode : BTNode
                         var offerId = offer.InstanceIdentifier.GetText() ?? "<unknown>";
                         Logger.LogInformation("CollectCapabilityOffer: recorded offer {OfferId} for capability {Capability} (received at {Now:o}, +{SinceStart:F1}ms)", offerId, requirement.Capability, now, sinceStartMs);
                     }
+
+                    TryNotifySequentialRequirementSatisfied(requirement);
                 }
             }
             catch (Exception ex)
@@ -384,8 +386,8 @@ public class CollectCapabilityOfferNode : BTNode
                 throw;
             }
         }
-        else if (string.Equals(messageType, I40MessageTypes.REFUSE_PROPOSAL, StringComparison.OrdinalIgnoreCase) ||
-                 string.Equals(messageType, I40MessageTypes.REFUSAL, StringComparison.OrdinalIgnoreCase))
+        else if (string.Equals(messageBaseType, I40MessageTypes.REFUSE_PROPOSAL, StringComparison.OrdinalIgnoreCase) ||
+             string.Equals(messageBaseType, I40MessageTypes.REFUSAL, StringComparison.OrdinalIgnoreCase))
         {
             if (!string.IsNullOrWhiteSpace(senderModuleId))
             {
@@ -410,6 +412,96 @@ public class CollectCapabilityOfferNode : BTNode
         }
 
         return senderId;
+    }
+
+    private void TryBindExpectedResponders()
+    {
+        if (_expectedRespondersBound)
+        {
+            return;
+        }
+
+        List<string>? expected = null;
+        try
+        {
+            expected = Context.Get<List<string>>("ProcessChain.ExpectedOfferResponders");
+        }
+        catch
+        {
+            try
+            {
+                expected = Context.Get<List<string>>("ProcessChain.ExpectedOfferResponders".ToLowerInvariant());
+            }
+            catch
+            {
+                expected = null;
+            }
+        }
+
+        if (expected == null || expected.Count == 0)
+        {
+            return;
+        }
+
+        _expectedModuleIds = expected
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(NormalizeModuleId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        if (_expectedModuleIds.Count == 0)
+        {
+            return;
+        }
+
+        _expectedModules = _expectedModuleIds.Count;
+        _expectedRespondersBound = true;
+        Logger.LogInformation("CollectCapabilityOffer: bound expected responders ({Count} modules)", _expectedModules);
+    }
+
+    private void TryNotifySequentialRequirementSatisfied(CapabilityRequirement requirement)
+    {
+        if (requirement == null)
+        {
+            return;
+        }
+
+        if (requirement.CapabilityOffers.Count == 0 && requirement.OfferedCapabilitySequences.Count == 0)
+        {
+            return;
+        }
+
+        var requirementId = requirement.RequirementId;
+        if (string.IsNullOrWhiteSpace(requirementId))
+        {
+            return;
+        }
+
+        if (_sequentiallyCompletedRequirements.Contains(requirementId))
+        {
+            return;
+        }
+
+        SequentialRequirementCoordinator? coordinator = null;
+        try
+        {
+            coordinator = Context.Get<SequentialRequirementCoordinator>("ProcessChain.SequentialCoordinator");
+        }
+        catch
+        {
+            coordinator = null;
+        }
+
+        if (coordinator == null)
+        {
+            return;
+        }
+
+        if (_sequentiallyCompletedRequirements.Add(requirementId))
+        {
+            coordinator.MarkRequirementCompleted(requirementId);
+            Logger.LogInformation("CollectCapabilityOffer: sequential requirement {RequirementId} satisfied", requirementId);
+        }
     }
 
     private void DrainInbox(MessagingClient client, string conversationId)
@@ -618,6 +710,104 @@ public class CollectCapabilityOfferNode : BTNode
         }
 
         return seq;
+    }
+
+    private void UpdateManufacturingSequenceSnapshot(ProcessChainNegotiationContext ctx)
+    {
+        if (ctx == null)
+        {
+            return;
+        }
+
+        var productId = ctx.ProductId;
+        if (string.IsNullOrWhiteSpace(productId))
+        {
+            return;
+        }
+
+        var snapshot = BuildManufacturingSequenceSnapshot(ctx);
+        if (snapshot == null)
+        {
+            return;
+        }
+
+        Dictionary<string, ManufacturingSequence>? index = null;
+        try
+        {
+            index = Context.Get<Dictionary<string, ManufacturingSequence>>("ManufacturingSequence.ByProduct");
+        }
+        catch
+        {
+            // Key not present yet - create a new container below.
+        }
+
+        index ??= new Dictionary<string, ManufacturingSequence>(StringComparer.OrdinalIgnoreCase);
+        index[productId] = snapshot;
+
+        Context.Set("ManufacturingSequence.ByProduct", index);
+        Context.Set("ManufacturingSequence.Result", snapshot);
+        Context.Set("ManufacturingSequence.Success", ctx.HasCompleteProcessChain);
+    }
+
+    private static ManufacturingSequence BuildManufacturingSequenceSnapshot(ProcessChainNegotiationContext ctx)
+    {
+        var sequence = new ManufacturingSequence();
+        var requirementIndex = 0;
+
+        foreach (var requirement in ctx.Requirements)
+        {
+            var requiredCapability = new ManufacturingRequiredCapability($"RequiredCapability_{++requirementIndex}");
+            requiredCapability.SetInstanceIdentifier(requirement.RequirementId);
+
+            var requestedReference = CloneReference(requirement.RequestedCapabilityReference);
+            if (requestedReference != null)
+            {
+                requiredCapability.SetRequiredCapabilityReference(requestedReference);
+            }
+
+            if (requirement.OfferedCapabilitySequences.Count > 0)
+            {
+                foreach (var offeredSequence in requirement.OfferedCapabilitySequences)
+                {
+                    requiredCapability.AddSequence(offeredSequence);
+                }
+            }
+            else if (requirement.CapabilityOffers.Count > 0)
+            {
+                var fallback = new ManufacturingOfferedCapabilitySequence();
+                foreach (var offer in requirement.CapabilityOffers)
+                {
+                    fallback.AddCapability(offer);
+                }
+                requiredCapability.AddSequence(fallback);
+            }
+
+            sequence.AddRequiredCapability(requiredCapability);
+        }
+
+        return sequence;
+    }
+
+    private static Reference? CloneReference(Reference? source)
+    {
+        if (source == null)
+        {
+            return null;
+        }
+
+        var keys = source.Keys?
+            .Select(k => (IKey)new Key(k.Type, k.Value))
+            .ToList();
+
+        if (keys == null || keys.Count == 0)
+        {
+            return null;
+        }
+
+        return new Reference(keys)
+        {
+            Type = source.Type
+        };
     }
 
     private static void EnsureOfferDefaults(CapabilityRequirement requirement, I40Message message, OfferedCapability offer)

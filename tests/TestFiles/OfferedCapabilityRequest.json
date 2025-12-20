@@ -1,0 +1,143 @@
+{
+  "frame": {
+    "sender": {
+      "identification": {
+        "id": "ManufacturingDispatcher_phuket"
+      },
+      "role": {
+        "name": "Dispatching"
+      }
+    },
+    "receiver": {
+      "identification": {
+        "id": "P101"
+      },
+      "role": {
+        "name": "PlanningHolon"
+      }
+    },
+    "type": "callForProposal/OfferedCapability",
+    "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+  },
+  "interactionElements": [
+{
+      "idShort": "Capability",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "Drill"
+    },
+    {
+      "idShort": "RequirementId",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "7125c79d-da9d-4861-8a54-d01232b9177a"
+    },
+    {
+      "idShort": "ProductId",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "https://smartfactory.de/shells/LG3JsASu4_"
+    },
+    {
+      "idShort": "CapabilityDescription",
+      "kind": "Instance",
+      "modelType": "Property",
+      "valueType": "string",
+      "value": "Here is the precise, technically neutral description:\n\nElement: ManufacturingCapability\nMeaning: Drill capability represents a manufacturing process ability to perform drilling operations.\nClassification: Category:ManufacturingProcess Capability:Drilling\nModelType:ManufacturingSystem Kind:Process Capability\nOperational Relevance: Enables drilling tasks in manufacturing and automation systems."
+    },
+    {
+      "idShort": "DrillContainer",
+      "kind": "Instance",
+      "modelType": "SubmodelElementCollection",
+      "semanticId": {
+        "type": "ExternalReference",
+        "keys": [
+          {
+            "type": "GlobalReference",
+            "value": "https://admin-shell.io/idta/CapabilityDescription/CapabilityContainer/1/0"
+          }
+        ]
+      },
+      "value": [
+        {
+          "idShort": "Drill",
+          "kind": "Instance",
+          "modelType": "Capability",
+          "semanticId": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://wiki.eclipse.org/BaSyx_/_Documentation_/_Submodels_/_Capability#Capability"
+              }
+            ]
+          }
+        },
+        {
+          "idShort": "PropertySet",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "semanticId": {
+            "type": "ExternalReference",
+            "keys": [
+              {
+                "type": "GlobalReference",
+                "value": "https://admin-shell.io/idta/CapabilityDescription/PropertySet/1/0"
+              }
+            ]
+          },
+          "value": [
+            {
+              "idShort": "DepthContainer",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://admin-shell.io/idta/CapabilityDescription/PropertyContainer/1/0"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "Depth",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "valueType": "double",
+                  "value": "54.5"
+                }
+              ]
+            },
+            {
+              "idShort": "DiameterContainer",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "semanticId": {
+                "type": "ExternalReference",
+                "keys": [
+                  {
+                    "type": "GlobalReference",
+                    "value": "https://admin-shell.io/idta/CapabilityDescription/PropertyContainer/1/0"
+                  }
+                ]
+              },
+              "value": [
+                {
+                  "idShort": "Diameter",
+                  "kind": "Instance",
+                  "modelType": "Property",
+                  "valueType": "double",
+                  "value": "5.7"
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]}

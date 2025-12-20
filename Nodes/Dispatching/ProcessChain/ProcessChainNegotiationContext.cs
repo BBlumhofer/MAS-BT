@@ -17,6 +17,7 @@ public class ProcessChainNegotiationContext
     public string RequesterId { get; set; } = string.Empty;
     public string ProductId { get; set; } = string.Empty;
     public SubmodelElementCollection? RequestProcessChainElement { get; set; }
+    public SubmodelElementCollection? AssetLocation { get; set; }
     public CapabilityRequirementCollection Requirements { get; } = new CapabilityRequirementCollection();
 
     public bool HasCompleteProcessChain => Requirements.All(r => r.CapabilityOffers.Count > 0 || r.OfferedCapabilitySequences.Count > 0);

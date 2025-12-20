@@ -1,0 +1,30 @@
+{
+  "Agent": {
+    "AgentId": "TransportManager_phuket",
+    "Role": "TransportManager",
+    "AgentType": "TransportManager",
+    "ModuleId": "TransportManager_phuket",
+    "InitializationTree": "Trees/TransportManager.bt.xml",
+    "RegistrationIntervalMs": 5000
+  },
+  "Namespace": "_PHUKET",
+  "MQTT": {
+    "Broker": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "ClientId": "TransportManager_phuket",
+    "UseTLS": false,
+    "UseAuth": false,
+    "TopicPrefix": "i40/production",
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000
+  },
+  "AAS": {
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
+    "Timeout": 10000
+  }
+}

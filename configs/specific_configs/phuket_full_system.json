@@ -1,0 +1,6 @@
+{
+  "Agents": [
+    "NamespaceHolon/NamespaceHolon",
+    "Module_configs/phuket/module_agents"
+  ]
+}

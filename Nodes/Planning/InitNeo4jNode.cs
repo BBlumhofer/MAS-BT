@@ -1,3 +1,5 @@
+using System;
+using System.Threading.Tasks;
 using Microsoft.Extensions.Logging;
 using MAS_BT.Core;
 using Neo4j.Driver;
@@ -11,6 +13,8 @@ public class InitNeo4jNode : BTNode
 
     public override async Task<NodeStatus> Execute()
     {
+        const int retryCount = 3;
+        var retryDelay = TimeSpan.FromMilliseconds(1000);
         try
         {
             // Read config values (will be set by ReadConfig node as config.* keys)
@@ -25,20 +29,7 @@ public class InitNeo4jNode : BTNode
 
             IDriver driver;
             string effectiveUri;
-            try
-            {
-                (driver, effectiveUri) = await CreateAndVerifyDriverAsync(uri, auth, database);
-            }
-            catch (ServiceUnavailableException ex) when (ShouldTryBoltFallback(uri, ex))
-            {
-                var boltUri = ToBoltUri(uri);
-                Logger.LogWarning(
-                    ex,
-                    "InitNeo4j: Connectivity check failed for routing URI {Uri}. Retrying with {BoltUri}",
-                    uri,
-                    boltUri);
-                (driver, effectiveUri) = await CreateAndVerifyDriverAsync(boltUri, auth, database);
-            }
+            (driver, effectiveUri) = await TryConnectWithRetriesAsync(uri, auth, database, retryCount, retryDelay);
 
             
                         // Ensure basic schema constraints so MERGE works deterministically and duplicates are prevented.
@@ -80,13 +71,11 @@ public class InitNeo4jNode : BTNode
         {
             var user = Context.Get<string>("config.Neo4j.Username") ?? Environment.GetEnvironmentVariable("NEO4J_USER");
             var uri = Context.Get<string>("config.Neo4j.Uri") ?? Environment.GetEnvironmentVariable("NEO4J_URI");
-            Logger.LogError(authEx, "InitNeo4j: Authentication failed when connecting to Neo4j at {Uri} as user {User}. Check config.Neo4j.Username/config.Neo4j.Password or env NEO4J_USER/NEO4J_PASSWORD.", uri, user);
-            return NodeStatus.Failure;
+            throw new InvalidOperationException($"InitNeo4j: Authentication failed when connecting to Neo4j at {uri} as user {user}. Verify config.Neo4j.Username/config.Neo4j.Password or env NEO4J_USER/NEO4J_PASSWORD.", authEx);
         }
         catch (Exception ex)
         {
-            Logger.LogError(ex, "InitNeo4j: Failed to initialize Neo4j client");
-            return NodeStatus.Failure;
+            throw new InvalidOperationException("InitNeo4j: Failed to initialize Neo4j client", ex);
         }
     }
 
@@ -141,4 +130,66 @@ public class InitNeo4jNode : BTNode
             throw;
         }
     }
+
+    private async Task<(IDriver driver, string effectiveUri)> TryConnectWithRetriesAsync(
+        string uri,
+        IAuthToken auth,
+        string database,
+        int retryCount,
+        TimeSpan retryDelay)
+    {
+        Exception? lastError = null;
+        for (var attempt = 1; attempt <= retryCount; attempt++)
+        {
+            try
+            {
+                return await ConnectOnceAsync(uri, auth, database).ConfigureAwait(false);
+            }
+            catch (Exception ex)
+            {
+                lastError = ex;
+                if (attempt >= retryCount)
+                {
+                    break;
+                }
+
+                Logger.LogWarning(
+                    ex,
+                    "InitNeo4j: connection attempt {Attempt}/{Total} failed. Retrying in {Delay} ms",
+                    attempt,
+                    retryCount,
+                    retryDelay.TotalMilliseconds);
+
+                try
+                {
+                    await Task.Delay(retryDelay).ConfigureAwait(false);
+                }
+                catch
+                {
+                    // ignore cancellation for retry delays
+                }
+            }
+        }
+
+        throw lastError ?? new InvalidOperationException("InitNeo4j: connection attempts exhausted");
+    }
+
+    private async Task<(IDriver driver, string effectiveUri)> ConnectOnceAsync(string uri, IAuthToken auth, string database)
+    {
+        try
+        {
+            return await CreateAndVerifyDriverAsync(uri, auth, database).ConfigureAwait(false);
+        }
+        catch (ServiceUnavailableException ex) when (ShouldTryBoltFallback(uri, ex))
+        {
+            var boltUri = ToBoltUri(uri);
+            Logger.LogWarning(
+                ex,
+                "InitNeo4j: Connectivity check failed for routing URI {Uri}. Retrying with {BoltUri}",
+                uri,
+                boltUri);
+            return await CreateAndVerifyDriverAsync(boltUri, auth, database).ConfigureAwait(false);
+        }
+    }
+
 }

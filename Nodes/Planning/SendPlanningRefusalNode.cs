@@ -29,29 +29,94 @@ public class SendPlanningRefusalNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var conv = Context.Get<string>("ConversationId") ?? System.Guid.NewGuid().ToString();
+        var request = Context.Get<CapabilityRequestContext>("Planning.CapabilityRequest");
+        if (request == null)
+        {
+            Logger.LogDebug("SendPlanningRefusal: no capability request context available, skipping refusal");
+            return NodeStatus.Success;
+        }
+
+        // Guard: prevent duplicate refusals for the same conversation
+        var alreadyRefusedKey = $"Planning.RefusalSent:{request.ConversationId}";
+        if (Context.Get<bool>(alreadyRefusedKey))
+        {
+            Logger.LogDebug("SendPlanningRefusal: already sent refusal for conversation {Conv}, skipping duplicate", request.ConversationId);
+            return NodeStatus.Success;
+        }
+
         var refusalReason = Context.Get<string>("RefusalReason") ?? Reason;
         var failureDetail = Context.Get<string>("CapabilityMatchmaking.FailureDetail");
-        var request = Context.Get<CapabilityRequestContext>("Planning.CapabilityRequest");
-
+        
+        // Resolve receiver ID: try placeholder resolution first, then fallback to request context
         var resolvedReceiver = ResolvePlaceholders(ReceiverId ?? string.Empty);
+        if (string.IsNullOrWhiteSpace(resolvedReceiver) || resolvedReceiver.Contains('{'))
+        {
+            resolvedReceiver = request.RequesterId ?? Context.Get<string>("RequesterId");
+        }
         if (string.IsNullOrWhiteSpace(resolvedReceiver))
         {
             Logger.LogError("SendPlanningRefusal: ReceiverId unresolved/missing");
             return NodeStatus.Failure;
         }
 
+        var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace");
+        if (string.IsNullOrWhiteSpace(ns))
+        {
+            Logger.LogError("SendPlanningRefusal: missing namespace (config.Namespace/Namespace)");
+            return NodeStatus.Failure;
+        }
+
+        var conversationId = request?.ConversationId;
+        if (string.IsNullOrWhiteSpace(conversationId))
+        {
+            conversationId = Context.Get<string>("ConversationId");
+        }
+        if (string.IsNullOrWhiteSpace(conversationId))
+        {
+            conversationId = System.Guid.NewGuid().ToString();
+        }
+
+        var receiverRole = request?.RequesterRole;
+        if (string.IsNullOrWhiteSpace(receiverRole))
+        {
+            receiverRole = Context.Get<string>("RequesterRole");
+        }
+        if (string.IsNullOrWhiteSpace(receiverRole))
+        {
+            receiverRole = request?.IsManufacturingRequest == true ? "DispatchingAgent" : "ProductAgent";
+        }
+
+        var senderId = string.IsNullOrWhiteSpace(Context.AgentId) ? "PlanningAgent" : Context.AgentId;
+        var senderRole = string.IsNullOrWhiteSpace(Context.AgentRole) ? "PlanningAgent" : Context.AgentRole;
+        
+        // Select response topic based on request type: ManufacturingSequence or ProcessChain
+        var topic = $"/{ns}/ManufacturingSequence/Response";
+
         var refusal = new PlanningRefusalMessage(
-            "PlanningAgent",
-            "PlanningAgent",
+            senderId ?? "PlanningAgent",
+            senderRole ?? "PlanningAgent",
             resolvedReceiver,
-            "ProductAgent",
-            conv,
+            receiverRole ?? "DispatchingAgent",
+            conversationId,
             refusalReason,
             failureDetail);
 
-        await refusal.PublishAsync(client, $"/Planning/Refusals/{resolvedReceiver}/");
-        Logger.LogInformation("SendPlanningRefusal: published refusal to {Receiver} with reason {Reason}", resolvedReceiver, refusalReason);
+        await refusal.PublishAsync(client, topic).ConfigureAwait(false);
+        
+        // Mark conversation as refused to prevent duplicates
+        Context.Set(alreadyRefusedKey, true);
+        Context.Set("LastRefusalConversationId", conversationId);
+        
+        // Clear the current message so it won't be reprocessed
+        Context.Set("LastReceivedMessage", (I40Sharp.Messaging.Models.I40Message?)null);
+        Context.Set("CurrentMessage", (I40Sharp.Messaging.Models.I40Message?)null);
+        
+        Logger.LogInformation(
+            "SendPlanningRefusal: published refusal to {Receiver} on {Topic} (conv={ConversationId}, reason={Reason})",
+            resolvedReceiver,
+            topic,
+            conversationId,
+            refusalReason);
         return NodeStatus.Success;
     }
 }

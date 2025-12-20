@@ -877,6 +877,22 @@
           }
         }
       },
+      "System.IO.Hashing/10.0.0": {
+        "type": "package",
+        "compile": {
+          "lib/net10.0/System.IO.Hashing.dll": {
+            "related": ".xml"
+          }
+        },
+        "runtime": {
+          "lib/net10.0/System.IO.Hashing.dll": {
+            "related": ".xml"
+          }
+        },
+        "build": {
+          "buildTransitive/net8.0/_._": {}
+        }
+      },
       "xunit/2.9.2": {
         "type": "package",
         "dependencies": {
@@ -2318,6 +2334,35 @@
         "opcfoundation.netstandard.opc.ua.security.certificates.nuspec"
       ]
     },
+    "System.IO.Hashing/10.0.0": {
+      "sha512": "MqSp5IfX9RdWVwTED0WSRL1kZDNB7GlFj64O/NAJs4uO1beBHWEAFLlC7j8Fw/PkI+SUzooLVNvAe4aEkSwsRg==",
+      "type": "package",
+      "path": "system.io.hashing/10.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "Icon.png",
+        "PACKAGE.md",
+        "THIRD-PARTY-NOTICES.TXT",
+        "buildTransitive/net461/System.IO.Hashing.targets",
+        "buildTransitive/net462/_._",
+        "buildTransitive/net8.0/_._",
+        "buildTransitive/netcoreapp2.0/System.IO.Hashing.targets",
+        "lib/net10.0/System.IO.Hashing.dll",
+        "lib/net10.0/System.IO.Hashing.xml",
+        "lib/net462/System.IO.Hashing.dll",
+        "lib/net462/System.IO.Hashing.xml",
+        "lib/net8.0/System.IO.Hashing.dll",
+        "lib/net8.0/System.IO.Hashing.xml",
+        "lib/net9.0/System.IO.Hashing.dll",
+        "lib/net9.0/System.IO.Hashing.xml",
+        "lib/netstandard2.0/System.IO.Hashing.dll",
+        "lib/netstandard2.0/System.IO.Hashing.xml",
+        "system.io.hashing.10.0.0.nupkg.sha512",
+        "system.io.hashing.nuspec",
+        "useSharedDesignerContext.txt"
+      ]
+    },
     "xunit/2.9.2": {
       "sha512": "7LhFS2N9Z6Xgg8aE5lY95cneYivRMfRI8v+4PATa4S64D5Z/Plkg0qa8dTRHSiGRgVZ/CL2gEfJDE5AUhOX+2Q==",
       "type": "package",
@@ -2484,6 +2529,7 @@
       "Microsoft.NET.Test.Sdk >= 17.12.0",
       "Neo4j.Driver >= 5.28.4",
       "SkillSharp.Client >= 1.0.0",
+      "System.IO.Hashing >= 10.0.0",
       "coverlet.collector >= 6.0.4",
       "xunit >= 2.9.2",
       "xunit.runner.visualstudio >= 3.0.0"
@@ -2564,6 +2610,10 @@
           "Neo4j.Driver": {
             "target": "Package",
             "version": "[5.28.4, )"
+          },
+          "System.IO.Hashing": {
+            "target": "Package",
+            "version": "[10.0.0, )"
           },
           "coverlet.collector": {
             "include": "Runtime, Build, Native, ContentFiles, Analyzers, BuildTransitive",

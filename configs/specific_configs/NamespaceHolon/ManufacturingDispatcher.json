@@ -1,0 +1,54 @@
+{
+  "Agent": {
+    "AgentId": "ManufacturingDispatcher_phuket",
+    "Role": "Dispatching",
+    "AgentType": "ManufacturingDispatcher",
+    "ModuleId": "ManufacturingDispatcher_phuket",
+    "InitializationTree": "Trees/ManufacturingDispatcher.bt.xml",
+    "RegistrationIntervalMs": 5000
+  },
+  "Namespace": "_PHUKET",
+  "MQTT": {
+    "Broker": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "ClientId": "ManufacturingDispatcher_phuket",
+    "UseTLS": false,
+    "UseAuth": false,
+    "TopicPrefix": "i40/production",
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000
+  },
+  "AAS": {
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
+    "Timeout": 10000
+  },
+  "Neo4j": {
+    "Uri": "neo4j://192.168.178.30:7687",
+    "Username": "neo4j",
+    "Password": "testtest",
+    "Database": "neo4j"
+  },
+  "DispatchingAgent": {
+    "AgentTimeoutSeconds": 120,
+    "UseSimilarityFiltering": true,
+    "CapabilitySimilarityThreshold": 0.75,
+    "DescriptionTimeoutMs": 30000,
+    "SimilarityTimeoutMs": 30000,
+    "SimilarityAgentId": "S1",
+    "SimilarityAgentRole": "AIAgent",
+    "CalcSimilarityConcurrency": 20,
+    "CreateDescriptionConcurrency": 20,
+    "CfPTimeoutSeconds": 60,
+    "OfferCollectionTimeoutSeconds": 60,
+    "ProcessChainIdleDelayMs": 200,
+    "ProcessChainBackoffDelayMs": 200,
+    "ManufacturingIdleDelayMs": 300,
+    "ManufacturingBackoffDelayMs": 300,
+    "RegistrationIdleDelayMs": 10000
+  }
+}

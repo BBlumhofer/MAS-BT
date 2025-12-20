@@ -21,7 +21,7 @@ namespace MAS_BT.Tests
             await client.ConnectAsync();
 
             var tcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            await client.SubscribeAsync("/test/Offer");
+            await client.SubscribeAsync("/test/ManufacturingSequence/Request");
             client.OnMessage(msg =>
             {
                 if (!tcs.Task.IsCompleted && msg.Frame?.Type != null && msg.Frame.Type.StartsWith(I40MessageTypes.CALL_FOR_PROPOSAL))
@@ -74,7 +74,7 @@ namespace MAS_BT.Tests
             await client.ConnectAsync();
 
             var tcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
-            await client.SubscribeAsync("/test/Offer");
+            await client.SubscribeAsync("/test/ManufacturingSequence/Request");
             client.OnMessage(msg =>
             {
                 if (!tcs.Task.IsCompleted && msg.Frame?.Type != null && msg.Frame.Type.StartsWith(I40MessageTypes.CALL_FOR_PROPOSAL))

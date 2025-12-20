@@ -29,17 +29,35 @@ public class ParseProcessChainRequestNode : BTNode
         // Persist the original request so downstream nodes can access raw request details.
         Context.Set("ProcessChain.RequestMessage", incoming);
 
+        var initialConversationId = incoming.Frame?.ConversationId;
         var ctx = new ProcessChainNegotiationContext
         {
-            ConversationId = incoming.Frame?.ConversationId ?? Guid.NewGuid().ToString(),
+            ConversationId = string.IsNullOrWhiteSpace(initialConversationId)
+                ? Guid.NewGuid().ToString()
+                : initialConversationId!,
             RequesterId = incoming.Frame?.Sender?.Identification?.Id ?? "Unknown"
         };
 
         ctx.ProductId = ExtractProductIdentifier(incoming) ?? string.Empty;
+        // Do not override the original conversation id with product identifier — keep the conversation id
+        // as provided by the requester to allow correct reply routing.
         var processChainElement = ResolveProcessChainElement(incoming);
         if (processChainElement != null)
         {
             ctx.RequestProcessChainElement = processChainElement;
+        }
+
+        // Extract AssetLocation submodel if present in the interaction elements and attach to negotiation context
+        if (incoming.InteractionElements != null)
+        {
+            foreach (var el in incoming.InteractionElements.OfType<SubmodelElementCollection>())
+            {
+                if (string.Equals(el.IdShort, "AssetLocation", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.AssetLocation = el;
+                    break;
+                }
+            }
         }
 
         var requestedMetadata = ExtractRequestedCapabilityMetadata(processChainElement).ToList();

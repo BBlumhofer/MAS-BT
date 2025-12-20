@@ -32,7 +32,16 @@ namespace MAS_BT.Nodes.Dispatching
             }
 
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            var topic = relativeTopic.StartsWith("/") ? $"/{ns}{relativeTopic}" : $"/{ns}/{relativeTopic}";
+            // Normalize to unified pattern: /{Namespace}/ManufacturingSequence/Response
+            string topic;
+            if (relativeTopic.Contains("ManufacturingSequence", StringComparison.OrdinalIgnoreCase))
+            {
+                topic = $"/{ns}/ManufacturingSequence/Response";
+            }
+            else
+            {
+                topic = relativeTopic.StartsWith("/") ? $"/{ns}{relativeTopic}" : $"/{ns}/{relativeTopic}";
+            }
             var conversationId = incoming.Frame?.ConversationId ?? Guid.NewGuid().ToString();
             var requesterId = incoming.Frame?.Sender?.Identification?.Id ?? "Unknown";
 

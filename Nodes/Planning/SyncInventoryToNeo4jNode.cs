@@ -150,7 +150,7 @@ RETURN s.storageId AS storageId, count(sl) AS slotCount
                 }
             }
 
-            Logger.LogInformation(
+            Logger.LogDebug(
                 "SyncInventoryToNeo4j: Synced {Count} storage units for module {Module}",
                 syncedCount,
                 moduleId);

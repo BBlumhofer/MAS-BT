@@ -14,8 +14,8 @@
     "Timeout": 10000
   },
   "MQTT": {
-    "Broker": "192.168.178.30",
-    "BrokerAddress": "192.168.178.30",
+    "Broker": "localhost",
+    "BrokerAddress": "localhost",
     "Port": 1883,
     "Username": "mqttuser",
     "Password": "mqttpass",

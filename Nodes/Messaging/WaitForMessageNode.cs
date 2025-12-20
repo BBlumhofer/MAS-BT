@@ -179,7 +179,7 @@ public class WaitForMessageNode : BTNode
                                 Logger.LogError(ex, "WaitForMessage[{Name}][{Inst}]: Exception in message-type callback", Name, _instanceId);
                             }
                         });
-                        Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Subscribed to message type {Type}", Name, _instanceId, typeTrim);
+                            Logger.LogDebug("WaitForMessage[{Name}][{Inst}]: Subscribed to message type {Type}", Name, _instanceId, typeTrim);
                     }
 
                     var displayTopics = ParseExpectedTopics()

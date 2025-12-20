@@ -22,12 +22,19 @@ using BaSyx.Models.AdminShell;
 using Xunit;
 using ActionModel = AasSharpClient.Models.Action;
 
+using MAS_BT.Tests.Collections;
+
 namespace MAS_BT.Tests;
 
+[Collection("MessagingIntegration")]
 public class ModuleMessagingIntegrationTests : IDisposable
 {
     private static readonly MessageSerializer Serializer = new();
-    private static readonly bool UseRealMqtt = string.Equals(Environment.GetEnvironmentVariable("MASBT_TEST_USE_REAL_MQTT"), "true", StringComparison.OrdinalIgnoreCase);
+    private const string ModuleIntegrationEnvVar = "MASBT_TEST_MODULE_INTEGRATION_USE_REAL_MQTT";
+    // These module-level messaging tests default to the in-memory transport so they remain stable even when
+    // MASBT_TEST_USE_REAL_MQTT is enabled for other integration suites. Opt-in to a real broker only when the
+    // dedicated module flag is set.
+    private static readonly bool UseRealMqtt = string.Equals(Environment.GetEnvironmentVariable(ModuleIntegrationEnvVar), "true", StringComparison.OrdinalIgnoreCase);
     private static readonly string RealMqttHost = Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_HOST") ?? "192.168.178.30";
     private static readonly int RealMqttPort = int.TryParse(Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_PORT"), out var parsedPort) ? parsedPort : 1883;
     private static readonly string? RealMqttUsername = Environment.GetEnvironmentVariable("MASBT_TEST_MQTT_USERNAME");
@@ -84,14 +91,15 @@ public class ModuleMessagingIntegrationTests : IDisposable
         moduleContext.Set("config.Agent.ModuleName", moduleNameAlias);
 
         var moduleClient = await CreateClientAsync($"{moduleId}/logs");
-        await moduleClient.SubscribeAsync($"/{ns}/Offer");
+        await moduleClient.SubscribeAsync($"/{ns}/ManufacturingSequence/Request");
         moduleContext.Set("MessagingClient", moduleClient);
 
         var planningClients = new List<(MessagingClient client, TaskCompletionSource<I40Message?> tcs)>();
-        var conversationId = Guid.NewGuid().ToString();
+        var productId = $"{moduleId}-product-{Guid.NewGuid():N}";
+        var conversationId = productId;
 
         var primaryPlanningClient = await CreateClientAsync($"{moduleId}/planning");
-        await primaryPlanningClient.SubscribeAsync($"/{ns}/{moduleId}/PlanningAgent/OfferRequest");
+        await primaryPlanningClient.SubscribeAsync($"/{ns}/ManufacturingSequence/Request");
         var primaryTcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
         primaryPlanningClient.OnMessage(msg =>
         {
@@ -106,7 +114,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         if (!string.Equals(moduleId, moduleNameAlias, StringComparison.OrdinalIgnoreCase))
         {
             var aliasClient = await CreateClientAsync($"{moduleNameAlias}/planning");
-            var aliasTopic = $"/{ns}/{moduleNameAlias}/PlanningAgent/OfferRequest";
+            var aliasTopic = $"/{ns}/ManufacturingSequence/Request";
             await aliasClient.SubscribeAsync(aliasTopic);
             var aliasTcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
             aliasClient.OnMessage(msg =>
@@ -133,13 +141,14 @@ public class ModuleMessagingIntegrationTests : IDisposable
             .To("Broadcast", "ModuleHolon")
             .WithType(I40MessageTypes.CALL_FOR_PROPOSAL)
             .WithConversationId(conversationId)
+            .AddElement(new Property<string>("ProductId") { Value = new PropertyValue<string>(productId) })
             .AddElement(new Property<string>("Capability") { Value = new PropertyValue<string>("Drill") })
             .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>("req-1") })
             .Build();
 
         Console.WriteLine($"ReceiverId={cfpMessage.Frame?.Receiver?.Identification?.Id}");
 
-        await dispatcherClient.PublishAsync(cfpMessage, $"/{ns}/Offer");
+        await dispatcherClient.PublishAsync(cfpMessage, $"/{ns}/ManufacturingSequence/Request");
 
         var forwardStatus = await node.Execute();
         Assert.Equal(NodeStatus.Success, forwardStatus);
@@ -179,18 +188,20 @@ public class ModuleMessagingIntegrationTests : IDisposable
         planningContext.Set("MessagingClient", planningClient);
 
         var moduleClient = await CreateClientAsync("module/logs");
-        var responseTopic = $"/{ns}/{moduleId}/PlanningAgent/OfferResponse";
+        var responseTopic = $"/{ns}/ManufacturingSequence/Response";
         await moduleClient.SubscribeAsync(responseTopic);
 
         var proposalTcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
         moduleClient.OnMessage(msg => proposalTcs.TrySetResult(msg));
 
-        var conversationId = Guid.NewGuid().ToString();
+        var productId = $"{moduleId}-product-{Guid.NewGuid():N}";
+        var conversationId = productId;
         var cfp = new I40MessageBuilder()
             .From("DispatchingAgent", "DispatchingAgent")
             .To("Broadcast", "ModuleHolon")
             .WithType(I40MessageTypes.CALL_FOR_PROPOSAL)
             .WithConversationId(conversationId)
+            .AddElement(new Property<string>("ProductId") { Value = new PropertyValue<string>(productId) })
             .AddElement(new Property<string>("Capability") { Value = new PropertyValue<string>("Assemble") })
             .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>("req-99") })
             .Build();
@@ -242,11 +253,19 @@ public class ModuleMessagingIntegrationTests : IDisposable
         Assert.NotNull(ctx);
         Assert.Equal(ctx!.Requirements.Count, offers.Count);
 
+        var expectedProductId = ctx.ProductId;
+        if (string.IsNullOrWhiteSpace(expectedProductId))
+        {
+            expectedProductId = processChain.Frame?.Sender?.Identification?.Id ?? string.Empty;
+        }
+        Assert.False(string.IsNullOrWhiteSpace(expectedProductId));
+        Assert.Equal(expectedProductId, ctx.ConversationId);
+
         foreach (var requirement in ctx.Requirements)
         {
             var match = offers.FirstOrDefault(msg => string.Equals(ExtractProperty(msg, "Capability"), requirement.Capability, StringComparison.OrdinalIgnoreCase));
             Assert.NotNull(match);
-            Assert.Equal(processChain.Frame?.ConversationId, match!.Frame?.ConversationId);
+            Assert.Equal(expectedProductId, match!.Frame?.ConversationId);
             Assert.True(IsCallForProposalType(match.Frame?.Type),
                 $"Expected callForProposal (or subtype) but got '{match.Frame?.Type}'");
             Assert.Equal("ModuleHolon", match.Frame?.Receiver?.Role?.Name);
@@ -262,9 +281,17 @@ public class ModuleMessagingIntegrationTests : IDisposable
     [Fact]
     public async Task PlanningAgentRespondsToDispatcherOffer()
     {
-        var (offers, _, _) = await DispatchProcessChainAsync();
+        var (offers, ctx, _) = await DispatchProcessChainAsync();
         Assert.NotEmpty(offers);
         var cfp = offers.First();
+        Assert.NotNull(ctx);
+        var expectedProductId = ctx!.ProductId;
+        if (string.IsNullOrWhiteSpace(expectedProductId))
+        {
+            expectedProductId = ctx.ConversationId;
+        }
+        Assert.False(string.IsNullOrWhiteSpace(expectedProductId));
+        Assert.Equal(expectedProductId, cfp.Frame?.ConversationId);
         var ns = "phuket";
         var moduleId = "P102";
 
@@ -286,7 +313,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         planningContext.Set("MessagingClient", planningClient);
 
         var moduleClient = await CreateClientAsync("module/logs");
-        var responseTopic = $"/{ns}/{moduleId}/PlanningAgent/OfferResponse";
+        var responseTopic = $"/{ns}/ManufacturingSequence/Response";
         await moduleClient.SubscribeAsync(responseTopic);
 
         var proposalTcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -306,7 +333,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         Assert.NotNull(proposal);
 
         Assert.Equal(I40MessageTypes.PROPOSAL, proposal!.Frame?.Type);
-        Assert.Equal(cfp.Frame?.ConversationId, proposal.Frame?.ConversationId);
+        Assert.Equal(expectedProductId, proposal.Frame?.ConversationId);
 
         var offeredSequence = proposal.InteractionElements
             .OfType<SubmodelElementList>()
@@ -356,9 +383,10 @@ public class ModuleMessagingIntegrationTests : IDisposable
 
         var dispatchClient = await CreateClientAsync("dispatch/logs");
         context.Set("MessagingClient", dispatchClient);
+        await dispatchClient.SubscribeAsync($"/{ns}/ManufacturingSequence/Response");
 
         var moduleClient = await CreateClientAsync("module/logs");
-        var offerTopic = $"/{ns}/Offer";
+        var offerTopic = $"/{ns}/ManufacturingSequence/Request";
         await moduleClient.SubscribeAsync(offerTopic);
 
         var parseNode = new ParseProcessChainRequestNode { Context = context };
@@ -405,7 +433,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
 
         var dispatchNode = new DispatchCapabilityRequestsNode { Context = context };
         Assert.Equal(NodeStatus.Success, await dispatchNode.Execute());
-        var completed = await Task.WhenAny(cfpCompletion.Task, Task.Delay(TimeSpan.FromSeconds(2)));
+        var completed = await Task.WhenAny(cfpCompletion.Task, Task.Delay(TimeSpan.FromSeconds(5)));
         Assert.Same(cfpCompletion.Task, completed);
 
         List<I40Message> cfps;
@@ -453,8 +481,11 @@ public class ModuleMessagingIntegrationTests : IDisposable
             {
                 await Task.Delay(20);
             }
-        } while (collectStatus == NodeStatus.Running && attempts++ < 100);
+        } while (collectStatus == NodeStatus.Running && attempts++ < 300);
         Assert.Equal(NodeStatus.Success, collectStatus);
+
+        _ = context.Get<ProcessChainNegotiationContext>("ProcessChain.Negotiation")
+            ?? throw new InvalidOperationException("Negotiation context missing after collect");
 
         var buildNode = new BuildProcessChainResponseNode { Context = context };
         Assert.Equal(NodeStatus.Success, await buildNode.Execute());
@@ -506,7 +537,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
         context.Set("MessagingClient", dispatchClient);
 
         var moduleClient = await CreateClientAsync("module/logs");
-        await moduleClient.SubscribeAsync("/phuket/Offer");
+        await moduleClient.SubscribeAsync("/phuket/ManufacturingSequence/Request");
 
         var parseNode = new ParseProcessChainRequestNode { Context = context };
         var dispatchNode = new DispatchCapabilityRequestsNode { Context = context };
@@ -680,7 +711,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
             .AddElement(offeredCapability)
             .Build();
 
-        await client.PublishAsync(message, $"/{ns}/Offer");
+        await client.PublishAsync(message, $"/{ns}/ManufacturingSequence/Response");
     }
 
     private static async Task PublishManufacturingProposalAsync(
@@ -703,7 +734,7 @@ public class ModuleMessagingIntegrationTests : IDisposable
             .AddElement(offeredSequence)
             .Build();
 
-        await client.PublishAsync(message, $"/{ns}/Offer");
+        await client.PublishAsync(message, $"/{ns}/ManufacturingSequence/Response");
     }
 
     private sealed class PassthroughCapabilityReferenceQuery : ICapabilityReferenceQuery

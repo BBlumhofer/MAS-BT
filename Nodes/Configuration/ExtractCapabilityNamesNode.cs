@@ -32,7 +32,22 @@ public class ExtractCapabilityNamesNode : BTNode
         {
             if (FailOnMissing)
             {
-                Logger.LogError("ExtractCapabilityNames: missing '{SourceKey}' in context", sourceKey);
+                Logger.LogError("ExtractCapabilityNames: CapabilityDescriptionSubmodel not loaded from '{SourceKey}'. " +
+                              "Possible causes: (1) Shell not found, (2) Submodel missing in repository, or (3) LoadCapabilityDescriptionSubmodel failed.",
+                              sourceKey);
+                
+                // Check if Shell was loaded at all
+                var shell = Context.Get<BaSyx.Models.AdminShell.IAssetAdministrationShell>("AAS.Shell");
+                if (shell == null)
+                {
+                    Logger.LogError("  → Root cause: AAS Shell not present in context. Check ReadShell node configuration and AAS repository availability.");
+                }
+                else
+                {
+                    Logger.LogWarning("  → Shell is loaded (Id: {ShellId}), but CapabilityDescriptionSubmodel could not be retrieved. Check submodel references.",
+                                    shell.Id?.Id ?? "<unknown>");
+                }
+                
                 return Task.FromResult(NodeStatus.Failure);
             }
 
@@ -52,7 +67,19 @@ public class ExtractCapabilityNamesNode : BTNode
         // Also set the alternative key that RegisterAgentNode supports.
         Context.Set("CapabilityNames", names);
 
-        Logger.LogInformation("ExtractCapabilityNames: extracted {Count} capability names", names.Count);
+        if (names.Count == 0)
+        {
+            Logger.LogWarning("ExtractCapabilityNames: Loaded CapabilityDescriptionSubmodel, but extracted ZERO capabilities. " +
+                            "Submodel IdShort: '{IdShort}', Identifier: '{Id}'. " +
+                            "Check if the AAS submodel contains valid CapabilityContainer elements.",
+                            submodel.IdShort, submodel.Id?.Id ?? "<no-id>");
+        }
+        else
+        {
+            Logger.LogInformation("ExtractCapabilityNames: extracted {Count} capability names from '{SourceKey}': [{Caps}]",
+                                names.Count, sourceKey, string.Join(", ", names));
+        }
+        
         return Task.FromResult(NodeStatus.Success);
     }
 }

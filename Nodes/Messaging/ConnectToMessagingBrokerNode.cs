@@ -67,7 +67,7 @@ public class ConnectToMessagingBrokerNode : BTNode
             Logger.LogInformation("ConnectToMessagingBroker: Using MQTT ClientId {ClientId}", clientId);
 
             var transport = new MqttTransport(BrokerHost, BrokerPort, clientId);
-            var client = new MessagingClient(transport, resolvedDefaultTopic);
+            var client = new MessagingClient(transport, resolvedDefaultTopic, Logger);
 
             // Event-Handler registrieren
             client.Connected += (s, e) =>
@@ -135,8 +135,8 @@ public class ConnectToMessagingBrokerNode : BTNode
             try
             {
                 var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-                var processChainTopic = $"/{ns}/ProcessChain";
-                Logger.LogInformation("ConnectToMessagingBroker: Subscribing to ProcessChain topic {Topic}", processChainTopic);
+                var processChainTopic = $"/{ns}/ManufacturingSequence/Request";
+                Logger.LogInformation("ConnectToMessagingBroker: Subscribing to ManufacturingSequence request topic {Topic}", processChainTopic);
                 await client.SubscribeAsync(processChainTopic);
             }
             catch (Exception ex)
@@ -146,6 +146,7 @@ public class ConnectToMessagingBrokerNode : BTNode
 
             // Speichere Client im Context
             Context.Set("MessagingClient", client);
+            Context.Set("MessagingTransport", transport);
             // Expose the actual client id used for debugging across the tree
             Context.Set("MQTTClientId", clientId);
             Set("messagingConnected", true);

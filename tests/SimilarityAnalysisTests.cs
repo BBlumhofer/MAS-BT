@@ -29,9 +29,7 @@ public class SimilarityAnalysisTests : IDisposable
 
     private async Task<MessagingClient> CreateClientAsync(string defaultTopic)
     {
-        var transport = new InMemoryTransport();
-        var client = new MessagingClient(transport, defaultTopic);
-        await client.ConnectAsync();
+        var client = await MAS_BT.Tests.TestHelpers.TestTransportFactory.CreateClientAsync(defaultTopic, "similarity-client");
         _clients.Add(client);
         return client;
     }

@@ -1,0 +1,1700 @@
+[
+  {
+    "direction": "in",
+    "actor": "ProductAgent",
+    "topic": "n/a",
+    "type": "consent/TransportRequest",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "TransportManager",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "TransportManager"
+          },
+          "role": {
+            "name": "TransportManager"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "consent/TransportRequest",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "OfferedCapability",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "Transport"
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "TransportManager",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/TransportPlan/Response",
+    "type": "consent/TransportRequest",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "TransportManager",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "TransportManager"
+          },
+          "role": {
+            "name": "TransportManager"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "consent/TransportRequest",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "OfferedCapability",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "Transport"
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "TransportManager",
+    "topic": "n/a",
+    "type": "callForProposal/TransportRequest",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "TransportManager",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "TransportManager"
+          },
+          "role": {
+            "name": "TransportManager"
+          }
+        },
+        "type": "callForProposal/TransportRequest",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "DispatchingAgent",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/TransportPlan/Request",
+    "type": "callForProposal/TransportRequest",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "TransportManager",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "TransportManager"
+          },
+          "role": {
+            "name": "TransportManager"
+          }
+        },
+        "type": "callForProposal/TransportRequest",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "ProductAgent",
+    "topic": "n/a",
+    "type": "proposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "ProductAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "type": "proposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Drill",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Drill-P101"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P101"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Drill",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Drill_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "DispatchingAgent",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/ManufacturingSequence/Response",
+    "type": "proposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "ProductAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "type": "proposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Drill",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Drill-P101"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P101"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Drill",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Drill_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "DispatchingAgent",
+    "topic": "n/a",
+    "type": "proposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "P101",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "P101"
+          },
+          "role": {
+            "name": "PlanningHolon"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "proposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Drill",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Drill-P101"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P101"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Drill",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Drill_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "P101",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/Planning/OfferedCapability/Response",
+    "type": "proposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "P101",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "P101"
+          },
+          "role": {
+            "name": "PlanningHolon"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "proposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Drill",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Drill-P101"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P101"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Drill",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Drill_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "P101",
+    "topic": "n/a",
+    "type": "callForProposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "Broadcast",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "Broadcast"
+          },
+          "role": {
+            "name": "ModuleHolon"
+          }
+        },
+        "type": "callForProposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        },
+        {
+          "idShort": "RequirementId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "req-root"
+        },
+        {
+          "idShort": "ManufacturingSequenceSnapshot",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "ProductId",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "https://smartfactory.de/shells/LG3JsASu4_"
+            },
+            {
+              "idShort": "CompletedSteps",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "[\u0022Load\u0022,\u0022Unload\u0022]"
+            },
+            {
+              "idShort": "CurrentStep",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "ProductAgent",
+    "topic": "n/a",
+    "type": "proposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "ProductAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "type": "proposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Screw",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Screw-P100"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P100"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Screw",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Screw_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "DispatchingAgent",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/ManufacturingSequence/Response",
+    "type": "proposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "ProductAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "type": "proposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Screw",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Screw-P100"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P100"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Screw",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Screw_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "DispatchingAgent",
+    "topic": "n/a",
+    "type": "proposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "P100",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "P100"
+          },
+          "role": {
+            "name": "PlanningHolon"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "proposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Screw",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Screw-P100"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P100"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Screw",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Screw_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "P100",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/Planning/OfferedCapability/Response",
+    "type": "proposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "P100",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "P100"
+          },
+          "role": {
+            "name": "PlanningHolon"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "proposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Screw",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Screw-P100"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P100"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Screw",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Screw_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "P100",
+    "topic": "n/a",
+    "type": "callForProposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "Broadcast",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "Broadcast"
+          },
+          "role": {
+            "name": "ModuleHolon"
+          }
+        },
+        "type": "callForProposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        },
+        {
+          "idShort": "RequirementId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "req-root"
+        },
+        {
+          "idShort": "ManufacturingSequenceSnapshot",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "ProductId",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "https://smartfactory.de/shells/LG3JsASu4_"
+            },
+            {
+              "idShort": "CompletedSteps",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "[\u0022Load\u0022,\u0022Unload\u0022]"
+            },
+            {
+              "idShort": "CurrentStep",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "ProductAgent",
+    "topic": "n/a",
+    "type": "proposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "ProductAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "type": "proposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Assemble",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble-P102"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P102"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Assemble",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Assemble_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "DispatchingAgent",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/ManufacturingSequence/Response",
+    "type": "proposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "ProductAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "type": "proposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Assemble",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble-P102"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P102"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Assemble",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Assemble_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "DispatchingAgent",
+    "topic": "n/a",
+    "type": "proposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "P102",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "P102"
+          },
+          "role": {
+            "name": "PlanningHolon"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "proposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Assemble",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble-P102"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P102"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Assemble",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Assemble_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "P102",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/Planning/OfferedCapability/Response",
+    "type": "proposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "P102",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "P102"
+          },
+          "role": {
+            "name": "PlanningHolon"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "proposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Assemble",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "InstanceIdentifier",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble-P102"
+            },
+            {
+              "idShort": "Station",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "P102"
+            },
+            {
+              "idShort": "Actions",
+              "kind": "Instance",
+              "modelType": "SubmodelElementCollection",
+              "value": [
+                {
+                  "idShort": "Action-Assemble",
+                  "kind": "Instance",
+                  "modelType": "SubmodelElementCollection",
+                  "value": [
+                    {
+                      "idShort": "ActionTitle",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "Assemble_Action"
+                    },
+                    {
+                      "idShort": "InputParameters",
+                      "kind": "Instance",
+                      "modelType": "Property",
+                      "valueType": "string",
+                      "value": "[]"
+                    }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "P102",
+    "topic": "n/a",
+    "type": "callForProposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "Broadcast",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "Broadcast"
+          },
+          "role": {
+            "name": "ModuleHolon"
+          }
+        },
+        "type": "callForProposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        },
+        {
+          "idShort": "RequirementId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "req-root"
+        },
+        {
+          "idShort": "ManufacturingSequenceSnapshot",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "ProductId",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "https://smartfactory.de/shells/LG3JsASu4_"
+            },
+            {
+              "idShort": "CompletedSteps",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "[\u0022Load\u0022,\u0022Unload\u0022]"
+            },
+            {
+              "idShort": "CurrentStep",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "DispatchingAgent",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/Planning/OfferedCapability/Request",
+    "type": "callForProposal/OfferedCapability",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "Broadcast",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "Broadcast"
+          },
+          "role": {
+            "name": "ModuleHolon"
+          }
+        },
+        "type": "callForProposal/OfferedCapability",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        },
+        {
+          "idShort": "RequirementId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "req-root"
+        },
+        {
+          "idShort": "ManufacturingSequenceSnapshot",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "ProductId",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "https://smartfactory.de/shells/LG3JsASu4_"
+            },
+            {
+              "idShort": "CompletedSteps",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "[\u0022Load\u0022,\u0022Unload\u0022]"
+            },
+            {
+              "idShort": "CurrentStep",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "S1",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/Dispatching/Similarity",
+    "type": "inform",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "S1",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "S1"
+          },
+          "role": {
+            "name": "AIAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "inform",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "Similarity",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "1.0"
+        }
+      ]
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "S1",
+    "topic": "n/a",
+    "type": "calcSimilarity",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "S1",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "S1"
+          },
+          "role": {
+            "name": "AIAgent"
+          }
+        },
+        "type": "calcSimilarity",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": []
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "DispatchingAgent",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/S1/CalcSimilarity",
+    "type": "calcSimilarity",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "DispatchingAgent",
+    "receiver": "S1",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "S1"
+          },
+          "role": {
+            "name": "AIAgent"
+          }
+        },
+        "type": "calcSimilarity",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": []
+    }
+  },
+  {
+    "direction": "in",
+    "actor": "DispatchingAgent",
+    "topic": "n/a",
+    "type": "callForProposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "ProductAgent",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "callForProposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        },
+        {
+          "idShort": "RequirementId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "req-root"
+        },
+        {
+          "idShort": "ManufacturingSequenceSnapshot",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "ProductId",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "https://smartfactory.de/shells/LG3JsASu4_"
+            },
+            {
+              "idShort": "CompletedSteps",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "[\u0022Load\u0022,\u0022Unload\u0022]"
+            },
+            {
+              "idShort": "CurrentStep",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "direction": "out",
+    "actor": "ProductAgent",
+    "topic": "/testaa395c5d5df54500b427dad1407d3cfd/ManufacturingSequence/Request",
+    "type": "callForProposal/ManufacturingSequence",
+    "conversation": "https://smartfactory.de/shells/LG3JsASu4_",
+    "sender": "ProductAgent",
+    "receiver": "DispatchingAgent",
+    "payload": {
+      "frame": {
+        "sender": {
+          "identification": {
+            "id": "ProductAgent"
+          },
+          "role": {
+            "name": "ProductAgent"
+          }
+        },
+        "receiver": {
+          "identification": {
+            "id": "DispatchingAgent"
+          },
+          "role": {
+            "name": "DispatchingAgent"
+          }
+        },
+        "type": "callForProposal/ManufacturingSequence",
+        "conversationId": "https://smartfactory.de/shells/LG3JsASu4_"
+      },
+      "interactionElements": [
+        {
+          "idShort": "ProductId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        },
+        {
+          "idShort": "RequirementId",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "req-root"
+        },
+        {
+          "idShort": "ManufacturingSequenceSnapshot",
+          "kind": "Instance",
+          "modelType": "SubmodelElementCollection",
+          "value": [
+            {
+              "idShort": "ProductId",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "https://smartfactory.de/shells/LG3JsASu4_"
+            },
+            {
+              "idShort": "CompletedSteps",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "[\u0022Load\u0022,\u0022Unload\u0022]"
+            },
+            {
+              "idShort": "CurrentStep",
+              "kind": "Instance",
+              "modelType": "Property",
+              "valueType": "string",
+              "value": "Assemble"
+            }
+          ]
+        }
+      ]
+    }
+  }
+]

@@ -3,13 +3,18 @@ using System.Threading.Tasks;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Models;
 using BaSyx.Models.AdminShell;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Console;
 
 var cap1 = args.Length > 0 ? args[0] : "Assemble";
 var cap2 = args.Length > 1 ? args[1] : "Screw";
 
 Console.WriteLine("Sending similarity request: {0} vs {1}", cap1, cap2);
 
-var client = new MessagingClient(new MqttTransport("localhost", 1883));
+using var loggerFactory = LoggerFactory.Create(builder => builder.AddSimpleConsole());
+var logger = loggerFactory.CreateLogger<Program>();
+
+var client = new MessagingClient(new MqttTransport("localhost", 1883), logger: logger);
 await client.ConnectAsync();
 
 // Derive namespace from environment variable `NAMESPACE` or use default 'phuket'

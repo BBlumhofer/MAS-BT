@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "dgSpecHash": "CryjtCkDEPg=",
+  "dgSpecHash": "49ARH4pyzDI=",
   "success": true,
   "projectFilePath": "/home/benjamin/AgentDevelopment/MAS-BT/MAS-BT.csproj",
   "expectedPackageFiles": [
@@ -44,6 +44,7 @@
     "/home/benjamin/.nuget/packages/opcfoundation.netstandard.opc.ua.configuration/1.5.377.22/opcfoundation.netstandard.opc.ua.configuration.1.5.377.22.nupkg.sha512",
     "/home/benjamin/.nuget/packages/opcfoundation.netstandard.opc.ua.core/1.5.377.22/opcfoundation.netstandard.opc.ua.core.1.5.377.22.nupkg.sha512",
     "/home/benjamin/.nuget/packages/opcfoundation.netstandard.opc.ua.security.certificates/1.5.377.22/opcfoundation.netstandard.opc.ua.security.certificates.1.5.377.22.nupkg.sha512",
+    "/home/benjamin/.nuget/packages/system.io.hashing/10.0.0/system.io.hashing.10.0.0.nupkg.sha512",
     "/home/benjamin/.nuget/packages/xunit/2.9.2/xunit.2.9.2.nupkg.sha512",
     "/home/benjamin/.nuget/packages/xunit.abstractions/2.0.3/xunit.abstractions.2.0.3.nupkg.sha512",
     "/home/benjamin/.nuget/packages/xunit.analyzers/1.16.0/xunit.analyzers.1.16.0.nupkg.sha512",

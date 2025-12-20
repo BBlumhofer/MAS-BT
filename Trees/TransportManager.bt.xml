@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="TransportManagerHolon">
+  <BehaviorTree ID="TransportManagerHolon">
+    <Sequence name="TransportManagerRoot">
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
+      <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
+      <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
+
+      <ConnectToMessagingBroker
+        name="ConnectMqtt"
+        BrokerHost="{config.MQTT.Broker}"
+        BrokerPort="{config.MQTT.Port}"
+        DefaultTopic="{config.MQTT.TopicPrefix}/transport"
+        TimeoutMs="10000"
+        ClientId="{config.Agent.AgentId}_TransportManager" />
+
+      <SubscribeToTopic name="SubscribeTransportPlan" Topic="/{Namespace}/TransportPlan/Request" />
+      <SubscribeToTopic name="SubscribeManufacturingSequence" Topic="/{Namespace}/ManufacturingSequence/Request" />
+
+      <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
+
+      <Parallel name="TransportLoops">
+        <Repeat name="ManufacturingSequenceLoop" num_cycles="-1">
+          <Fallback name="SequenceOrIdle">
+            <Sequence name="SequenceHandler">
+              <WaitForMessage name="AwaitSequence" ExpectedTypes="informConfirm,inform" ExpectedTopic="/{Namespace}/ManufacturingSequence/Request" TimeoutSeconds="30" />
+              <IngestManufacturingSequence name="IngestSequence" />
+              <Wait name="SequenceIdle" DelayMs="200" />
+            </Sequence>
+            <Wait name="SequenceBackoff" DelayMs="500" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="TransportPlanLoop" num_cycles="-1">
+          <Fallback name="TransportOrIdle">
+            <Sequence name="HandleTransport">
+              <WaitForMessage name="AwaitTransportPlan"
+                              ExpectedTypes="requirement/TransportRequest,callForProposal/TransportRequest"
+                              ExpectedTopic="/{Namespace}/TransportPlan/Request"
+                              TimeoutSeconds="10" />
+              <HandleTransportPlanRequest name="HandleTransportPlanRequest" />
+              <Wait name="TransportIdle" DelayMs="300" />
+            </Sequence>
+            <Wait name="TransportBackoff" DelayMs="300" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="HeartbeatLoop" num_cycles="-1">
+          <Sequence name="Heartbeat">
+            <RegisterAgent name="RegisterHeartbeat" ParentAgent="{config.Namespace}" />
+            <Wait name="HeartbeatWait" DelayMs="{config.Agent.RegistrationIntervalMs}" />
+          </Sequence>
+        </Repeat>
+      </Parallel>
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Action ID="ReadConfig">
+      <input_port name="configPath" />
+    </Action>
+    <Action ID="SetBlackboardValue">
+      <input_port name="Key" />
+      <input_port name="Value" />
+      <input_port name="ValueType" default="string" />
+    </Action>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost" />
+      <input_port name="BrokerPort" />
+      <input_port name="DefaultTopic" />
+      <input_port name="TimeoutMs" />
+      <input_port name="ClientId" />
+    </Action>
+    <Action ID="SubscribeToTopic">
+      <input_port name="Topic" />
+    </Action>
+    <Action ID="RegisterAgent">
+      <input_port name="ParentAgent" />
+      <input_port name="Namespace" />
+    </Action>
+    <Action ID="WaitForMessage">
+      <input_port name="ExpectedType" />
+      <input_port name="ExpectedTypes" />
+      <input_port name="ExpectedSender" />
+      <input_port name="ExpectedTopic" />
+      <input_port name="TimeoutSeconds" />
+      <input_port name="ExpectedConversationId" />
+    </Action>
+    <Action ID="IngestManufacturingSequence" />
+    <Action ID="HandleTransportPlanRequest" />
+    <Action ID="Wait">
+      <input_port name="DelayMs" default="1000" />
+    </Action>
+  </TreeNodesModel>
+</root>

@@ -1,9 +1,11 @@
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
 using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.Messages;
+using AasSharpClient.Models.ManufacturingSequence;
 using AasSharpClient.Models.ProcessChain;
 using MAS_BT.Core;
 using Microsoft.Extensions.Logging;
@@ -11,6 +13,8 @@ using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
 using BaSyx.Models.AdminShell;
+using AasSharpClient.Tools;
+using ActionModel = AasSharpClient.Models.Action;
 
 namespace MAS_BT.Nodes.Dispatching
 {
@@ -31,7 +35,7 @@ namespace MAS_BT.Nodes.Dispatching
             I40Message incomingMessage = incoming;
 
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            var topic = $"/{ns}/TransportPlan";
+            var responseTopic = $"/{ns}/TransportPlan/Response";
             var conversationId = incomingMessage.Frame?.ConversationId ?? Guid.NewGuid().ToString();
             var requesterId = incomingMessage.Frame?.Sender?.Identification?.Id ?? "Unknown";
 
@@ -60,37 +64,67 @@ namespace MAS_BT.Nodes.Dispatching
                 // If the incoming message contains a SubmodelElementCollection as first interaction element,
                 // parse it directly into a TransportRequestMessage and build the response from that.
                 TransportRequestMessage? parsedRequest = null;
+                SubmodelElementCollection? incomingCollection = null;
                 if (incomingMessage.InteractionElements != null && incomingMessage.InteractionElements.Count > 0)
                 {
-                    parsedRequest = incomingMessage.InteractionElements.FirstOrDefault() as SubmodelElementCollection is SubmodelElementCollection smc
-                        ? new TransportRequestMessage(smc)
-                        : null;
-                }
+                    // direct cast when the element already is a collection
+                    incomingCollection = incomingMessage.InteractionElements.FirstOrDefault() as SubmodelElementCollection
+                                         ?? incomingMessage.InteractionElements.OfType<SubmodelElementCollection>().FirstOrDefault();
 
-                OfferedCapability transportOffer;
-                TransportRequestMessage responseElement;
-                if (parsedRequest != null)
-                {
-                    responseElement = BuildResponseElement(parsedRequest, out transportOffer);
-                }
-                else
-                {
-                    responseElement = BuildResponseElement(incomingMessage, out transportOffer);
-                }
-                var builder = new I40MessageBuilder()
-                    .From(Context.AgentId, string.IsNullOrWhiteSpace(Context.AgentRole) ? "DispatchingAgent" : Context.AgentRole)
-                    .To(requesterId, null)
-                    .WithType(I40MessageTypes.CONSENT, I40MessageTypeSubtypes.TransportRequest)
-                    .WithConversationId(conversationId)
-                    .AddElement(responseElement);
+                    // Only accept a SubmodelElementCollection that is already present in the message.
+                    // Do NOT attempt to (re)serialize or encode message elements here.
 
-                var response = builder.Build();
+                        if (incomingCollection != null)
+                        {
+                            parsedRequest = new TransportRequestMessage(incomingCollection);
+                        }
+                }
+                    // Strict mode: only accept requests that contain a SubmodelElementCollection
+                    if (parsedRequest == null)
+                    {
+                        // Publish a refusal explaining that the payload is not acceptable
+                        var senderId = string.IsNullOrWhiteSpace(Context.AgentId) ? "DispatchingAgent" : Context.AgentId;
+                        var senderRole = string.IsNullOrWhiteSpace(Context.AgentRole) ? "DispatchingAgent" : Context.AgentRole;
+                        var receiverId = requesterId;
+                        var receiverRole = incomingMessage.Frame?.Sender?.Role?.Name ?? "Unknown";
+                        var refusalReason = "Invalid payload: expected SubmodelElementCollection in interaction elements";
+                        var failureDetail = "Dispatching agent requires a SubmodelElementCollection as the first interaction element. No automatic reserialization is performed.";
+
+                        var refusal = new AasSharpClient.Models.Messages.PlanningRefusalMessage(
+                            senderId,
+                            senderRole,
+                            receiverId,
+                            receiverRole,
+                            conversationId,
+                            refusalReason,
+                            failureDetail);
+
+                        await refusal.PublishAsync(client, responseTopic).ConfigureAwait(false);
+                        Logger.LogInformation("HandleTransportPlanRequest: published refusal to {Topic} (conv={Conv})", responseTopic, conversationId);
+
+                        return NodeStatus.Failure;
+                    }
+
+                    OfferedCapability transportOffer;
+                    var responseElement = BuildResponseElement(parsedRequest, out transportOffer);
+                EnsureTransportStartStation(responseElement, incomingMessage);
+                // reuse or produce distinct names to avoid shadowing earlier locals
+                var respSenderId = string.IsNullOrWhiteSpace(Context.AgentId) ? "DispatchingAgent" : Context.AgentId;
+                var respSenderRole = string.IsNullOrWhiteSpace(Context.AgentRole) ? "DispatchingAgent" : Context.AgentRole;
+                var respReceiverRole = incomingMessage.Frame?.Sender?.Role?.Name;
+
+                var responseMsg = new AasSharpClient.Models.Messages.TransportPlanResponseMessage(
+                    respSenderId,
+                    respSenderRole,
+                    requesterId,
+                    respReceiverRole,
+                    conversationId,
+                    responseElement);
+
                 var publishedAt = DateTimeOffset.UtcNow;
-                try { Console.WriteLine($"[DEBUG] HandleTransportPlanRequest: publishing response frameType={response.Frame?.Type} elements={response.InteractionElements?.Count ?? 0} convId={response.Frame?.ConversationId}"); } catch {}
-                await client.PublishAsync(response, topic).ConfigureAwait(false);
-                try { Console.WriteLine($"[DEBUG] HandleTransportPlanRequest: published response to {topic} convId={response.Frame?.ConversationId}"); } catch {}
+                await responseMsg.PublishAsync(client, responseTopic, respSenderId, respSenderRole, requesterId, respReceiverRole, conversationId).ConfigureAwait(false);
                 Logger.LogInformation("HandleTransportPlanRequest: sent dummy response to {Topic} at {Timestamp:o} (conversationId={Conv}, requester={Requester})",
-                    topic,
+                    responseTopic,
                     publishedAt,
                     conversationId,
                     requesterId);
@@ -197,7 +231,7 @@ namespace MAS_BT.Nodes.Dispatching
             };
             offer.OfferedCapabilityReference.Value = new ReferenceElementValue(reference);
 
-            var action = new AasSharpClient.Models.Action(
+            var action = new ActionModel(
                 idShort: "Action_Transport",
                 actionTitle: "Transport",
                 status: ActionStatusEnum.OPEN,
@@ -277,6 +311,153 @@ namespace MAS_BT.Nodes.Dispatching
 
             // For other element types, fallback to ToString()
             return element.ToString() ?? "<null>";
+        }
+
+        private void EnsureTransportStartStation(TransportRequestMessage message, I40Message incomingMessage)
+        {
+            if (message == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(message.TransportStartStationText))
+            {
+                return;
+            }
+
+            var identifierType = message.IdentifierTypeText ?? string.Empty;
+            if (!string.Equals(identifierType, TransportRequestMessage.IdentifierTypeEnum.ProductId.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            var productId = ResolveProductId(message, incomingMessage);
+            if (string.IsNullOrWhiteSpace(productId))
+            {
+                return;
+            }
+
+            var sequence = GetManufacturingSequenceForProduct(productId);
+            var machineName = FindLatestStorageMachine(sequence);
+            if (string.IsNullOrWhiteSpace(machineName))
+            {
+                Logger.LogWarning("HandleTransportPlanRequest: no storage postcondition found for product {ProductId}", productId);
+                return;
+            }
+
+            message.TransportStartStation.Value = new PropertyValue<string>(machineName);
+            Logger.LogInformation("HandleTransportPlanRequest: resolved transport start station '{Station}' for product {ProductId}", machineName, productId);
+        }
+
+        private static string? ResolveProductId(TransportRequestMessage message, I40Message incomingMessage)
+        {
+            if (!string.IsNullOrWhiteSpace(message?.IdentifierValueText))
+            {
+                return message.IdentifierValueText;
+            }
+
+            return incomingMessage?.Frame?.ConversationId;
+        }
+
+        private ManufacturingSequence GetManufacturingSequenceForProduct(string productId)
+        {
+            Dictionary<string, ManufacturingSequence>? index = null;
+            try
+            {
+                index = Context.Get<Dictionary<string, ManufacturingSequence>>("ManufacturingSequence.ByProduct");
+            }
+            catch
+            {
+                // Key not present yet.
+            }
+
+            if (index != null && index.TryGetValue(productId, out var sequence) && sequence != null)
+            {
+                return sequence;
+            }
+
+            throw new NotImplementedException($"Transport planning for product '{productId}' is not implemented.");
+        }
+
+        private static string? FindLatestStorageMachine(ManufacturingSequence sequence)
+        {
+            if (sequence == null)
+            {
+                return null;
+            }
+
+            var requirements = sequence.GetRequiredCapabilities().ToList();
+            for (var reqIndex = requirements.Count - 1; reqIndex >= 0; reqIndex--)
+            {
+                var requirement = requirements[reqIndex];
+                if (requirement == null)
+                {
+                    continue;
+                }
+
+                var sequences = requirement.GetSequences().ToList();
+                for (var seqIndex = sequences.Count - 1; seqIndex >= 0; seqIndex--)
+                {
+                    var offeredSequence = sequences[seqIndex];
+                    if (offeredSequence == null)
+                    {
+                        continue;
+                    }
+
+                    var capabilities = offeredSequence.GetCapabilities().ToList();
+                    for (var capIndex = capabilities.Count - 1; capIndex >= 0; capIndex--)
+                    {
+                        var capability = capabilities[capIndex];
+                        var machineName = TryFindStorageMachine(capability);
+                        if (!string.IsNullOrWhiteSpace(machineName))
+                        {
+                            return machineName;
+                        }
+                    }
+                }
+            }
+
+            return null;
+        }
+
+        private static string? TryFindStorageMachine(OfferedCapability capability)
+        {
+            if (capability?.Actions == null)
+            {
+                return null;
+            }
+
+            var actions = capability.Actions.OfType<ActionModel>().ToList();
+            for (var actionIndex = actions.Count - 1; actionIndex >= 0; actionIndex--)
+            {
+                var action = actions[actionIndex];
+                if (action == null)
+                {
+                    continue;
+                }
+
+                if (HasStoragePostcondition(action))
+                {
+                    return action.MachineName.GetText();
+                }
+            }
+
+            return null;
+        }
+
+        private static bool HasStoragePostcondition(ActionModel action)
+        {
+            if (action?.Postconditions == null)
+            {
+                return false;
+            }
+
+            foreach (var post in action.Postconditions.OfType<StoragePostcondition>())
+            {
+                return true;
+            }
+
+            return false;
         }
     }
 }

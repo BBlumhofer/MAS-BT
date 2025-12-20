@@ -1,15 +1,16 @@
 using System;
 using System.Threading.Tasks;
+using System.Threading;
 using AAS_Sharp_Client.Models.Messages;
 using AasSharpClient.Models.Helpers;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging;
 using I40Sharp.Messaging.Core;
 using I40Sharp.Messaging.Models;
+using I40Sharp.Messaging.Transport;
 using MAS_BT.Core;
 using MAS_BT.Nodes.Common;
 using MAS_BT.Nodes.Dispatching;
-using MAS_BT.Tests.TestHelpers;
 using Microsoft.Extensions.Logging.Abstractions;
 using Xunit;
 
@@ -18,17 +19,16 @@ namespace MAS_BT.Tests;
 public class RegistrationIntegrationTests
 {
     [Fact]
-    public async Task RegisterAgent_PlanningAgent_PublishesSubHolonRegisterToModuleTopic()
+    public async Task RegisterAgent_PlanningAgent_PublishesRegisterMessageToModuleTopic()
     {
         var ns = $"test{Guid.NewGuid():N}";
         var moduleId = "P102";
         var agentId = "P102_Planning";
 
-        var transport = new InMemoryTransport();
-        var sender = new MessagingClient(transport, $"{agentId}/logs");
-        var receiver = new MessagingClient(transport, $"{moduleId}/logs");
-        await sender.ConnectAsync();
-        await receiver.ConnectAsync();
+        await using var senderHandle = await CreateClientAsync($"{agentId}_sender");
+        await using var receiverHandle = await CreateClientAsync($"{moduleId}_receiver");
+        var sender = senderHandle.Client;
+        var receiver = receiverHandle.Client;
 
         var topic = $"/{ns}/{moduleId}/register";
         await receiver.SubscribeAsync(topic);
@@ -37,7 +37,7 @@ public class RegistrationIntegrationTests
         receiver.OnMessage(m =>
         {
             if (!tcs.Task.IsCompleted &&
-                string.Equals(m.Frame?.Type, "subHolonRegister", StringComparison.OrdinalIgnoreCase))
+                string.Equals(m.Frame?.Type, "registerMessage", StringComparison.OrdinalIgnoreCase))
             {
                 tcs.TrySetResult(m);
             }
@@ -64,7 +64,7 @@ public class RegistrationIntegrationTests
 
         var message = await tcs.Task;
         Assert.NotNull(message);
-        Assert.Equal("subHolonRegister", message!.Frame?.Type);
+        Assert.Equal("registerMessage", message!.Frame?.Type);
         var elements = message.InteractionElements ?? new System.Collections.Generic.List<ISubmodelElement>();
         Assert.Contains(elements,
             e => e is SubmodelElementCollection c && string.Equals(c.IdShort, "RegisterMessage", StringComparison.OrdinalIgnoreCase));
@@ -135,11 +135,10 @@ public class RegistrationIntegrationTests
         var ns = $"test{Guid.NewGuid():N}";
         var moduleId = "P103";
 
-        var transport = new InMemoryTransport();
-        var holon = new MessagingClient(transport, "holon/logs");
-        var pub = new MessagingClient(transport, "pub/logs");
-        await holon.ConnectAsync();
-        await pub.ConnectAsync();
+        await using var holonHandle = await CreateClientAsync($"{moduleId}_holon");
+        await using var pubHandle = await CreateClientAsync($"{moduleId}_publisher");
+        var holon = holonHandle.Client;
+        var pub = pubHandle.Client;
 
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
@@ -155,17 +154,18 @@ public class RegistrationIntegrationTests
             Context = context,
             TimeoutSeconds = 2,
             ExpectedCount = 2,
-            ExpectedTypes = "subHolonRegister"
+            ExpectedTypes = "registerMessage"
         };
         wait.SetLogger(NullLogger<WaitForRegistrationNode>.Instance);
 
         var waitTask = wait.Execute();
+        await Task.Delay(200);
 
         // Two sub-holons publish with the SAME AgentId (P103) but different roles.
         var planningMsg = new I40MessageBuilder()
             .From(moduleId, "PlanningHolon")
             .To(moduleId, "ModuleHolon")
-            .WithType("subHolonRegister")
+            .WithType("registerMessage")
             .WithConversationId(Guid.NewGuid().ToString())
             .AddElement(new RegisterMessage(moduleId, new(), new()).ToSubmodelElementCollection())
             .Build();
@@ -173,7 +173,7 @@ public class RegistrationIntegrationTests
         var execMsg = new I40MessageBuilder()
             .From(moduleId, "ExecutionHolon")
             .To(moduleId, "ModuleHolon")
-            .WithType("subHolonRegister")
+            .WithType("registerMessage")
             .WithConversationId(Guid.NewGuid().ToString())
             .AddElement(new RegisterMessage(moduleId, new(), new()).ToSubmodelElementCollection())
             .Build();
@@ -186,16 +186,98 @@ public class RegistrationIntegrationTests
     }
 
     [Fact]
+    public async Task WaitForRegistration_NamespaceHolon_CompletesWhenExpectedAgentsRegister()
+    {
+        var ns = $"test{Guid.NewGuid():N}";
+        var dispatchingId = "ManufacturingDispatcher_phuket";
+        var transportId = "TransportManager_phuket";
+
+        await using var namespaceHandle = await CreateClientAsync($"{ns}_namespace");
+        var namespaceClient = namespaceHandle.Client;
+
+        var context = new BTContext(NullLogger<BTContext>.Instance)
+        {
+            AgentId = ns,
+            AgentRole = "NamespaceHolon"
+        };
+        context.Set("config.Namespace", ns);
+        context.Set("MessagingClient", namespaceClient);
+
+        var wait = new WaitForRegistrationNode
+        {
+            Context = context,
+            TimeoutSeconds = 3,
+            ExpectedCount = 2,
+            ExpectedAgents = $"{dispatchingId},{transportId}",
+            ExpectedTypes = "registerMessage",
+            TopicOverride = $"/{ns}/register"
+        };
+        wait.SetLogger(NullLogger<WaitForRegistrationNode>.Instance);
+
+        var waitTask = wait.Execute();
+        await Task.Delay(250);
+        var rootTopic = $"/{ns}/register";
+        await using var dispatchPublisher = await CreateClientAsync($"{dispatchingId}_pub");
+        await using var transportPublisher = await CreateClientAsync($"{transportId}_pub");
+        await PublishRegisterAsync(dispatchPublisher.Client, ns, dispatchingId, "Dispatching", rootTopic);
+        await PublishRegisterAsync(transportPublisher.Client, ns, transportId, "TransportManager", rootTopic);
+
+        var status = await waitTask;
+        Assert.Equal(NodeStatus.Success, status);
+    }
+
+    [Fact]
+    public async Task WaitForRegistration_NamespaceHolon_DrainsBufferedMessages()
+    {
+        var ns = $"test{Guid.NewGuid():N}";
+        var dispatchingId = "ManufacturingDispatcher_phuket";
+        var transportId = "TransportManager_phuket";
+
+        await using var namespaceHandle = await CreateClientAsync($"{ns}_namespace_drain");
+        var namespaceClient = namespaceHandle.Client;
+
+        var context = new BTContext(NullLogger<BTContext>.Instance)
+        {
+            AgentId = ns,
+            AgentRole = "NamespaceHolon"
+        };
+        context.Set("config.Namespace", ns);
+        context.Set("MessagingClient", namespaceClient);
+
+        var wait = new WaitForRegistrationNode
+        {
+            Context = context,
+            TimeoutSeconds = 3,
+            ExpectedCount = 2,
+            ExpectedAgents = $"{dispatchingId},{transportId}",
+            ExpectedTypes = "registerMessage",
+            TopicOverride = $"/{ns}/register"
+        };
+        wait.SetLogger(NullLogger<WaitForRegistrationNode>.Instance);
+
+        // Subscribe and publish before executing the node so messages are buffered.
+        var rootTopic = $"/{ns}/register";
+        await namespaceClient.SubscribeAsync(rootTopic);
+        await using var dispatchPublisher = await CreateClientAsync($"{dispatchingId}_drain_pub");
+        await using var transportPublisher = await CreateClientAsync($"{transportId}_drain_pub");
+        await PublishRegisterAsync(dispatchPublisher.Client, ns, dispatchingId, "Dispatching", rootTopic);
+        await PublishRegisterAsync(transportPublisher.Client, ns, transportId, "TransportManager", rootTopic);
+        await Task.Delay(500);
+
+        var status = await wait.Execute();
+        Assert.Equal(NodeStatus.Success, status);
+    }
+
+    [Fact]
     public async Task RegisterAgent_DispatchingAgent_PublishesRegisterToNamespaceWithSubagentsFromState()
     {
         var ns = $"test{Guid.NewGuid():N}";
         var dispatchingId = $"DispatchingAgent_{ns}";
 
-        var transport = new InMemoryTransport();
-        var sender = new MessagingClient(transport, $"{dispatchingId}/logs");
-        var receiver = new MessagingClient(transport, "namespace/logs");
-        await sender.ConnectAsync();
-        await receiver.ConnectAsync();
+        await using var senderHandle = await CreateClientAsync($"{dispatchingId}_sender");
+        await using var receiverHandle = await CreateClientAsync($"{dispatchingId}_receiver");
+        var sender = senderHandle.Client;
+        var receiver = receiverHandle.Client;
 
         var topic = $"/{ns}/register";
         await receiver.SubscribeAsync(topic);
@@ -249,11 +331,10 @@ public class RegistrationIntegrationTests
         var ns = $"test{Guid.NewGuid():N}";
         var dispatchingId = $"DispatchingAgent_{ns}";
 
-        var transport = new InMemoryTransport();
-        var sender = new MessagingClient(transport, $"{dispatchingId}/logs");
-        var receiver = new MessagingClient(transport, "namespace/logs");
-        await sender.ConnectAsync();
-        await receiver.ConnectAsync();
+        await using var senderHandle = await CreateClientAsync($"{dispatchingId}_agg_sender");
+        await using var receiverHandle = await CreateClientAsync($"{dispatchingId}_agg_receiver");
+        var sender = senderHandle.Client;
+        var receiver = receiverHandle.Client;
 
         var topic = $"/{ns}/register";
         await receiver.SubscribeAsync(topic);
@@ -334,11 +415,10 @@ public class RegistrationIntegrationTests
         var ns = $"test{Guid.NewGuid():N}";
         var dispatchingId = $"DispatchingAgent_{ns}";
 
-        var transport = new InMemoryTransport();
-        var sender = new MessagingClient(transport, $"{dispatchingId}/logs");
-        var receiver = new MessagingClient(transport, "namespace/logs");
-        await sender.ConnectAsync();
-        await receiver.ConnectAsync();
+        await using var senderHandle = await CreateClientAsync($"{dispatchingId}_prune_sender");
+        await using var receiverHandle = await CreateClientAsync($"{dispatchingId}_prune_receiver");
+        var sender = senderHandle.Client;
+        var receiver = receiverHandle.Client;
 
         var topic = $"/{ns}/register";
         await receiver.SubscribeAsync(topic);
@@ -422,11 +502,10 @@ public class RegistrationIntegrationTests
     {
         var ns = $"test{Guid.NewGuid():N}";
 
-        var transport = new InMemoryTransport();
-        var dispatching = new MessagingClient(transport, "dispatch/default");
-        var publisher = new MessagingClient(transport, "pub/default");
-        await dispatching.ConnectAsync();
-        await publisher.ConnectAsync();
+        await using var dispatchHandle = await CreateClientAsync($"{ns}_dispatch_state");
+        await using var publisherHandle = await CreateClientAsync($"{ns}_publisher_state");
+        var dispatching = dispatchHandle.Client;
+        var publisher = publisherHandle.Client;
 
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
@@ -452,8 +531,7 @@ public class RegistrationIntegrationTests
 
         await publisher.PublishAsync(msg, $"/{ns}/register");
 
-        // callbacks are synchronous in the in-memory transport, but give it a short breath
-        await Task.Delay(50);
+        await Task.Delay(500);
 
         var state = context.Get<DispatchingState>("DispatchingState");
         Assert.NotNull(state);
@@ -466,11 +544,10 @@ public class RegistrationIntegrationTests
     {
         var ns = $"test{Guid.NewGuid():N}";
 
-        var transport = new InMemoryTransport();
-        var dispatching = new MessagingClient(transport, "dispatch/default");
-        var publisher = new MessagingClient(transport, "pub/default");
-        await dispatching.ConnectAsync();
-        await publisher.ConnectAsync();
+        await using var dispatchHandle = await CreateClientAsync($"{ns}_dispatch_inventory");
+        await using var publisherHandle = await CreateClientAsync($"{ns}_publisher_inventory");
+        var dispatching = dispatchHandle.Client;
+        var publisher = publisherHandle.Client;
 
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
@@ -503,7 +580,7 @@ public class RegistrationIntegrationTests
             .Build();
 
         await publisher.PublishAsync(invMsg, $"/{ns}/P102/Inventory");
-        await Task.Delay(50);
+        await Task.Delay(500);
 
         var state = context.Get<DispatchingState>("DispatchingState");
         Assert.NotNull(state);
@@ -518,11 +595,10 @@ public class RegistrationIntegrationTests
     {
         var ns = $"test{Guid.NewGuid():N}";
 
-        var transport = new InMemoryTransport();
-        var dispatching = new MessagingClient(transport, "dispatch/default");
-        var publisher = new MessagingClient(transport, "pub/default");
-        await dispatching.ConnectAsync();
-        await publisher.ConnectAsync();
+        await using var dispatchHandle = await CreateClientAsync($"{ns}_dispatch_offer");
+        await using var publisherHandle = await CreateClientAsync($"{ns}_publisher_offer");
+        var dispatching = dispatchHandle.Client;
+        var publisher = publisherHandle.Client;
 
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
@@ -550,7 +626,7 @@ public class RegistrationIntegrationTests
             .AddElement(new Property<string>("RequirementId") { Value = new PropertyValue<string>("req-1") })
             .Build();
 
-        await publisher.PublishAsync(msg, $"/{ns}/Offer");
+        await publisher.PublishAsync(msg, $"/{ns}/ManufacturingSequence/Response");
 
         var completed = await Task.WhenAny(tcs.Task, Task.Delay(TimeSpan.FromSeconds(1)));
         Assert.Same(tcs.Task, completed);
@@ -558,5 +634,80 @@ public class RegistrationIntegrationTests
         Assert.NotNull(response);
         Assert.Equal(I40MessageTypes.PROPOSAL, response!.Frame?.Type);
         Assert.Equal(conv, response.Frame?.ConversationId);
+    }
+
+    private const string MqttBrokerHost = "192.168.178.30";
+    private const int MqttBrokerPort = 1883;
+
+    private static async Task<MqttClientHandle> CreateClientAsync(string clientIdPrefix)
+    {
+        var handle = new MqttClientHandle(clientIdPrefix);
+        await handle.Client.ConnectAsync();
+        return handle;
+    }
+
+    private static async Task PublishRegisterAsync(
+        MessagingClient publisher,
+        string ns,
+        string agentId,
+        string role,
+        string? topicOverride = null)
+    {
+        if (publisher == null) throw new ArgumentNullException(nameof(publisher));
+
+        var message = BuildRegisterMessage(agentId, role);
+
+        if (!publisher.IsConnected)
+        {
+            await publisher.ConnectAsync();
+        }
+
+        var topic = string.IsNullOrWhiteSpace(topicOverride)
+            ? $"/{ns}/{agentId}/register"
+            : topicOverride;
+
+        await publisher.PublishAsync(message, topic);
+    }
+
+    private static I40Message BuildRegisterMessage(string agentId, string role)
+    {
+        var register = new RegisterMessage(agentId, new(), new());
+        return new I40MessageBuilder()
+            .From(agentId, role)
+            .To("Namespace", null)
+            .WithType("registerMessage")
+            .WithConversationId(Guid.NewGuid().ToString())
+            .AddElement(register.ToSubmodelElementCollection())
+            .Build();
+    }
+
+    private sealed class MqttClientHandle : IAsyncDisposable
+    {
+        public MessagingClient Client { get; }
+
+        public MqttClientHandle(string clientIdPrefix)
+        {
+            var id = $"{clientIdPrefix}_{Guid.NewGuid():N}";
+            Client = new MessagingClient(new MqttTransport(MqttBrokerHost, MqttBrokerPort, id), $"{id}/logs");
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            try
+            {
+                if (Client.IsConnected)
+                {
+                    await Client.DisconnectAsync();
+                }
+            }
+            catch
+            {
+                // ignore cleanup failures
+            }
+            finally
+            {
+                Client.Dispose();
+            }
+        }
     }
 }

@@ -16,6 +16,9 @@ using MAS_BT.Nodes.Dispatching;
 using MAS_BT.Nodes.Dispatching.ProcessChain;
 using MAS_BT.Nodes.ModuleHolon;
 using MAS_BT.Nodes.Common;
+using MAS_BT.Nodes.Namespace;
+using MAS_BT.Nodes.Orchestration;
+using MAS_BT.Nodes.Transport;
 
 namespace MAS_BT.Serialization;
 
@@ -147,6 +150,7 @@ public class NodeRegistry
         Register<LoadBillOfMaterialSubmodelNode>();
         Register<LoadProcessChainFromShellNode>("LoadProcessChainFromShell");
         Register<LoadCapabilityDescriptionSubmodelNode>();
+        Register<LoadAssetLocationSubmodelNode>();
         Register<CheckConfigFlagNode>("CheckConfigFlag");
         Register<CheckProcessChainRequestPolicyNode>("CheckProcessChainRequestPolicy");
         Register<ExtractCapabilityNamesNode>("ExtractCapabilityNames");
@@ -226,11 +230,14 @@ public class NodeRegistry
         Register<WaitForInternalResponseNode>("WaitForInternalResponse");
         Register<ReplyToDispatcherNode>("ReplyToDispatcher");
         Register<SpawnSubHolonsNode>("SpawnSubHolons");
+        Register<SpawnNamespaceSubHolonsNode>("SpawnNamespaceSubHolons");
+        Register<ConfigureNamespaceTopicBridgeNode>("ConfigureNamespaceTopicBridge");
 
         // Direct request handlers
         Register<HandleManufacturingSequenceRequestNode>("HandleManufacturingSequenceRequest");
         Register<HandleBookStepRequestNode>("HandleBookStepRequest");
         Register<HandleTransportPlanRequestNode>("HandleTransportPlanRequest");
+        Register<IngestManufacturingSequenceNode>("IngestManufacturingSequence");
         
         // Monitoring Nodes (bestehende)
         Register<ReadStorageNode>();

@@ -18,6 +18,7 @@ public class CapabilityRequestContext
     public string RequirementId { get; set; } = string.Empty;
     public string Capability { get; set; } = string.Empty;
     public string RequesterId { get; set; } = string.Empty;
+    public string RequesterRole { get; set; } = string.Empty;
     public string ProductId { get; set; } = string.Empty;
     public CapabilityContainer? CapabilityContainer { get; set; }
     public string FrameType { get; set; } = string.Empty;
@@ -26,6 +27,7 @@ public class CapabilityRequestContext
     public I40MessageTypeSubtypes SubType { get; set; } = I40MessageTypeSubtypes.None;
     public bool IsManufacturingRequest => SubType == I40MessageTypeSubtypes.ManufacturingSequence;
     public SubmodelElementCollection? RequestedCapabilityElement { get; set; }
+    public SubmodelElementCollection? AssetLocation { get; set; }
     public string? RequestedInstanceIdentifier { get; set; }
     public Reference? RequestedCapabilityReference { get; set; }
 
@@ -48,6 +50,7 @@ public class CapabilityRequestContext
         var productId = ExtractProperty(message, "ProductId") ?? string.Empty;
         var conversationId = message.Frame?.ConversationId ?? Guid.NewGuid().ToString();
         var requesterId = message.Frame?.Sender?.Identification?.Id ?? "DispatchingAgent";
+        var requesterRole = message.Frame?.Sender?.Role?.Name ?? string.Empty;
         var frameTypeRaw = message.Frame?.Type ?? string.Empty;
         var (baseType, subtypeToken) = SplitMessageType(frameTypeRaw);
         if (!I40MessageTypeSubtypesExtensions.TryParse(subtypeToken, out var typedSubtype))
@@ -61,6 +64,7 @@ public class CapabilityRequestContext
             RequirementId = requirementId,
             ConversationId = conversationId,
             RequesterId = requesterId,
+            RequesterRole = requesterRole ?? string.Empty,
             ProductId = productId,
             FrameType = frameTypeRaw,
             BaseMessageType = baseType,
@@ -75,6 +79,17 @@ public class CapabilityRequestContext
             context.CapabilityContainer = new CapabilityContainer(containerElement);
             context.RequestedInstanceIdentifier = ExtractInstanceIdentifier(containerElement);
             context.RequestedCapabilityReference = ExtractCapabilityReference(containerElement);
+        }
+
+        // Extract AssetLocation element if present
+        if (message.InteractionElements != null)
+        {
+            var asset = message.InteractionElements.OfType<SubmodelElementCollection>()
+                .FirstOrDefault(e => string.Equals(e.IdShort, "AssetLocation", StringComparison.OrdinalIgnoreCase));
+            if (asset != null)
+            {
+                context.AssetLocation = asset;
+            }
         }
 
         return context;

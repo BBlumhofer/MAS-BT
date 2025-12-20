@@ -291,6 +291,7 @@
       <input_port name="LogLevel" />
       <input_port name="Message" />
       <input_port name="ModuleId" />
+      <input_port name="Topic" />
     </Action>
     <Action ID="UpdateInventory">
       <input_port name="ModuleId" />

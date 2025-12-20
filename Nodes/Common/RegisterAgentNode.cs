@@ -148,16 +148,24 @@ namespace MAS_BT.Nodes.Common
             var messageType = ResolveTemplates(MessageType);
             if (string.IsNullOrWhiteSpace(messageType) || messageType.Contains('{') || messageType.Contains('}'))
             {
-                // Default behavior:
-                // - Sub-holons (planning/execution) publish a distinct type so module holons can wait specifically.
-                // - ModuleHolon + DispatchingAgent publish "registerMessage" (Dispatching tree waits for this).
-                messageType = RoleLooksLikeSubHolon(role)
-                    ? "subHolonRegister"
-                    : "registerMessage";
+                messageType = "registerMessage";
             }
 
             var message = new RegisterMessage(registrationAgentId, subagents, capabilities);
             var topic = BuildRegisterTopic(ns, parentAgent);
+
+            // Log registration details for debugging
+            if (capabilities.Count == 0)
+            {
+                Logger.LogWarning("RegisterAgent: Sending registration for '{AgentId}' with ZERO capabilities to '{Topic}'. " +
+                                "This may indicate missing AAS data or failed capability extraction.",
+                                registrationAgentId, topic);
+            }
+            else
+            {
+                Logger.LogDebug("RegisterAgent: Sending registration for '{AgentId}' to '{Topic}' with {Count} capabilities: [{Caps}]",
+                              registrationAgentId, topic, capabilities.Count, string.Join(", ", capabilities.Take(10)));
+            }
 
             try
             {

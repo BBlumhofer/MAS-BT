@@ -43,7 +43,7 @@ public class SendProcessChainResponseNode : BTNode
             }
         }
 
-        var topic = isManufacturing ? $"/{ns}/ManufacturingSequence" : $"/{ns}/ProcessChain";
+        var topic = $"/{ns}/ManufacturingSequence/Response";
         var messageType = success ? I40MessageTypes.PROPOSAL : I40MessageTypes.REFUSE_PROPOSAL;
 
         var builder = new I40MessageBuilder()

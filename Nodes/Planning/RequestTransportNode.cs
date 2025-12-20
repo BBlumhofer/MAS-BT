@@ -36,28 +36,10 @@ public class RequestTransportNode : BTNode
             return NodeStatus.Failure;
         }
 
+        // Always request transports for incoming capability requests.
+        // Use Planning.TransportRequirements if present, otherwise the fallback default is used later.
         var requirements = Context.Get<List<TransportRequirement>>("Planning.TransportRequirements")
                             ?? new List<TransportRequirement>();
-        if (requirements.Count == 0)
-        {
-            var requiresLegacy = Context.Get<bool?>("RequiresTransport") ?? false;
-            if (!requiresLegacy || !requestContext.IsManufacturingRequest)
-            {
-                Logger.LogDebug("RequestTransport: no transport requirements detected for this capability");
-                Context.Set("TransportAccepted", true);
-                Context.Set("Planning.TransportOffers", null);
-                Context.Set("Planning.TransportSequence", null);
-                return NodeStatus.Success;
-            }
-        }
-
-        if (!requestContext.IsManufacturingRequest)
-        {
-            Logger.LogDebug("RequestTransport: current CfP subtype {Subtype} does not request transports", requestContext.MessageSubtype);
-            Context.Set("TransportAccepted", true);
-            Context.Set("Planning.TransportSequence", null);
-            return NodeStatus.Success;
-        }
 
         var client = Context.Get<MessagingClient>("MessagingClient");
         if (client == null || !client.IsConnected)
@@ -73,16 +55,17 @@ public class RequestTransportNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var topic = $"/{ns}/TransportPlan";
-        // Ensure we are subscribed to the transport topic to receive responses in this in-process test transport.
+        var requestTopic = $"/{ns}/TransportPlan/Request";
+        var responseTopic = $"/{ns}/TransportPlan/Response";
+        // Ensure we are subscribed to the transport response topic to receive dispatcher replies in time.
         try
         {
-            await client.SubscribeAsync(topic).ConfigureAwait(false);
-            try { Console.WriteLine($"[DEBUG] RequestTransport: subscribed to topic {topic}"); } catch {}
+            await client.SubscribeAsync(responseTopic).ConfigureAwait(false);
+            try { Logger.LogDebug("[DEBUG] RequestTransport: subscribed to response topic {ResponseTopic}", responseTopic); } catch {}
         }
         catch (Exception ex)
         {
-            Logger.LogDebug(ex, "RequestTransport: failed to subscribe to {Topic}", topic);
+            Logger.LogDebug(ex, "RequestTransport: failed to subscribe to {Topic}", responseTopic);
         }
         var aggregatedOffers = new List<OfferedCapability>();
         var sequenceItems = new List<TransportSequenceItem>();
@@ -123,13 +106,13 @@ public class RequestTransportNode : BTNode
                 convId,
                 element);
 
-            try { Console.WriteLine($"[DEBUG] BuildTransportRequest: InstanceId={element.InstanceIdentifier?.Value?.Value} IdentifierValue={element.IdentifierValue?.Value?.Value} GoalStation={element.TransportGoalStation?.Value?.Value}"); } catch {}
+            try { Logger.LogDebug("[DEBUG] BuildTransportRequest: InstanceId={InstanceId} IdentifierValue={IdentifierValue} GoalStation={GoalStation}", element.InstanceIdentifier?.Value?.Value, element.IdentifierValue?.Value?.Value, element.TransportGoalStation?.Value?.Value); } catch {}
             // Attach a generic OnMessage logger to help debug in-process delivery (will not interfere with OnConversation)
             try
             {
                 client.OnMessage(msg =>
                 {
-                    try { Console.WriteLine($"[DEBUG] OnMessage (planning client): frameType={msg?.Frame?.Type} convId={msg?.Frame?.ConversationId} elements={msg?.InteractionElements?.Count ?? 0}"); } catch {}
+                    try { Logger.LogDebug("[DEBUG] OnMessage (planning client): frameType={FrameType} convId={ConvId} elements={Elements}", msg?.Frame?.Type, msg?.Frame?.ConversationId, msg?.InteractionElements?.Count ?? 0); } catch {}
                 });
             }
             catch { }
@@ -137,7 +120,7 @@ public class RequestTransportNode : BTNode
             // Start listening for the response before publishing to avoid races in in-process tests
             var responseTask = AwaitTransportResponseAsync(client, convId);
             var publishedAt = DateTimeOffset.UtcNow;
-            await request.PublishAsync(client, topic).ConfigureAwait(false);
+            await request.PublishAsync(client, requestTopic, Context.AgentId, Context.AgentRole, $"{ns}/DispatchingAgent", "DispatchingAgent", convId).ConfigureAwait(false);
             Logger.LogInformation(
                 "RequestTransport: published transport request #{Index} (requirement={Requirement}, placement={Placement}, target={Target}, source={Source}, convId={Conv}, publishedAt={Timestamp:o})",
                 index + 1,
@@ -147,7 +130,7 @@ public class RequestTransportNode : BTNode
                 requirement.SourceId ?? requestContext.RequirementId,
                 convId,
                 publishedAt);
-            try { Console.WriteLine($"[DEBUG] RequestTransport: published transport request #{index+1} topic={topic} convId={convId}"); } catch {}
+            try { Logger.LogDebug("[DEBUG] RequestTransport: published transport request #{Index} topic={Topic} convId={Conv}", index+1, requestTopic, convId); } catch {}
 
             var response = await responseTask.ConfigureAwait(false);
             if (response == null)
@@ -157,7 +140,7 @@ public class RequestTransportNode : BTNode
                 continue;
             }
 
-                try { Console.WriteLine($"[DEBUG] RequestTransport: received response for convId={convId} elements={response.InteractionElements?.Count ?? 0}"); } catch {}
+                try { Logger.LogDebug("[DEBUG] RequestTransport: received response for convId={Conv} elements={Elements}", convId, response.InteractionElements?.Count ?? 0); } catch {}
 
             var transportOffers = ExtractTransportOffers(response);
             if (transportOffers.Count == 0)
@@ -197,6 +180,24 @@ public class RequestTransportNode : BTNode
         element.InstanceIdentifier.Value = new PropertyValue<string>(instanceIdentifier);
         element.OfferedCapabilityIdentifier.Value = new PropertyValue<string>($"{Context.AgentId}:{instanceIdentifier}");
         element.TransportGoalStation.Value = new PropertyValue<string>(target ?? string.Empty);
+        // If the request contains an AssetLocation submodel, use its Parent (previous machine) as TransportStartStation
+        try
+        {
+            if (request?.AssetLocation != null)
+            {
+                var parentProp = request.AssetLocation.Values?.OfType<Property>()
+                    .FirstOrDefault(p => string.Equals(p.IdShort, "Parent", StringComparison.OrdinalIgnoreCase));
+                var parentVal = parentProp?.GetText();
+                if (!string.IsNullOrWhiteSpace(parentVal))
+                {
+                    element.TransportStartStation.Value = new PropertyValue<string>(parentVal!);
+                }
+            }
+        }
+        catch
+        {
+            // ignore and proceed
+        }
         element.SetIdentifierType(TransportRequestMessage.IdentifierTypeEnum.ProductId);
         // Determine IdentifierValue: prefer request.ProductId, then constraint placeholder resolution, then fallback to requirement id
         var identifierValue = string.IsNullOrWhiteSpace(request.ProductId) ? request.RequirementId : request.ProductId;
@@ -306,10 +307,10 @@ public class RequestTransportNode : BTNode
         var tcs = new TaskCompletionSource<I40Message>(TaskCreationOptions.RunContinuationsAsynchronously);
         client.OnConversation(conversationId, msg =>
         {
-            try
-            {
-                // print raw frame type for debugging
-                try { Console.WriteLine($"[DEBUG] AwaitTransportResponse: received frameType={msg?.Frame?.Type} interactionElements={msg?.InteractionElements?.Count ?? 0} for conv={conversationId}"); } catch {}
+                try
+                {
+                    // print raw frame type for debugging
+                    try { Logger.LogDebug("[DEBUG] AwaitTransportResponse: received frameType={FrameType} interactionElements={Elements} for conv={Conv}", msg?.Frame?.Type, msg?.InteractionElements?.Count ?? 0, conversationId); } catch {}
 
                 if (!IsTransportResponseFrame(msg?.Frame?.Type))
                 {
@@ -336,7 +337,7 @@ public class RequestTransportNode : BTNode
                                         try { if (oc.Station?.Value != null) stationVal = AasValueUnwrap.UnwrapToString(oc.Station.Value) ?? string.Empty; } catch {}
                                         var actionsCount = 0;
                                         try { actionsCount = oc.Actions != null ? oc.Actions.OfType<ISubmodelElement>().Count() : 0; } catch {}
-                                        Console.WriteLine($"[DEBUG] AwaitTransportResponse: element OfferedCapability InstanceId={idVal} Station={stationVal} Actions={actionsCount}");
+                                        Logger.LogDebug("[DEBUG] AwaitTransportResponse: element OfferedCapability InstanceId={InstanceId} Station={Station} Actions={Actions}", idVal, stationVal, actionsCount);
                                     }
                                     catch { }
                                 }
@@ -345,7 +346,7 @@ public class RequestTransportNode : BTNode
                                     try
                                     {
                                         var childCount = col.Values != null ? col.Values.Count() : 0;
-                                        Console.WriteLine($"[DEBUG] AwaitTransportResponse: element Collection IdShort={col.IdShort} children={childCount}");
+                                        Logger.LogDebug("[DEBUG] AwaitTransportResponse: element Collection IdShort={IdShort} children={Children}", col.IdShort, childCount);
                                     }
                                     catch { }
                                 }
@@ -528,7 +529,7 @@ public class RequestTransportNode : BTNode
                         if (actionElement is AasSharpClient.Models.Action action)
                         {
                             Logger.LogDebug("CreateOfferedCapabilityFromCollection: found typed Action {Title} with InputParameters={Count}", action.ActionTitle, action.InputParameters?.Parameters?.Count ?? 0);
-                            try { Console.WriteLine($"[DEBUG] CreateOfferedCapabilityFromCollection: found typed Action {action.ActionTitle} inputParams={action.InputParameters?.Parameters?.Count ?? 0}"); } catch {}
+                            try { Logger.LogDebug("[DEBUG] CreateOfferedCapabilityFromCollection: found typed Action {Title} inputParams={Count}", action.ActionTitle, action.InputParameters?.Parameters?.Count ?? 0); } catch {}
                             offer.AddAction(action);
                             continue;
                         }
@@ -537,7 +538,7 @@ public class RequestTransportNode : BTNode
                         {
                             var mat = MaterializeAction(actionCollection);
                             Logger.LogDebug("CreateOfferedCapabilityFromCollection: materialized action from collection {IdShort} with InputParameters={Count}", actionCollection.IdShort, mat.InputParameters?.Parameters?.Count ?? 0);
-                            try { Console.WriteLine($"[DEBUG] CreateOfferedCapabilityFromCollection: materialized action from {actionCollection.IdShort} inputParams={mat.InputParameters?.Parameters?.Count ?? 0}"); } catch {}
+                            try { Logger.LogDebug("[DEBUG] CreateOfferedCapabilityFromCollection: materialized action from {IdShort} inputParams={Count}", actionCollection.IdShort, mat.InputParameters?.Parameters?.Count ?? 0); } catch {}
                             offer.AddAction(mat);
                             continue;
                         }
@@ -561,7 +562,7 @@ public class RequestTransportNode : BTNode
                             // materialize synthetic collection
                             var mat = MaterializeAction(synthetic);
                             Logger.LogDebug("CreateOfferedCapabilityFromCollection: materialized synthetic action from primitives with InputParameters={Count}", mat.InputParameters?.Parameters?.Count ?? 0);
-                            try { Console.WriteLine($"[DEBUG] CreateOfferedCapabilityFromCollection: materialized synthetic action inputParams={mat.InputParameters?.Parameters?.Count ?? 0}"); } catch {}
+                            try { Logger.LogDebug("[DEBUG] CreateOfferedCapabilityFromCollection: materialized synthetic action inputParams={Count}", mat.InputParameters?.Parameters?.Count ?? 0); } catch {}
                             offer.AddAction(mat);
                             continue;
                         }
@@ -607,12 +608,12 @@ public class RequestTransportNode : BTNode
                     inputParameters.SetParameter(key, value);
                 }
                 Logger.LogDebug("MaterializeAction: created InputParameters with {Count} entries from collection {IdShort}", inputParameters.Parameters.Count, source.IdShort);
-                try { Console.WriteLine($"[DEBUG] MaterializeAction: created InputParameters with {inputParameters.Parameters.Count} entries from collection {source.IdShort}"); } catch {}
+                try { Logger.LogDebug("[DEBUG] MaterializeAction: created InputParameters with {Count} entries from collection {IdShort}", inputParameters.Parameters.Count, source.IdShort); } catch {}
             }
             else
             {
                 Logger.LogDebug("MaterializeAction: no InputParameters collection found in {IdShort}", source.IdShort);
-                try { Console.WriteLine($"[DEBUG] MaterializeAction: no InputParameters collection found in {source.IdShort}"); } catch {}
+                try { Logger.LogDebug("[DEBUG] MaterializeAction: no InputParameters collection found in {IdShort}", source.IdShort); } catch {}
             }
         }
         catch (Exception ex)

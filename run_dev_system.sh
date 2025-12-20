@@ -29,8 +29,8 @@ cleanup() {
 
 trap cleanup INT TERM
 
-# Start Dispatcher
-PIDS+=("$(launch_process dispatching_agent dotnet run --project MAS-BT.csproj -- dispatching_agent)")
+# Start Namespace Holon (dispatching + transport sub-holons)
+PIDS+=("$(launch_process namespace_holon dotnet run --project MAS-BT.csproj -- NamespaceHolon/NamespaceHolon)")
 
 # Start P102
 PIDS+=("$(launch_process P102 dotnet run --project MAS-BT.csproj -- P102)")

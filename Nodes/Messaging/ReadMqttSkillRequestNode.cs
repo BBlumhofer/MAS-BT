@@ -211,73 +211,64 @@ public class ReadMqttSkillRequestNode : BTNode
     {
         try
         {
-            var root = JsonFacade.Parse(jsonPayload);
-            if (root is not IDictionary<string, object?> rootDict)
+            // Prefer the I40Sharp MessageSerializer to obtain a typed I40Message with AAS elements
+            var serializer = new MessageSerializer();
+            I40Message? msg = null;
+            try
             {
-                Logger.LogWarning("ReadMqttSkillRequest: SkillRequest payload is not a JSON object");
+                msg = serializer.Deserialize(jsonPayload);
+            }
+            catch (Exception ex)
+            {
+                Logger.LogInformation("ReadMqttSkillRequest: MessageSerializer failed to deserialize payload: {Msg}", ex.Message);
+            }
+
+            if (msg == null)
+            {
+                Logger.LogWarning("ReadMqttSkillRequest: Failed to parse message as I40Message");
                 return null;
             }
 
-            if (!rootDict.TryGetValue("frame", out var frameObj) || frameObj is not IDictionary<string, object?> frameDict)
-            {
-                Logger.LogWarning("ReadMqttSkillRequest: No 'frame' found in message");
-                return null;
-            }
-
-            var conversationId = JsonFacade.GetPathAsString(rootDict, new[] { "frame", "conversationId" }) ?? string.Empty;
-
+            var conversationId = msg.Frame?.ConversationId ?? string.Empty;
             if (string.IsNullOrWhiteSpace(conversationId))
             {
                 Logger.LogWarning("ReadMqttSkillRequest: Missing conversationId in frame (product id not provided)");
             }
 
-            var senderId = ExtractParticipantId(frameDict, "sender");
-            var receiverId = ExtractParticipantId(frameDict, "receiver");
+            var senderId = msg.Frame?.Sender?.Identification?.Id ?? string.Empty;
+            var receiverId = msg.Frame?.Receiver?.Identification?.Id ?? string.Empty;
 
-            if (!rootDict.TryGetValue("interactionElements", out var interactionElementsObj) || interactionElementsObj is not IList<object?> interactionElements)
-            {
-                Logger.LogWarning("ReadMqttSkillRequest: No 'interactionElements' found in message");
-                return null;
-            }
+            var interactionElements = msg.InteractionElements ?? new List<ISubmodelElement>();
 
             SubmodelElementCollection? actionCollection = null;
             IDictionary<string, object?>? rawActionElement = null;
 
-            foreach (var elementObj in interactionElements)
+            foreach (var element in interactionElements)
             {
-                if (elementObj is not IDictionary<string, object?> elementDict)
+                if (element is SubmodelElementCollection col && !string.IsNullOrEmpty(col.IdShort) && col.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
                 {
-                    continue;
+                    actionCollection = col;
+                    break;
                 }
 
-                var idShort = JsonFacade.GetPathAsString(elementDict, new[] { "idShort" }) ?? string.Empty;
-                if (!string.IsNullOrEmpty(idShort) && idShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
-                {
-                    rawActionElement = elementDict;
-                }
-
-                var raw = JsonFacade.Serialize(elementDict);
+                // fallback: try to deserialize individual element JSON via JsonLoader
                 try
                 {
+                    var raw = JsonFacade.Serialize(element);
                     var sme = JsonLoader.DeserializeElement(raw);
-                    if (sme is SubmodelElementCollection col && !string.IsNullOrEmpty(col.IdShort) && col.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
+                    if (sme is SubmodelElementCollection col2 && !string.IsNullOrEmpty(col2.IdShort) && col2.IdShort.StartsWith("Action", StringComparison.OrdinalIgnoreCase))
                     {
-                        actionCollection = col;
-                        rawActionElement = elementDict;
+                        actionCollection = col2;
+                        // keep a raw representation for legacy path
+                        rawActionElement = new Dictionary<string, object?> { { "idShort", col2.IdShort }, { "value", element } };
                         break;
                     }
                 }
                 catch (Exception ex)
                 {
                     Logger.LogInformation(
-                        "ReadMqttSkillRequest: BaSyx deserialization failed for interaction element; raw JSON: {Json}. Exception: {Ex}",
-                        raw,
+                        "ReadMqttSkillRequest: BaSyx deserialization failed for interaction element; Exception: {Ex}",
                         ex.Message);
-                }
-
-                if (rawActionElement != null)
-                {
-                    break;
                 }
             }
 

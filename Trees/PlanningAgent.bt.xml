@@ -17,6 +17,7 @@
       <ExtractCapabilityNames name="ExtractCapabilities" SourceKey="CapabilityDescriptionSubmodel" TargetKey="Capabilities" />
       <PublishCapabilities name="PublishCapabilities" />
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
+      <SubscribeToTopic name="SubscribeTransportResponses" Topic="/{Namespace}/TransportPlan/Response" />
       <RegisterAgent name="RegisterPlanning" ParentAgent="{config.Agent.ModuleId}" />
       <SyncAgentToNeo4j name="SyncPlanningToGraph" />
       
@@ -31,7 +32,7 @@
         <Repeat name="CapabilityOfferLoop" num_cycles="-1">
           <Fallback name="OfferOrIdle">
             <Sequence name="AwaitThenRespondOrRefuse">
-              <WaitForMessage name="AwaitCapabilityRequest" ExpectedTypes="callForProposal,callForProposal/ProcessChain,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitCapabilityRequest" ExpectedTypes="callForProposal,callForProposal/OfferedCapability,callForProposal/ProcessChain,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/{ModuleId}/Planning/OfferedCapability/Request" TimeoutSeconds="10" />
               <Fallback name="RespondOrRefuseAfterMessage">
                 <Sequence name="RespondToCapabilityRequest">
                   <ParseCapabilityRequest name="ParseCapabilityRequest" />

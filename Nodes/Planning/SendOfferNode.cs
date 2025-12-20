@@ -49,57 +49,47 @@ public class SendOfferNode : BTNode
         else
         {
             var offer = Context.Get<object>("CurrentOffer");
-            AttachOffer(builder, offer);
+            var ok = AttachOffer(builder, offer);
+            if (!ok)
+            {
+                Logger.LogError("SendOffer: CurrentOffer is not a valid AAS SubmodelElement or failed to deserialize; aborting publish.");
+                return NodeStatus.Failure;
+            }
         }
 
         var message = builder.Build();
         var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var offerTopic = $"/{ns}/Offer";
+        var offerTopic = $"/{ns}/ManufacturingSequence/Response";
         await client.PublishAsync(message, offerTopic);
 
-        Logger.LogInformation("SendOffer: published offer to topic {Topic} for receiver={Receiver}", offerTopic, ReceiverId);
+        Logger.LogInformation("SendOffer: published proposal to topic {Topic} for receiver={Receiver}", offerTopic, ReceiverId);
         return NodeStatus.Success;
     }
 
-    private static void AttachOffer(I40MessageBuilder builder, object? offer)
+    private bool AttachOffer(I40MessageBuilder builder, object? offer)
     {
-        if (offer is SubmodelElement sme)
+        // Strict mode: only accept already-typed AAS/BaSyx submodel elements or JSON that deserializes
+        // into a SubmodelElement via JsonLoader. No permissive fallbacks.
+        if (offer is BaSyx.Models.AdminShell.ISubmodelElement ism && ism is BaSyx.Models.AdminShell.SubmodelElement se)
         {
-            builder.AddElement(sme);
-            return;
+            builder.AddElement(se);
+            return true;
         }
 
         if (offer is string jsonString)
         {
             var loaded = JsonLoader.DeserializeElement(jsonString);
-            if (loaded is SubmodelElement loadedElement)
+            if (loaded is BaSyx.Models.AdminShell.SubmodelElement loadedElement)
             {
                 builder.AddElement(loadedElement);
+                return true;
             }
-            else
-            {
-                builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(jsonString) });
-            }
-            return;
+            Logger.LogWarning("SendOffer.AttachOffer: JSON did not deserialize to a SubmodelElement");
+            return false;
         }
 
-        // If an object-graph (Dictionary/List/primitives) was provided, serialize it via JsonFacade,
-        // then try to deserialize into a typed AAS element.
-        if (offer is System.Collections.Generic.IDictionary<string, object?> || offer is System.Collections.Generic.IList<object?>)
-        {
-            var json = JsonFacade.Serialize(offer);
-            var loaded = JsonLoader.DeserializeElement(json);
-            if (loaded is SubmodelElement loadedElement)
-            {
-                builder.AddElement(loadedElement);
-            }
-            else
-            {
-                builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(json) });
-            }
-            return;
-        }
-
-        builder.AddElement(new Property<string>("Payload") { Value = new PropertyValue<string>(offer?.ToString() ?? string.Empty) });
+        // Reject raw object graphs or primitives in strict mode
+        Logger.LogWarning("SendOffer.AttachOffer: Offer is not a SubmodelElement or valid JSON string");
+        return false;
     }
 }

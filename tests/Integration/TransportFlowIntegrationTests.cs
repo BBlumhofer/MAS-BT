@@ -5,6 +5,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
 using AasSharpClient.Models.Helpers;
+using AasSharpClient.Models.ManufacturingSequence;
 using AasSharpClient.Models.Messages;
 using AasSharpClient.Models.ProcessChain;
 using I40Sharp.Messaging;
@@ -19,6 +20,7 @@ using MAS_BT.Tests.TestHelpers;
 using Microsoft.Extensions.Logging.Abstractions;
 using I40Sharp.Messaging.Core;
 using Xunit;
+using ActionModel = AasSharpClient.Models.Action;
 
 namespace MAS_BT.Tests.Integration;
 
@@ -27,13 +29,13 @@ public class TransportFlowIntegrationTests
     [Fact]
     public async Task TransportRequest_Response_PreservedProductIdAndTopics()
     {
-        var transport = new InMemoryTransport();
         var ns = $"test{Guid.NewGuid():N}";
+        var transport = MAS_BT.Tests.TestHelpers.TestTransportFactory.CreateTransport("transportflow");
 
         // Setup dispatch client which will handle TransportPlan requests and reply with a transport offer
         var dispatchClient = new MessagingClient(transport, "dispatch/logs");
         await dispatchClient.ConnectAsync();
-        await dispatchClient.SubscribeAsync($"/{ns}/TransportPlan");
+        await dispatchClient.SubscribeAsync($"/{ns}/TransportPlan/Request");
         var responded = new System.Collections.Concurrent.ConcurrentDictionary<string, bool>();
         dispatchClient.OnMessage(async msg =>
         {
@@ -49,6 +51,11 @@ public class TransportFlowIntegrationTests
             handler.Context.Set("config.Namespace", ns);
             handler.Context.Set("MessagingClient", dispatchClient);
             handler.Context.Set("LastReceivedMessage", msg);
+            var productId = ResolveTransportProductId(msg);
+            if (!string.IsNullOrWhiteSpace(productId))
+            {
+                handler.Context.Set("ManufacturingSequence.ByProduct", BuildManufacturingSequenceIndex(productId));
+            }
             await handler.Execute().ConfigureAwait(false);
         });
 
@@ -72,7 +79,8 @@ public class TransportFlowIntegrationTests
         planningContext.Set("CapabilityReferenceQuery", new TestPassthroughCapabilityReferenceQuery());
 
         // Compose a CallForProposal message and parse into Planning.CapabilityRequest
-        var conversationId = Guid.NewGuid().ToString();
+        var productId = $"product-{Guid.NewGuid():N}";
+        var conversationId = productId;
         var cfp = new I40MessageBuilder()
             .From("DispatchingAgent", "DispatchingAgent")
             .To("Broadcast", "ModuleHolon")
@@ -97,7 +105,7 @@ public class TransportFlowIntegrationTests
             planningContext.Set("Planning.CapabilityRequest", parsed);
         }
 
-        // Run RequestTransportNode which will publish to /{ns}/TransportPlan and wait for the dispatch response
+        // Run RequestTransportNode which will publish to /{ns}/TransportPlan/Request and wait for the /Response reply
         var requestTransportNode = new RequestTransportNode { Context = planningContext };
         requestTransportNode.SetLogger(NullLogger<RequestTransportNode>.Instance);
         var rtStatus = await requestTransportNode.Execute();
@@ -105,7 +113,6 @@ public class TransportFlowIntegrationTests
 
         // TransportOffers should now be present in planningContext
         var transportOffers = planningContext.Get<System.Collections.Generic.List<OfferedCapability>>("Planning.TransportOffers");
-        try { Console.WriteLine($"[TEST DEBUG] Planning.TransportOffers is {(transportOffers == null ? "null" : transportOffers.Count.ToString())}"); } catch {}
         Assert.NotNull(transportOffers);
         Assert.NotEmpty(transportOffers!);
 
@@ -114,16 +121,33 @@ public class TransportFlowIntegrationTests
         planNode.SetLogger(NullLogger<PlanCapabilityOfferNode>.Instance);
         Assert.Equal(NodeStatus.Success, await planNode.Execute());
 
+        var requestAfterTransport = planningContext.Get<MAS_BT.Nodes.Planning.ProcessChain.CapabilityRequestContext>("Planning.CapabilityRequest");
+        var expectedConversationId = requestAfterTransport?.ConversationId ?? conversationId;
+        Assert.Equal(productId, expectedConversationId);
+
         // Subscribe to proposal topic to capture outgoing proposal
         var proposalTcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
-        var proposalTopic = $"/{ns}/P100/PlanningAgent/OfferResponse";
+        var proposalTopic = $"/{ns}/ManufacturingSequence/Response";
         await planningClient.SubscribeAsync(proposalTopic);
         planningClient.OnMessage(msg =>
         {
-            if (!proposalTcs.Task.IsCompleted && string.Equals(msg.Frame?.ConversationId, conversationId, StringComparison.Ordinal))
+            if (proposalTcs.Task.IsCompleted)
             {
-                proposalTcs.TrySetResult(msg);
+                return;
             }
+
+            if (!string.Equals(msg?.Frame?.Type, I40MessageTypes.PROPOSAL, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(expectedConversationId) &&
+                !string.Equals(msg?.Frame?.ConversationId, expectedConversationId, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            proposalTcs.TrySetResult(msg);
         });
 
         var sendNode = new SendCapabilityOfferNode { Context = planningContext };
@@ -134,6 +158,7 @@ public class TransportFlowIntegrationTests
         Assert.Same(proposalTcs.Task, completed);
         var proposal = await proposalTcs.Task;
         Assert.NotNull(proposal);
+        Assert.Equal(expectedConversationId, proposal!.Frame?.ConversationId);
 
         // Inspect proposal for OfferedCapability and its Action.InputParameters
         var offeredSequence = proposal.InteractionElements?.OfType<SubmodelElementList>()
@@ -150,6 +175,51 @@ public class TransportFlowIntegrationTests
             .FirstOrDefault(smc => string.Equals(smc.IdShort, "InputParameters", StringComparison.OrdinalIgnoreCase));
         Assert.NotNull(inputParameters);
 
+    }
+
+    private static string? ResolveTransportProductId(I40Message? message)
+    {
+        var collection = message?.InteractionElements?.OfType<SubmodelElementCollection>().FirstOrDefault();
+        if (collection == null)
+        {
+            return message?.Frame?.ConversationId;
+        }
+
+        var parsed = new TransportRequestMessage(collection);
+        return parsed.IdentifierValueText ?? message?.Frame?.ConversationId;
+    }
+
+    private static Dictionary<string, ManufacturingSequence> BuildManufacturingSequenceIndex(string productId)
+    {
+        var sequence = new ManufacturingSequence();
+        var requiredCapability = new ManufacturingRequiredCapability("RequiredCapability_TransportSource");
+        requiredCapability.SetInstanceIdentifier("req-transport-source");
+
+        var offeredSequence = new ManufacturingOfferedCapabilitySequence();
+        var capability = new OfferedCapability("OfferedCapability");
+        capability.InstanceIdentifier.Value = new PropertyValue<string>($"cap-storage-{Guid.NewGuid():N}");
+        capability.Station.Value = new PropertyValue<string>("SourceStation");
+
+        var action = new ActionModel(
+            idShort: "Action_Storage",
+            actionTitle: "Storage",
+            status: ActionStatusEnum.PLANNED,
+            inputParameters: null,
+            finalResultData: null,
+            preconditions: null,
+            skillReference: null,
+            machineName: "SourceStation");
+        action.Postconditions.AddPostcondition(new StoragePostcondition("Condition_Storage"));
+        capability.AddAction(action);
+
+        offeredSequence.AddCapability(capability);
+        requiredCapability.AddSequence(offeredSequence);
+        sequence.AddRequiredCapability(requiredCapability);
+
+        return new Dictionary<string, ManufacturingSequence>(StringComparer.OrdinalIgnoreCase)
+        {
+            [productId] = sequence
+        };
     }
 
     private sealed class TestPassthroughCapabilityReferenceQuery : ICapabilityReferenceQuery

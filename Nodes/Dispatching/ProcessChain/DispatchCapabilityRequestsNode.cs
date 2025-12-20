@@ -57,7 +57,27 @@ public class DispatchCapabilityRequestsNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var topic = TopicHelper.BuildNamespaceTopic(Context, "Offer");
+        // Topic selection: Use new generalized role-based broadcast pattern
+        // /{ns}/ModuleHolon/broadcast/OfferedCapability/Request
+        var topic = $"/{ns}/ModuleHolon/broadcast/OfferedCapability/Request";
+        var sequentialDispatchEnabled = GetConfigBool("config.DispatchingAgent.SequentialCapabilityDispatch", defaultValue: true);
+        SequentialRequirementCoordinator? sequentialCoordinator = null;
+        var sequentialRequirementWait = TimeSpan.Zero;
+        if (sequentialDispatchEnabled && ctx.Requirements.Count > 0)
+        {
+            sequentialCoordinator = new SequentialRequirementCoordinator(ctx.Requirements);
+            Context.Set("ProcessChain.SequentialDispatch", true);
+            Context.Set("ProcessChain.SequentialCoordinator", sequentialCoordinator);
+            var sequentialWaitSeconds = GetConfigInt(
+                "config.DispatchingAgent.SequentialRequirementTimeoutSeconds",
+                GetConfigInt("config.DispatchingAgent.OfferCollectionTimeoutSeconds", defaultValue: 10));
+            sequentialRequirementWait = TimeSpan.FromSeconds(ClampInt(sequentialWaitSeconds, 1, 600));
+        }
+        else
+        {
+            Context.Set("ProcessChain.SequentialDispatch", false);
+            Context.Set("ProcessChain.SequentialCoordinator", null);
+        }
         var requestMode = GetRequestMode();
         var subtype = string.Equals(requestMode, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase)
             ? I40MessageTypeSubtypes.ManufacturingSequence
@@ -164,11 +184,14 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         // For each requirement, compute candidate modules by similarity and send CfP only to those modules
         var expectedOfferResponders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var requirement in ctx.Requirements)
+        for (var requirementIndex = 0; requirementIndex < ctx.Requirements.Count; requirementIndex++)
         {
+            var requirement = ctx.Requirements[requirementIndex];
+            var selfId = Context.AgentId;
             var allModules = state.Modules
                 .Where(m => m != null && !string.IsNullOrWhiteSpace(m.ModuleId))
                 .Where(m => !string.Equals(m.ModuleId, similarityAgentId, StringComparison.OrdinalIgnoreCase))
+                .Where(m => !string.Equals(m.ModuleId, selfId, StringComparison.OrdinalIgnoreCase))
                 .ToList();
 
             var descReq = state.TryGetCapabilityDescription(requirement.Capability, out var descA) ? descA : null;
@@ -345,6 +368,8 @@ public class DispatchCapabilityRequestsNode : BTNode
                 expectedOfferResponders.Add(m);
             }
 
+            var dispatchedAny = candidateModules.Count > 0;
+
             // send CfP individually to candidate modules
             foreach (var tgtModule in candidateModules.Distinct(StringComparer.OrdinalIgnoreCase))
             {
@@ -359,7 +384,8 @@ public class DispatchCapabilityRequestsNode : BTNode
                     requirement.RequirementId,
                     ctx.ProductId,
                     capabilityDescription: descReq,
-                    capabilityContainer: requirement.CapabilityContainer);
+                    capabilityContainer: requirement.CapabilityContainer,
+                    assetLocation: ctx.AssetLocation);
 
                 var cfp = cfpMessage.ToI40Message();
                 if (!cfpsByTarget.TryGetValue(tgtModule, out var list))
@@ -378,6 +404,16 @@ public class DispatchCapabilityRequestsNode : BTNode
                     requirement.Capability,
                     requirement.RequirementId,
                     topic);
+            }
+            
+            if (sequentialCoordinator != null
+                && dispatchedAny
+                && sequentialRequirementWait > TimeSpan.Zero
+                && !string.IsNullOrWhiteSpace(requirement.RequirementId))
+            {
+                await sequentialCoordinator
+                    .WaitForCompletionAsync(requirement.RequirementId, sequentialRequirementWait, Logger)
+                    .ConfigureAwait(false);
             }
         }
 

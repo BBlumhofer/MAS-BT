@@ -50,7 +50,8 @@ public class SendCapabilityOfferNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var topic = $"/{ns}/{moduleId}/PlanningAgent/OfferResponse";
+        // Select response topic based on request type: publish planning offers to Planning/OfferedCapability
+        var topic = $"/{ns}/Planning/OfferedCapability/Response";
 
         // IMPORTANT: The offer sequence is modeled explicitly (OfferedCapabilitySequence).
         // Do not embed nested sequences inside OfferedCapability.
@@ -192,6 +193,10 @@ public class SendCapabilityOfferNode : BTNode
             receiverId: request.RequesterId,
             receiverRole: null,
             conversationId: request.ConversationId).ConfigureAwait(false);
+
+        // Clear the current message to prevent reprocessing after sending offer
+        Context.Set("LastReceivedMessage", (I40Sharp.Messaging.Models.I40Message?)null);
+        Context.Set("CurrentMessage", (I40Sharp.Messaging.Models.I40Message?)null);
 
         Logger.LogInformation("SendCapabilityOffer: sent proposal {OfferId} for requirement {Requirement}", plan.OfferId, request.RequirementId);
         return NodeStatus.Success;

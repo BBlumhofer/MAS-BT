@@ -36,9 +36,7 @@ public class ModuleHolonSpawnTests
 
         Assert.Equal(NodeStatus.Success, await readConfig.Execute());
 
-        var transport = new InMemoryTransport();
-        var client = new MessagingClient(transport, "test/default");
-        await client.ConnectAsync();
+        var client = await MAS_BT.Tests.TestHelpers.TestTransportFactory.CreateClientAsync("test/default", "moduleholon-spawn");
         context.Set("MessagingClient", client);
 
         var launcher = new TestSubHolonLauncher(client);
@@ -84,7 +82,7 @@ internal class TestSubHolonLauncher : ISubHolonLauncher
         var builder = new I40MessageBuilder()
             .From(spec.AgentId ?? $"{spec.ModuleId}_SubHolon", roleName)
             .To($"{spec.ModuleId}_ModuleHolon", null)
-            .WithType("subHolonRegister")
+            .WithType("registerMessage")
             .WithConversationId(Guid.NewGuid().ToString());
 
         builder.AddElement(new Property<string>("ModuleId") { Value = new PropertyValue<string>(spec.ModuleId) });

@@ -1,0 +1,94 @@
+{
+  "frame": {
+    "sender": {
+      "identification": {
+        "id": "P101"
+      },
+      "role": {
+        "name": "PlanningHolon"
+      }
+    },
+    "receiver": {
+      "identification": {
+        "id": "_PHUKET/DispatchingAgent"
+      },
+      "role": {
+        "name": "DispatchingAgent"
+      }
+    },
+    "type": "requirement/TransportRequest",
+    "conversationId": "b6ee3e4e-a272-44e1-bba8-928e3e2cce48"
+  },
+  "interactionElements": [
+    {
+      "idShort": "TransportRequest",
+      "kind": "Instance",
+      "modelType": "SubmodelElementCollection",
+      "value": [
+        {
+          "idShort": "InstanceIdentifier",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "7125c79d-da9d-4861-8a54-d01232b9177a:1"
+        },
+        {
+          "idShort": "OfferedCapabilityIdentifier",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "P101:7125c79d-da9d-4861-8a54-d01232b9177a:1"
+        },
+        {
+          "idShort": "TransportStartStation",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": ""
+        },
+        {
+          "idShort": "TransportGoalStation",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "Drill"
+        },
+        {
+          "idShort": "IdentifierType",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "ProductId"
+        },
+        {
+          "idShort": "IdentifierValue",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "string",
+          "value": "https://smartfactory.de/shells/LG3JsASu4_"
+        },
+        {
+          "idShort": "Amount",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "int",
+          "value": "1"
+        },
+        {
+          "idShort": "EstimatedTransportTime",
+          "kind": "Instance",
+          "modelType": "Property",
+          "valueType": "double",
+          "value": "0"
+        },
+        {
+          "idShort": "CapabilitiesSequence",
+          "kind": "Instance",
+          "modelType": "SubmodelElementList",
+          "orderRelevant": false,
+          "value": []
+        }
+      ]
+    }
+  ]
+}

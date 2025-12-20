@@ -6,6 +6,7 @@ using AAS_Sharp_Client.Models.Messages;
 using AasSharpClient.Models.Messages;
 using BaSyx.Models.AdminShell;
 using I40Sharp.Messaging.Models;
+using MAS_BT.Tools;
 
 namespace MAS_BT
 {
@@ -64,6 +65,45 @@ namespace MAS_BT
                             .Distinct(StringComparer.OrdinalIgnoreCase)
                             .ToList();
                     }
+                    else
+                    {
+                        // Fallback: try to extract Capabilities sub-collection manually from the RegisterMessage element
+                        try
+                        {
+                            var capsCol = regCollection.Value?.Value?.OfType<SubmodelElementCollection>()
+                                .FirstOrDefault(c => string.Equals(c.IdShort, "Capabilities", StringComparison.OrdinalIgnoreCase));
+                            if (capsCol != null && capsCol.Value != null)
+                            {
+                                var list = new List<string>();
+                                foreach (var item in capsCol.Value.Value ?? Enumerable.Empty<ISubmodelElement>())
+                                {
+                                    if (item is Property p)
+                                    {
+                                        string? val = null;
+
+                                        // prefer AAS-Sharp IValue usage when available
+                                        if (p.Value?.Value is BaSyx.Models.AdminShell.IValue inner)
+                                        {
+                                            val = JsonFacade.ToStringValue(inner.Value);
+                                        }
+                                        else
+                                        {
+                                            // best-effort fallback to stringifying the raw value
+                                            val = JsonFacade.ToStringValue(p.Value?.Value ?? (object?)p.Value);
+                                        }
+
+                                        if (!string.IsNullOrWhiteSpace(val)) list.Add(val);
+                                    }
+                                }
+
+                                if (list.Count > 0)
+                                {
+                                    info.Capabilities = list.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+                                }
+                            }
+                        }
+                        catch { /* best-effort fallback */ }
+                    }
                 }
                 catch
                 {
@@ -99,11 +139,21 @@ namespace MAS_BT
     {
         private readonly Dictionary<string, DispatchingModuleInfo> _modules = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<string, HashSet<string>> _capabilityIndex = new(StringComparer.OrdinalIgnoreCase);
+        private readonly object _sync = new();
 
         private readonly ConcurrentDictionary<string, string> _capabilityDescriptions = new(StringComparer.OrdinalIgnoreCase);
         private readonly ConcurrentDictionary<string, double> _capabilitySimilarityCache = new(StringComparer.OrdinalIgnoreCase);
 
-        public IReadOnlyCollection<DispatchingModuleInfo> Modules => _modules.Values;
+        public IReadOnlyCollection<DispatchingModuleInfo> Modules
+        {
+            get
+            {
+                lock (_sync)
+                {
+                    return _modules.Values.ToList();
+                }
+            }
+        }
 
         public bool TryGetCapabilityDescription(string capability, out string description)
         {
@@ -165,19 +215,23 @@ namespace MAS_BT
             if (string.IsNullOrWhiteSpace(module.ModuleId))
                 return;
 
-            if (_modules.TryGetValue(module.ModuleId, out var existing))
+            lock (_sync)
             {
-                RemoveFromIndex(existing);
+                if (_modules.TryGetValue(module.ModuleId, out var existing))
+                {
+                    // keep index consistent
+                    RemoveFromIndex(existing);
 
-                // Registration updates typically do not include inventory.
-                // Preserve the last known inventory snapshot to avoid brief 0/0 resets
-                // when a module sends a periodic registration heartbeat.
-                module.InventoryFree = existing.InventoryFree;
-                module.InventoryOccupied = existing.InventoryOccupied;
+                    // Registration updates typically do not include inventory.
+                    // Preserve the last known inventory snapshot to avoid brief 0/0 resets
+                    // when a module sends a periodic registration heartbeat.
+                    module.InventoryFree = existing.InventoryFree;
+                    module.InventoryOccupied = existing.InventoryOccupied;
+                }
+
+                _modules[module.ModuleId] = module;
+                AddToIndex(module);
             }
-
-            _modules[module.ModuleId] = module;
-            AddToIndex(module);
         }
 
         public void UpsertInventory(string moduleId, int free, int occupied, DateTime? seenAtUtc = null)
@@ -189,22 +243,25 @@ namespace MAS_BT
 
             var now = seenAtUtc ?? DateTime.UtcNow;
 
-            if (!_modules.TryGetValue(moduleId, out var existing))
+            lock (_sync)
             {
-                existing = new DispatchingModuleInfo { ModuleId = moduleId };
-            }
-            else
-            {
-                // keep capability index consistent if we replace
-                RemoveFromIndex(existing);
-            }
+                if (!_modules.TryGetValue(moduleId, out var existing))
+                {
+                    existing = new DispatchingModuleInfo { ModuleId = moduleId };
+                }
+                else
+                {
+                    // keep capability index consistent if we replace
+                    RemoveFromIndex(existing);
+                }
 
-            existing.InventoryFree = free;
-            existing.InventoryOccupied = occupied;
-            existing.LastSeenUtc = now;
+                existing.InventoryFree = free;
+                existing.InventoryOccupied = occupied;
+                existing.LastSeenUtc = now;
 
-            _modules[moduleId] = existing;
-            AddToIndex(existing);
+                _modules[moduleId] = existing;
+                AddToIndex(existing);
+            }
         }
 
         public List<string> PruneStaleModules(TimeSpan timeout, DateTime? nowUtc = null, string? excludeModuleId = null)
@@ -223,12 +280,15 @@ namespace MAS_BT
                 .Distinct(StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            foreach (var id in staleIds)
+            lock (_sync)
             {
-                if (_modules.TryGetValue(id, out var existing))
+                foreach (var id in staleIds)
                 {
-                    RemoveFromIndex(existing);
-                    _modules.Remove(id);
+                    if (_modules.TryGetValue(id, out var existing))
+                    {
+                        RemoveFromIndex(existing);
+                        _modules.Remove(id);
+                    }
                 }
             }
 
@@ -237,39 +297,56 @@ namespace MAS_BT
 
         public IReadOnlyCollection<string> FindModulesForCapability(string capability)
         {
-            if (string.IsNullOrWhiteSpace(capability))
-                return _modules.Keys.ToList();
+            lock (_sync)
+            {
+                if (string.IsNullOrWhiteSpace(capability))
+                    return _modules.Keys.ToList();
 
-            if (_capabilityIndex.TryGetValue(capability, out var set))
-                return set.ToList();
+                if (_capabilityIndex.TryGetValue(capability, out var set))
+                    return set.ToList();
 
-            return Array.Empty<string>();
+                return Array.Empty<string>();
+            }
         }
 
-        public IReadOnlyCollection<string> AllModuleIds() => _modules.Keys.ToList();
+        public IReadOnlyCollection<string> AllModuleIds()
+        {
+            lock (_sync)
+            {
+                return _modules.Keys.ToList();
+            }
+        }
 
         private void AddToIndex(DispatchingModuleInfo module)
         {
-            foreach (var cap in module.Capabilities.Where(c => !string.IsNullOrWhiteSpace(c)))
+            // caller should hold _sync for write operations; protect anyway
+            lock (_sync)
             {
-                if (!_capabilityIndex.TryGetValue(cap, out var set))
+                foreach (var cap in module.Capabilities.Where(c => !string.IsNullOrWhiteSpace(c)))
                 {
-                    set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-                    _capabilityIndex[cap] = set;
+                    if (!_capabilityIndex.TryGetValue(cap, out var set))
+                    {
+                        set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+                        _capabilityIndex[cap] = set;
+                    }
+                    set.Add(module.ModuleId);
                 }
-                set.Add(module.ModuleId);
             }
         }
 
         private void RemoveFromIndex(DispatchingModuleInfo module)
         {
-            foreach (var cap in module.Capabilities.Where(c => !string.IsNullOrWhiteSpace(c)))
+            // caller should hold _sync for write operations; protect anyway
+            lock (_sync)
             {
-                if (_capabilityIndex.TryGetValue(cap, out var set))
+                foreach (var cap in module.Capabilities.Where(c => !string.IsNullOrWhiteSpace(c)))
                 {
-                    set.Remove(module.ModuleId);
-                    if (set.Count == 0)
-                        _capabilityIndex.Remove(cap);
+                    if (_capabilityIndex.TryGetValue(cap, out var set))
+                    {
+                        set.Remove(module.ModuleId);
+                        if (set.Count == 0)
+                            _capabilityIndex.Remove(cap);
+                    }
                 }
             }
         }

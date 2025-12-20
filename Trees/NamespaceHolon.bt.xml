@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="NamespaceHolon">
+  <BehaviorTree ID="NamespaceHolon">
+    <Sequence name="NamespaceHolonRoot">
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
+      <SetBlackboardValue name="BindModuleId" Key="ModuleId" Value="{config.Agent.ModuleId}" />
+      <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
+      <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
+      <SetBlackboardValue name="BindExternalNamespace" Key="ExternalNamespace" Value="{config.ExternalNamespace}" />
+
+      <ConnectToMessagingBroker
+        name="ConnectMqtt"
+        BrokerHost="{config.MQTT.Broker}"
+        BrokerPort="{config.MQTT.Port}"
+        DefaultTopic="{config.MQTT.TopicPrefix}/namespace"
+        TimeoutMs="10000"
+        ClientId="{config.Agent.AgentId}_Namespace" />
+
+      <ConfigureNamespaceTopicBridge name="ConfigureBridge" />
+
+      <SpawnNamespaceSubHolons name="SpawnNamespaceSubHolons" />
+      <WaitForRegistration name="AwaitSubHolons"
+               TimeoutSeconds="45"
+               ExpectedCount="{config.NamespaceHolon.ExpectedSubHolons}"
+               ExpectedAgentsPath="config.NamespaceHolon.ExpectedSubAgentIds"
+               ExpectedTypes="registerMessage"
+               Namespace="{Namespace}"
+               TopicOverride="/{Namespace}/register" />
+
+      <RegisterAgent name="RegisterNamespaceHolon" ParentAgent="{config.Namespace}" />
+
+      <Parallel name="NamespaceLoops">
+        <Repeat name="HeartbeatLoop" num_cycles="-1">
+          <Sequence name="HeartbeatSequence">
+            <RegisterAgent name="NamespaceHeartbeat" ParentAgent="{config.Namespace}" />
+            <Wait name="HeartbeatWait" DelayMs="{config.Agent.RegistrationIntervalMs}" />
+          </Sequence>
+        </Repeat>
+      </Parallel>
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Action ID="ReadConfig">
+      <input_port name="configPath" />
+    </Action>
+    <Action ID="SetBlackboardValue">
+      <input_port name="Key" />
+      <input_port name="Value" />
+      <input_port name="ValueType" default="string" />
+    </Action>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost" />
+      <input_port name="BrokerPort" />
+      <input_port name="DefaultTopic" />
+      <input_port name="TimeoutMs" />
+      <input_port name="ClientId" />
+    </Action>
+    <Action ID="ConfigureNamespaceTopicBridge">
+      <input_port name="ManufacturingSuffix" />
+      <input_port name="TransportSuffix" />
+    </Action>
+    <Action ID="SpawnSubHolons">
+      <input_port name="SubHolonIds" />
+    </Action>
+    <Action ID="WaitForRegistration">
+      <input_port name="ExpectedAgents" />
+      <input_port name="ExpectedAgentsPath" />
+      <input_port name="ExpectedTypes" />
+      <input_port name="Namespace" />
+      <input_port name="ExpectedCount" default="0" />
+      <input_port name="TimeoutSeconds" default="20" />
+      <input_port name="TopicOverride" />
+    </Action>
+    <Action ID="RegisterAgent">
+      <input_port name="ParentAgent" />
+      <input_port name="Namespace" />
+    </Action>
+    <Action ID="Wait">
+      <input_port name="DelayMs" default="1000" />
+    </Action>
+  </TreeNodesModel>
+</root>

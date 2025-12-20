@@ -1,0 +1,52 @@
+{
+  "Agent": {
+    "AgentId": "_PHUKET",
+    "Role": "NamespaceHolon",
+    "AgentType": "NamespaceHolon",
+    "ModuleId": "_PHUKET",
+    "InitializationTree": "Trees/NamespaceHolon.bt.xml",
+    "RegistrationIntervalMs": 5000
+  },
+  "Namespace": "_PHUKET",
+  "ExternalNamespace": "_PHUKET",
+  "MQTT": {
+    "Broker": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "ClientId": "NamespaceHolon_phuket",
+    "UseTLS": false,
+    "UseAuth": false,
+    "TopicPrefix": "i40/production",
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000
+  },
+  "AAS": {
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
+    "Timeout": 10000
+  },
+  "Neo4j": {
+    "Uri": "neo4j://192.168.178.30:7687",
+    "Username": "neo4j",
+    "Password": "testtest",
+    "Database": "neo4j"
+  },
+  "NamespaceHolon": {
+    "ManufacturingAgentId": "ManufacturingDispatcher_phuket",
+    "TransportAgentId": "TransportManager_phuket",
+    "ExpectedSubHolons": 2,
+    "ExpectedSubAgentIds": [
+      "ManufacturingDispatcher_phuket",
+      "TransportManager_phuket"
+    ]
+  },
+  "SubHolons": [
+    "ManufacturingDispatcher.json",
+    "TransportManager.json",
+    "SimilarityAnalysisAgent.json"
+  ]
+  }
+

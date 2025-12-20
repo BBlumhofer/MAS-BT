@@ -24,11 +24,26 @@ public class ReplyToDispatcherNode : BTNode
             return NodeStatus.Failure;
         }
 
-        var topic = Resolve(ResponseTopicTemplate);
-        if (string.IsNullOrWhiteSpace(topic))
+        // Resolve topic: prefer template but fall back to selecting ProcessChain vs ManufacturingSequence
+        var templateResolved = Resolve(ResponseTopicTemplate);
+        string topic;
+        if (!string.IsNullOrWhiteSpace(templateResolved))
         {
-            Logger.LogError("ReplyToDispatcher: ResponseTopicTemplate empty");
-            return NodeStatus.Failure;
+            // If template references ProcessChain but message is ManufacturingSequence, normalize accordingly
+            var incomingType = msg.Frame?.Type ?? string.Empty;
+            if (incomingType.IndexOf("ManufacturingSequence", StringComparison.OrdinalIgnoreCase) >= 0 && templateResolved.IndexOf("ProcessChain", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                topic = templateResolved.Replace("ProcessChain", "ManufacturingSequence");
+            }
+            else
+            {
+                topic = templateResolved;
+            }
+        }
+        else
+        {
+            var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
+            topic = $"/{ns}/ManufacturingSequence/Response";
         }
 
         await client.PublishAsync(msg, topic);

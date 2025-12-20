@@ -23,7 +23,6 @@ namespace MAS_BT.Tests;
 public class ProcessChainCapabilityMatchmakingTests : IDisposable
 {
     private static readonly MessageSerializer Serializer = new();
-    private readonly InMemoryTransport _transport = new();
     private readonly List<MessagingClient> _clients = new();
 
     private static string ResolveTestFile(string name)
@@ -38,9 +37,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
 
     private async Task<MessagingClient> CreateClientAsync(string defaultTopic)
     {
-        IMessagingTransport transport = _transport;
-        var client = new MessagingClient(transport, defaultTopic);
-        await client.ConnectAsync();
+        var client = await MAS_BT.Tests.TestHelpers.TestTransportFactory.CreateClientAsync(defaultTopic, "processchain-client");
         _clients.Add(client);
         return client;
     }
@@ -62,6 +59,9 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
     {
         var ns = $"test{Guid.NewGuid():N}";
         var processChain = LoadMessage("ProcessChain.json");
+
+        var expectedProductId = processChain.Frame?.Sender?.Identification?.Id ?? string.Empty;
+        Assert.False(string.IsNullOrWhiteSpace(expectedProductId));
 
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
@@ -100,7 +100,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         context.Set("MessagingClient", dispatchClient);
 
         var moduleClient = await CreateClientAsync("module/logs");
-        var offerTopic = $"/{ns}/Offer";
+        var offerTopic = $"/{ns}/ManufacturingSequence/Request";
         await moduleClient.SubscribeAsync(offerTopic);
 
         var parseNode = new ParseProcessChainRequestNode { Context = context };
@@ -108,10 +108,13 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         var dispatchNode = new DispatchCapabilityRequestsNode { Context = context };
 
         Assert.Equal(NodeStatus.Success, await parseNode.Execute());
+        Assert.Equal(expectedProductId, context.Get<string>("ConversationId"));
         Assert.Equal(NodeStatus.Success, await checkNode.Execute());
 
         var negotiation = context.Get<ProcessChainNegotiationContext>("ProcessChain.Negotiation")
                          ?? throw new InvalidOperationException("Negotiation context missing after parse");
+        Assert.Equal(expectedProductId, negotiation.ProductId);
+        Assert.Equal(expectedProductId, negotiation.ConversationId);
 
         var expectedCount = negotiation.Requirements.Count;
         Assert.True(expectedCount > 0, "Process chain did not contain requirements");
@@ -138,6 +141,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         lock (offers)
         {
             Assert.Equal(expectedCount, offers.Count);
+            Assert.All(offers, offer => Assert.Equal(expectedProductId, offer.Frame?.ConversationId));
         }
     }
 
@@ -147,14 +151,11 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         var ns = $"test{Guid.NewGuid():N}";
         var conv = Guid.NewGuid().ToString();
 
-        var transport = new InMemoryTransport();
-        var dispatchingClient = new MessagingClient(transport, "dispatch/default");
-        var moduleClient = new MessagingClient(transport, "module/default");
-        await dispatchingClient.ConnectAsync();
-        await moduleClient.ConnectAsync();
+        var dispatchingClient = await MAS_BT.Tests.TestHelpers.TestTransportFactory.CreateClientAsync("dispatch/default", "dispatch-default");
+        var moduleClient = await MAS_BT.Tests.TestHelpers.TestTransportFactory.CreateClientAsync("module/default", "module-default");
 
         // Dispatcher subscribes to the shared Offer topic.
-        await dispatchingClient.SubscribeAsync($"/{ns}/Offer");
+        await dispatchingClient.SubscribeAsync($"/{ns}/ManufacturingSequence/Response");
 
         // Publish proposals BEFORE CollectCapabilityOffer registers its conversation callback.
         var offeredA = new OfferedCapability("OfferedCapability");
@@ -209,8 +210,8 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
             .AddElement(offeredB)
             .Build();
 
-        await moduleClient.PublishAsync(msgA, $"/{ns}/Offer");
-        await moduleClient.PublishAsync(msgB, $"/{ns}/Offer");
+        await moduleClient.PublishAsync(msgA, $"/{ns}/ManufacturingSequence/Response");
+        await moduleClient.PublishAsync(msgB, $"/{ns}/ManufacturingSequence/Response");
 
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
@@ -243,6 +244,9 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         var ns = $"test{Guid.NewGuid():N}";
         var processChain = LoadMessage("ProcessChain.json");
 
+        var expectedProductId = processChain.Frame?.Sender?.Identification?.Id ?? string.Empty;
+        Assert.False(string.IsNullOrWhiteSpace(expectedProductId));
+
         var context = new BTContext(NullLogger<BTContext>.Instance)
         {
             AgentId = "DispatchingAgent_test",
@@ -261,13 +265,19 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         context.Set("MessagingClient", dispatchClient);
 
         var listener = await CreateClientAsync("listener/logs");
-        var responseTopic = $"/{ns}/ProcessChain";
+        var responseTopic = $"/{ns}/ManufacturingSequence/Response";
         await listener.SubscribeAsync(responseTopic);
 
+        var expectedConversationId = processChain.Frame?.ConversationId ?? string.Empty;
         var responseTcs = new TaskCompletionSource<I40Message?>(TaskCreationOptions.RunContinuationsAsynchronously);
         listener.OnMessage(msg =>
         {
-            if (string.Equals(msg.Frame?.ConversationId, processChain.Frame?.ConversationId, StringComparison.Ordinal))
+            if (string.IsNullOrWhiteSpace(expectedConversationId))
+            {
+                return;
+            }
+
+            if (string.Equals(msg.Frame?.ConversationId, expectedConversationId, StringComparison.Ordinal))
             {
                 responseTcs.TrySetResult(msg);
             }
@@ -278,6 +288,8 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         var sendNode = new SendProcessChainResponseNode { Context = context };
 
         Assert.Equal(NodeStatus.Success, await parseNode.Execute());
+        expectedConversationId = context.Get<string>("ConversationId") ?? expectedConversationId;
+        Assert.Equal(expectedProductId, expectedConversationId);
         Assert.Equal(NodeStatus.Failure, await checkNode.Execute());
         Assert.Equal(NodeStatus.Success, await sendNode.Execute());
 
@@ -287,6 +299,7 @@ public class ProcessChainCapabilityMatchmakingTests : IDisposable
         var response = await responseTcs.Task;
         Assert.NotNull(response);
         Assert.Equal(I40MessageTypes.REFUSE_PROPOSAL, response!.Frame?.Type);
+        Assert.Equal(expectedProductId, response.Frame?.ConversationId);
 
         var reason = ExtractProperty(response, "Reason");
         Assert.Equal("No registered agent implements the required capabilities", reason);

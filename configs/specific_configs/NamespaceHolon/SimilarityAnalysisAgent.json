@@ -11,7 +11,7 @@
   },
   "Namespace": "_PHUKET",
   "MQTT": {
-    "Broker": "192.168.178.30",
+    "Broker": "localhost",
     "Port": 1883,
     "Username": "mqttuser",
     "Password": "mqttpass",

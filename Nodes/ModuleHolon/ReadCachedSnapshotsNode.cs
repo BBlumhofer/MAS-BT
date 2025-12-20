@@ -21,7 +21,7 @@ public class ReadCachedSnapshotsNode : BTNode
         if (storageUnits != null && storageUnits.Count > 0)
         {
             Context.Set("ModuleInventory", storageUnits);
-            Logger.LogInformation("ReadCachedSnapshots: loaded {Count} storage units from cache for {Module}", storageUnits.Count, moduleId);
+            Logger.LogDebug("ReadCachedSnapshots: loaded {Count} storage units from cache for {Module}", storageUnits.Count, moduleId);
             try
             {
                 var first = storageUnits[0];
@@ -40,7 +40,7 @@ public class ReadCachedSnapshotsNode : BTNode
         if (neighbors != null)
         {
             Context.Set("Neighbors", neighbors);
-            Logger.LogInformation("ReadCachedSnapshots: loaded {Count} neighbors from cache for {Module}", neighbors.Count, moduleId);
+            Logger.LogDebug("ReadCachedSnapshots: loaded {Count} neighbors from cache for {Module}", neighbors.Count, moduleId);
         }
 
         return Task.FromResult(NodeStatus.Success);

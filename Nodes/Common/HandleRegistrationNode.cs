@@ -51,13 +51,19 @@ namespace MAS_BT.Nodes.Common
             if (info.Capabilities.Count > 0)
             {
                 Logger.LogInformation(
-                    "HandleRegistration: registered/updated sub-agent {ModuleId} with capabilities: [{Capabilities}]",
+                    "HandleRegistration: registered/updated sub-agent '{ModuleId}' with {Count} capabilities: [{Capabilities}]",
                     moduleId,
+                    info.Capabilities.Count,
                     string.Join(", ", info.Capabilities));
             }
             else
             {
-                Logger.LogInformation("HandleRegistration: registered/updated sub-agent {ModuleId} (no capabilities)", moduleId);
+                Logger.LogWarning("HandleRegistration: registered/updated sub-agent '{ModuleId}' with ZERO capabilities. " +
+                               "Sender: {SenderId}, Role: {SenderRole}. " +
+                               "This may indicate that the agent has not yet loaded its AAS submodels or capability extraction failed.",
+                               moduleId,
+                               message.Frame?.Sender?.Identification?.Id ?? "<unknown>",
+                               message.Frame?.Sender?.Role?.Name ?? "<unknown>");
             }
 
             return Task.FromResult(NodeStatus.Success);

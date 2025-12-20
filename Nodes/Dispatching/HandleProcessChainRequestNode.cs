@@ -141,7 +141,7 @@ namespace MAS_BT.Nodes.Dispatching
             };
 
             var messageType = hasCandidates ? I40MessageTypes.PROPOSAL : I40MessageTypes.REFUSE_PROPOSAL;
-            var responseTopic = $"/{ns}/ProcessChain";
+            var responseTopic = $"/{ns}/ManufacturingSequence/Response";
 
             try
             {

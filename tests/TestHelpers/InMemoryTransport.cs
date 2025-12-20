@@ -13,6 +13,15 @@ public class InMemoryTransport : IMessagingTransport
     private static readonly ConcurrentDictionary<string, ConcurrentBag<InMemoryTransport>> PatternSubscriptions = new(StringComparer.OrdinalIgnoreCase);
     private bool _connected;
 
+    /// <summary>
+    /// Clears all subscription state across transports. Useful to isolate integration tests.
+    /// </summary>
+    public static void ResetAll()
+    {
+        ExactSubscriptions.Clear();
+        PatternSubscriptions.Clear();
+    }
+
     public event EventHandler<MessageReceivedEventArgs>? MessageReceived;
     public event EventHandler? Connected;
     public event EventHandler? Disconnected;

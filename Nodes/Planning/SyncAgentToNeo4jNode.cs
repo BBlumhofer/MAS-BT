@@ -192,7 +192,7 @@ REMOVE a:DispatchingAgent:ModuleHolon:PlanningHolon:ExecutionHolon:ProductAgent
 
             if (result != null)
             {
-                Logger.LogInformation(
+                Logger.LogDebug(
                     "SyncAgentToNeo4j: Synced agent {AgentId} (type={Type}, parent={Parent})",
                     agentId,
                     agentType,

@@ -18,7 +18,7 @@
 
       <InitializeAgentState name="InitDispatchState" Role="{config.Agent.Role}" />
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
-      <SubscribeToTopic name="SubscribeTransportPlan" Topic="/{Namespace}/TransportPlan" />
+      <SubscribeToTopic name="SubscribeTransportPlan" Topic="/{Namespace}/TransportPlan/Request" />
       <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
       <SyncAgentToNeo4j name="SyncToGraph" />
 
@@ -52,14 +52,16 @@
         <Repeat name="ProcessChainLoop" num_cycles="-1">
           <Fallback name="ProcessChainOrIdle">
             <Sequence name="HandleProcessChain">
-              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal,callForProposal/ProcessChain" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
+              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequence/Request" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
               <SetBlackboardValue name="BindProcessChainRequestType" Key="ProcessChain.RequestType" Value="ProcessChain" />
               <ParseProcessChainRequest name="ParseProcessChainRequest" />
               <Fallback name="CapabilityMatchmaking">
                 <Sequence name="CapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
-                  <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
-                  <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
+                  <Parallel name="ProcessChainNegotiation" SuccessThreshold="2">
+                    <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
+                    <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
+                  </Parallel>
                   <BuildProcessChainResponse name="BuildProcessChainResponse" />
                   <SendProcessChainResponse name="SendProcessChainResponse" />
                 </Sequence>
@@ -76,14 +78,16 @@
         <Repeat name="ManufacturingSequenceLoop" num_cycles="-1">
           <Fallback name="MfgSeqOrIdle">
             <Sequence name="HandleMfgSeq">
-              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequenceRequest" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
+              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequence/Request" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
               <SetBlackboardValue name="BindManufacturingRequestType" Key="ProcessChain.RequestType" Value="ManufacturingSequence" />
               <ParseProcessChainRequest name="ParseManufacturingSequenceRequest" />
               <Fallback name="MfgCapabilityMatchmaking">
                 <Sequence name="MfgCapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespaceMfg" />
-                  <DispatchCapabilityRequests name="DispatchCapabilityRequestsMfg" />
-                  <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
+                  <Parallel name="ManufacturingNegotiation" SuccessThreshold="2">
+                    <DispatchCapabilityRequests name="DispatchCapabilityRequestsMfg" />
+                    <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
+                  </Parallel>
                   <BuildProcessChainResponse name="BuildManufacturingSequenceResponse" />
                   <SendProcessChainResponse name="SendManufacturingSequenceResponse" />
                 </Sequence>
@@ -113,7 +117,7 @@
             <Sequence name="HandleTransportPlan">
               <WaitForMessage name="AwaitTransportPlan"
                               ExpectedTypes="requirement/TransportRequest"
-                              ExpectedTopic="/{Namespace}/TransportPlan"
+                              ExpectedTopic="/{Namespace}/TransportPlan/Request"
                               TimeoutSeconds="10" />
               <HandleTransportPlanRequest name="HandleTransportPlanRequest" />
               <Wait name="TransportIdle" DelayMs="300" />

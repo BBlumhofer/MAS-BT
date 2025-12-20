@@ -18,6 +18,7 @@
             <LoadProductIdentificationSubmodel name="LoadProductIdentification" SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}" TargetIdShort="ProductIdentification" />
             <LoadBillOfMaterialSubmodel name="LoadBillOfMaterial" SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}" TargetIdShort="BillOfMaterial" />
             <LoadCapabilityDescriptionSubmodel name="LoadCapabilityDescription" SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}" />
+            <LoadAssetLocationSubmodel name="LoadAssetLocation" SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}" />
             <SendProductSummaryLog name="PublishProductSummary" LogLevel="INFO" />
           </Sequence>
           <ForceFailure name="InitFailureHandler">
@@ -44,16 +45,26 @@
             <Sequence name="RequestNewProcessChain">
               <SendProcessChainRequest name="SendProcessChainRequest" />
               <!-- Expect negotiation reply: 'proposal' or 'refuseProposal' for the callForProposal pattern -->
-              <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="proposal,refuseProposal" ExpectedConversationId="{ConversationId}" ExpectedTopic="/{Namespace}/ProcessChain" TimeoutSeconds="30000" />
-              <UploadSubmodel name="UploadProcessChain"
-                             ContextKey="ProcessChain.Result"
-                             SubmodelIdPrefix="processChain"
-                             SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
-                             ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}"
-                             AddReferenceToShell="true" />
-              <SetBlackboardValue name="RememberProcessChainSubmodelId"
-                                  Key="ProcessChain.SubmodelId"
-                                  Value="{Submodel.LastUploadedId}" />
+              <WaitForMessage name="AwaitProcessChainResponse" ExpectedTypes="proposal,refuseProposal" ExpectedConversationId="{ConversationId}" ExpectedTopic="/{Namespace}/ManufacturingSequence/Response" TimeoutSeconds="30000" />
+              <Fallback name="HandleProcessChainResponseOrRefusal">
+                <Sequence name="ProcessChainProposalPath">
+                  <UploadSubmodel name="UploadProcessChain"
+                                 ContextKey="ProcessChain.Result"
+                                 SubmodelIdPrefix="processChain"
+                                 SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
+                                 ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}"
+                                 AddReferenceToShell="true" />
+                  <SetBlackboardValue name="RememberProcessChainSubmodelId"
+                                      Key="ProcessChain.SubmodelId"
+                                      Value="{Submodel.LastUploadedId}" />
+                </Sequence>
+                <Sequence name="ProcessChainRefusalPath">
+                  <SendLogMessage name="LogProcessChainRefusal" LogLevel="WARN" Message="Received refusal for ProcessChain request; no process chain uploaded" Topic="{config.Agent.AgentId}/logs" />
+                  <SetBlackboardValue name="RememberProcessChainSubmodelIdOnRefusal"
+                                      Key="ProcessChain.SubmodelId"
+                                      Value="" />
+                </Sequence>
+              </Fallback>
             </Sequence>
           </Fallback>
         </Sequence>
@@ -63,22 +74,32 @@
                            ExpectedValue="false"
                            DefaultValue="false" />
           <SendManufacturingRequest name="SendManufacturingRequest"
-                                    Topic="/{Namespace}/ManufacturingSequenceRequest" />
+                                    Topic="/{Namespace}/ManufacturingSequence/Request" />
           <WaitForMessage name="AwaitManufacturingSequenceResponse"
                           ExpectedTypes="proposal,refuseProposal"
-                          ExpectedTopic="/{Namespace}/ManufacturingSequence"
+                          ExpectedTopic="/{Namespace}/ManufacturingSequence/Response"
                           ExpectedConversationId="{ManufacturingRequest.ConversationId}"
                           TimeoutSeconds="30000" />
-          <UploadSubmodel name="UploadManufacturingSequence"
-                          ContextKey="ManufacturingSequence.Result"
-                          SubmodelIdShort="ManufacturingSequence"
-                          SubmodelIdPrefix="manufacturingSequence"
-                          SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
-                          ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}"
-                          AddReferenceToShell="true" />
-          <SetBlackboardValue name="RememberManufacturingSequenceSubmodelId"
-                              Key="ManufacturingSequence.SubmodelId"
-                              Value="{Submodel.LastUploadedId}" />
+          <Fallback name="HandleManufacturingResponseOrRefusal">
+            <Sequence name="ManufacturingProposalPath">
+              <UploadSubmodel name="UploadManufacturingSequence"
+                              ContextKey="ManufacturingSequence.Result"
+                              SubmodelIdShort="ManufacturingSequence"
+                              SubmodelIdPrefix="manufacturingSequence"
+                              SubmodelRepositoryEndpoint="{config.AAS.SubmodelRepositoryEndpoint}"
+                              ShellRepositoryEndpoint="{config.AAS.ShellRepositoryEndpoint}"
+                              AddReferenceToShell="true" />
+              <SetBlackboardValue name="RememberManufacturingSequenceSubmodelId"
+                                  Key="ManufacturingSequence.SubmodelId"
+                                  Value="{Submodel.LastUploadedId}" />
+            </Sequence>
+            <Sequence name="ManufacturingRefusalPath">
+              <SendLogMessage name="LogManufacturingRefusal" LogLevel="WARN" Message="Received refusal for ManufacturingSequence request; no manufacturing sequence uploaded" Topic="{config.Agent.AgentId}/logs" />
+              <SetBlackboardValue name="RememberManufacturingSequenceSubmodelIdOnRefusal"
+                                  Key="ManufacturingSequence.SubmodelId"
+                                  Value="" />
+            </Sequence>
+          </Fallback>
         </Sequence>
       </Fallback>
     </Sequence>
@@ -133,6 +154,15 @@
       <input_port name="Message" />
       <input_port name="ModuleId" />
       <input_port name="Topic" />
+    </Action>
+    <Action ID="UploadSubmodel">
+      <input_port name="ContextKey" />
+      <input_port name="SubmodelId" />
+      <input_port name="SubmodelIdShort" />
+      <input_port name="SubmodelIdPrefix" />
+      <input_port name="SubmodelRepositoryEndpoint" />
+      <input_port name="ShellRepositoryEndpoint" />
+      <input_port name="AddReferenceToShell" />
     </Action>
     <Decorator ID="ForceFailure" />
     <Action ID="SendProcessChainRequest" />

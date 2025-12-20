@@ -1,0 +1,179 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root BTCPP_format="4" main_tree_to_execute="ManufacturingDispatcherHolon">
+  <BehaviorTree ID="ManufacturingDispatcherHolon">
+    <Sequence name="ManufacturingDispatcherRoot">
+      <ReadConfig name="LoadConfig" configPath="{config.Path}" />
+      <SetBlackboardValue name="BindAgentId" Key="AgentId" Value="{config.Agent.AgentId}" />
+      <SetBlackboardValue name="BindAgentRole" Key="AgentRole" Value="{config.Agent.Role}" />
+      <SetBlackboardValue name="BindNamespace" Key="Namespace" Value="{config.Namespace}" />
+      <InitNeo4j name="InitNeo4j" />
+
+      <ConnectToMessagingBroker
+        name="ConnectMqtt"
+        BrokerHost="{config.MQTT.Broker}"
+        BrokerPort="{config.MQTT.Port}"
+        DefaultTopic="{config.MQTT.TopicPrefix}/manufacturing"
+        TimeoutMs="10000"
+        ClientId="{config.Agent.AgentId}_ManufacturingDispatcher" />
+
+      <InitializeAgentState name="InitDispatchState" Role="{config.Agent.Role}" />
+      <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
+      <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
+      <SyncAgentToNeo4j name="SyncToGraph" />
+
+      <Parallel name="ManufacturingLoops">
+        <Repeat name="RegistrationLoop" num_cycles="-1">
+          <Fallback name="RegOrWait">
+            <Sequence name="HandleRegistration">
+              <WaitForMessage name="WaitRegistration" ExpectedTypes="registerMessage,moduleRegistration" TimeoutSeconds="10" />
+              <HandleRegistration name="HandleRegistration" />
+              <SyncAgentToNeo4j name="SyncRegisteredModule" />
+              <RegisterAgent name="RegisterAfterRegistration" ParentAgent="{config.Namespace}" />
+              <SyncAgentToNeo4j name="SyncDispatchingAgent" />
+              <Wait name="RegIdle" DelayMs="10000" />
+            </Sequence>
+            <Wait name="RegBackoff" DelayMs="10000" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="InventoryLoop" num_cycles="-1">
+          <Fallback name="InvOrWait">
+            <Sequence name="HandleInventory">
+              <WaitForMessage name="WaitInventory" ExpectedTypes="inventoryUpdate" TimeoutSeconds="5" />
+              <HandleInventoryUpdate name="HandleInventoryUpdate" />
+              <RegisterAgent name="RegisterAfterInventory" ParentAgent="{config.Namespace}" />
+              <Wait name="InvIdle" DelayMs="200" />
+            </Sequence>
+            <Wait name="InvBackoff" DelayMs="200" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="ProcessChainLoop" num_cycles="-1">
+          <Fallback name="ProcessChainOrIdle">
+            <Sequence name="HandleProcessChain">
+              <WaitForMessage name="AwaitProcessChain" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequence/Request" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
+              <SetBlackboardValue name="BindProcessChainRequestType" Key="ProcessChain.RequestType" Value="ProcessChain" />
+              <ParseProcessChainRequest name="ParseProcessChainRequest" />
+              <Fallback name="CapabilityMatchmaking">
+                <Sequence name="CapabilitiesAvailable">
+                  <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
+                  <Parallel name="ProcessChainNegotiation" SuccessThreshold="2">
+                    <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
+                    <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
+                  </Parallel>
+                  <BuildProcessChainResponse name="BuildProcessChainResponse" />
+                  <SendProcessChainResponse name="SendProcessChainResponse" />
+                </Sequence>
+                <Sequence name="CapabilitiesMissing">
+                  <SendProcessChainResponse name="SendProcessChainRefusal" />
+                </Sequence>
+              </Fallback>
+              <Wait name="ProcessChainIdle" DelayMs="{config.DispatchingAgent.ProcessChainIdleDelayMs}" />
+            </Sequence>
+            <Wait name="ProcessChainBackoff" DelayMs="{config.DispatchingAgent.ProcessChainBackoffDelayMs}" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="ManufacturingSequenceLoop" num_cycles="-1">
+          <Fallback name="MfgSeqOrIdle">
+            <Sequence name="HandleMfgSeq">
+              <WaitForMessage name="AwaitMfgSeq" ExpectedTypes="callForProposal,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/ManufacturingSequence/Request" TimeoutSeconds="{config.DispatchingAgent.CfPTimeoutSeconds}" />
+              <SetBlackboardValue name="BindManufacturingRequestType" Key="ProcessChain.RequestType" Value="ManufacturingSequence" />
+              <ParseProcessChainRequest name="ParseManufacturingSequenceRequest" />
+              <Fallback name="MfgCapabilityMatchmaking">
+                <Sequence name="MfgCapabilitiesAvailable">
+                  <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespaceMfg" />
+                  <Parallel name="ManufacturingNegotiation" SuccessThreshold="2">
+                    <DispatchCapabilityRequests name="DispatchCapabilityRequestsMfg" />
+                    <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
+                  </Parallel>
+                  <BuildProcessChainResponse name="BuildManufacturingSequenceResponse" />
+                  <SendProcessChainResponse name="SendManufacturingSequenceResponse" />
+                </Sequence>
+                <Sequence name="MfgCapabilitiesMissing">
+                  <SendProcessChainResponse name="SendManufacturingSequenceRefusal" />
+                </Sequence>
+              </Fallback>
+              <Wait name="MfgIdle" DelayMs="{config.DispatchingAgent.ManufacturingIdleDelayMs}" />
+            </Sequence>
+            <Wait name="MfgBackoff" DelayMs="{config.DispatchingAgent.ManufacturingBackoffDelayMs}" />
+          </Fallback>
+        </Repeat>
+
+        <Repeat name="BookStepLoop" num_cycles="-1">
+          <Fallback name="BookStepOrIdle">
+            <Sequence name="HandleBookStep">
+              <WaitForMessage name="AwaitBookStep" ExpectedTypes="bookStep" TimeoutSeconds="10" />
+              <HandleBookStepRequest name="HandleBookStepRequest" />
+              <Wait name="BookIdle" DelayMs="300" />
+            </Sequence>
+            <Wait name="BookBackoff" DelayMs="300" />
+          </Fallback>
+        </Repeat>
+        
+        <Repeat name="RegistrationHeartbeat" num_cycles="-1">
+          <Sequence name="RegistrationBeat">
+            <RegisterAgent name="RegisterDispatchingHeartbeat" ParentAgent="{config.Namespace}" />
+            <PublishAgentState name="PublishDispatchingState" PublishIntervalSeconds="30" Role="{config.Agent.Role}" />
+            <Wait name="PublishIdle" DelayMs="{config.Agent.RegistrationIntervalMs}" />
+          </Sequence>
+        </Repeat>
+      </Parallel>
+    </Sequence>
+  </BehaviorTree>
+
+  <TreeNodesModel>
+    <Action ID="ReadConfig">
+      <input_port name="configPath" />
+    </Action>
+    <Action ID="SetBlackboardValue">
+      <input_port name="Key" />
+      <input_port name="Value" />
+      <input_port name="ValueType" default="string" />
+    </Action>
+    <Action ID="ConnectToMessagingBroker">
+      <input_port name="BrokerHost" />
+      <input_port name="BrokerPort" />
+      <input_port name="DefaultTopic" />
+      <input_port name="TimeoutMs" />
+      <input_port name="ClientId" />
+    </Action>
+    <Action ID="InitializeAgentState">
+      <input_port name="Role" />
+    </Action>
+    <Action ID="SubscribeAgentTopics">
+      <input_port name="Role" />
+      <input_port name="TopicPrefix" />
+    </Action>
+    <Action ID="RegisterAgent">
+      <input_port name="ParentAgent" />
+      <input_port name="Namespace" />
+    </Action>
+    <Action ID="WaitForMessage">
+      <input_port name="ExpectedType" />
+      <input_port name="ExpectedTypes" />
+      <input_port name="ExpectedSender" />
+      <input_port name="ExpectedTopic" />
+      <input_port name="TimeoutSeconds" />
+      <input_port name="ExpectedConversationId" />
+    </Action>
+    <Action ID="HandleRegistration" />
+    <Action ID="HandleInventoryUpdate" />
+    <Action ID="ParseProcessChainRequest" />
+    <Action ID="CheckForCapabilitiesInNamespace" />
+    <Action ID="DispatchCapabilityRequests" />
+    <Action ID="CollectCapabilityOffer">
+      <input_port name="TimeoutSeconds" default="5" />
+    </Action>
+    <Action ID="BuildProcessChainResponse" />
+    <Action ID="SendProcessChainResponse" />
+    <Action ID="HandleBookStepRequest" />
+    <Action ID="Wait">
+      <input_port name="DelayMs" default="1000" />
+    </Action>
+    <Action ID="PublishAgentState">
+      <input_port name="PublishIntervalSeconds" default="30" />
+      <input_port name="Role" />
+    </Action>
+  </TreeNodesModel>
+</root>

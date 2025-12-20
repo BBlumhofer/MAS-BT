@@ -44,7 +44,7 @@ public class SendProcessChainRequestNode : BTNode
         }
 
         var ns = Context.Get<string>("config.Namespace") ?? "phuket";
-        var topic = $"/{ns}/ProcessChain";
+        var topic = $"/{ns}/ManufacturingSequence/Request";
 
         try
         {
@@ -53,6 +53,23 @@ public class SendProcessChainRequestNode : BTNode
                 capability.CapabilitySet,
                 WrapSubmodel(productId, "ProductIdentification")
             };
+
+            // If an AssetLocation submodel is available on the blackboard, include it in the request
+            AasSharpClient.Models.AssetLocationSubmodel? assetLocation = null;
+            try
+            {
+                assetLocation = Context.Get<AasSharpClient.Models.AssetLocationSubmodel>("AssetLocationSubmodel")
+                                ?? Context.Get<AasSharpClient.Models.AssetLocationSubmodel>("AAS.Submodel.AssetLocation");
+            }
+            catch
+            {
+                // ignore missing/typed entries
+            }
+
+            if (assetLocation != null)
+            {
+                interactionElements.Add(WrapSubmodel(assetLocation, "AssetLocation"));
+            }
 
             var convId = Guid.NewGuid().ToString();
             var builder = new I40MessageBuilder()
@@ -63,6 +80,31 @@ public class SendProcessChainRequestNode : BTNode
                 .AddElements(interactionElements);
 
             var message = builder.Build();
+
+            // Log interaction elements for debugging to ensure AssetLocation presence
+            try
+            {
+                Logger.LogInformation("SendProcessChainRequest: prepared {Count} interaction elements", interactionElements.Count);
+                foreach (var el in interactionElements)
+                {
+                    switch (el)
+                    {
+                        case SubmodelElementCollection coll:
+                            Logger.LogInformation("  - Collection IdShort={IdShort} Values={ValuesCount}", coll.IdShort, coll.Values == null ? 0 : coll.Values.Count());
+                            break;
+                        case Property prop:
+                            Logger.LogInformation("  - Property IdShort={IdShort} Value={Value}", prop.IdShort, prop.Value);
+                            break;
+                        default:
+                            Logger.LogInformation("  - Element Type={Type} IdShort={IdShort}", el.GetType().Name, (el as SubmodelElement)?.IdShort);
+                            break;
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "SendProcessChainRequest: failed to log interaction elements");
+            }
 
             await client.PublishAsync(message, topic);
             Context.Set("ConversationId", convId);

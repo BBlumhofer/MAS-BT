@@ -39,9 +39,9 @@
         <Repeat name="OfferLoop" num_cycles="-1">
           <Fallback name="OfferOrIdle">
             <Sequence name="HandleOffer">
-              <ForwardCapabilityRequests name="ForwardOffer" TargetTopicTemplate="/{Namespace}/{ModuleId}/PlanningAgent/OfferRequest" />
+              <ForwardCapabilityRequests name="ForwardOffer" TargetTopicTemplate="/{Namespace}/{ModuleId}/Planning/OfferedCapability/Request" />
               <WaitForInternalResponse name="AwaitOfferResp" TimeoutSeconds="10" />
-              <ReplyToDispatcher name="ReplyOffer" ResponseTopicTemplate="/{Namespace}/Offer" />
+              <ReplyToDispatcher name="ReplyOffer" ResponseTopicTemplate="/{Namespace}/Planning/OfferedCapability/Response" />
               <Wait name="OfferIdle" DelayMs="150" />
             </Sequence>
             <Wait name="OfferBackoff" DelayMs="200" />
@@ -64,7 +64,7 @@
         <Repeat name="TransportLoop" num_cycles="-1">
           <Fallback name="TransportOrIdle">
             <Sequence name="HandleTransport">
-              <WaitForMessage name="AwaitTransport" ExpectedTypes="transportRequest,requestTransportPlan" ExpectedTopic="/{Namespace}/{ModuleId}/TransportPlan" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitTransport" ExpectedTypes="requirement/TransportRequest,callForProposal/TransportRequest" ExpectedTopic="/{Namespace}/{ModuleId}/TransportPlan" TimeoutSeconds="10" />
               <ForwardToInternal name="ForwardTransport" TargetTopic="/{Namespace}/{ModuleId}/PlanningAgent/TransportRequest" />
               <WaitForInternalResponse name="AwaitTransportResp" TimeoutSeconds="10" />
               <ReplyToDispatcher name="ReplyTransport" ResponseTopicTemplate="/{Namespace}/{ModuleId}/TransportPlan" />
@@ -111,8 +111,10 @@
     </Action>
     <Action ID="WaitForRegistration">
       <input_port name="ExpectedAgents" />
+      <input_port name="ExpectedTypes" />
       <input_port name="ExpectedCount" default="0" />
       <input_port name="TimeoutSeconds" default="20" />
+      <input_port name="TopicOverride" />
     </Action>
     <Action ID="RegisterAgent">
       <input_port name="ParentAgent" />

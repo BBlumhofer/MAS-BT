@@ -8,6 +8,7 @@
 
 - **Behavior Tree-driven Agents**: All agent logic defined through XML behavior trees
 - **Holonic Architecture**: Hierarchical agents with Planning and Execution sub-holons
+- **Namespace Holon Gateway**: Parent holon (NamespaceHolon) bridges MQTT topics for manufacturing + transport sub-holons so they only communicate with their parent
 - **ProcessChain Generation**: Automatic process chain creation from required capabilities
 - **OPC UA Integration**: Real-time machine communication (skills, monitoring, inventory)
 - **AAS-based Semantics**: Asset Administration Shell for process definitions and capability descriptions
@@ -43,9 +44,14 @@ dotnet build MAS-BT.csproj
 
 ### Run Agents
 
-**Dispatching Agent:**
+**Namespace Holon (Manufacturing Dispatcher + Transport Manager):**
 ```bash
-dotnet run -- configs/dispatching_agent.json
+dotnet run -- NamespaceHolon/NamespaceHolon
+```
+
+**Vollständiges System (NamespaceHolon + Module + SimilarityAgent + Produkt):**
+```bash
+dotnet run -- phuket_full_system
 ```
 
 **Planning Agent (Module P102):**
@@ -63,6 +69,8 @@ dotnet run -- configs/specific_configs/Module_configs/P102/P102_Execution_agent.
 dotnet run -- Trees/ProductAgent.bt.xml
 ```
 
+> Tip: `dotnet run -- product_dispatch` still launches the product agent and dispatcher stack, but it now spawns the NamespaceHolon (which in turn launches its ManufacturingDispatcher and TransportManager sub-holons). Use `dotnet run -- phuket_full_system` to start NamespaceHolon, all configured module holons, the similarity agent, and the reference product agent with a single command.
+
 ---
 
 ## System Architecture
@@ -70,8 +78,8 @@ dotnet run -- Trees/ProductAgent.bt.xml
 ```
 Product Agent
     ↓ (ProcessChain Request)
-Dispatching Agent
-    ↓ (CfP & Offers)
+Namespace Holon (Manufacturing Dispatcher + Transport Manager)
+    ↓ (CfP & Offers via Manufacturing Dispatcher)
 Planning Agents (per Module)
     ↓ (SkillRequest)
 Execution Agents (per Module)
@@ -81,18 +89,19 @@ Physical Machines
 
 ### Agent Types
 
-1. **Dispatching Agent**: Coordinates multiple modules, creates ProcessChains from RequiredCapabilities
-2. **Planning Agent**: Creates offers for capabilities, manages scheduling, dispatches skill requests
-3. **Execution Agent**: Executes skills via OPC UA, checks preconditions, manages queue
-4. **Product Agent**: Requests ProcessChain, manages ProductionPlan, monitors execution
-5. **Module Holon**: Router wrapper combining Planning + Execution for one module
+1. **Namespace Holon**: Single entry point for the namespace; bridges MQTT topics between the external namespace and its sub-holons, registers with other agents, and spawns the Manufacturing + Transport sub-holons.
+2. **Manufacturing Dispatcher (sub-holon)**: Former DispatchingAgent tree; now runs inside the NamespaceHolon and handles sequential CfPs, capability matchmaking, and manufacturing sequence responses.
+3. **Planning Agent**: Creates offers for capabilities, manages scheduling, dispatches skill requests
+4. **Execution Agent**: Executes skills via OPC UA, checks preconditions, manages queue
+5. **Product Agent**: Requests ProcessChain, manages ProductionPlan, monitors execution
+6. **Module Holon**: Router wrapper combining Planning + Execution for one module
 
 ---
 
 ## ProcessChain Workflow (Implemented ✓)
 
 1. **Product Agent** sends RequiredCapabilities to Dispatching Agent
-2. **Dispatching Agent** sends CfPs (Call for Proposals) to Planning Agents
+2. **Manufacturing Dispatcher (NamespaceHolon)** sends CfPs (Call for Proposals) to Planning Agents
 3. **Planning Agents** perform capability matching and create Offers
 4. **Dispatching Agent** collects Offers and builds ProcessChain
 5. **Product Agent** receives ProcessChain with all available Offers per Requirement
