@@ -50,8 +50,13 @@ public class SendCapabilityOfferNode : BTNode
             return NodeStatus.Failure;
         }
 
-        // Select response topic based on request type: publish planning offers to Planning/OfferedCapability
-        var topic = $"/{ns}/Planning/OfferedCapability/Response";
+        // Send response directly to the requester (dispatcher) using generic topic pattern
+        var topic = $"/{ns}/{request.RequesterId}/OfferedCapability/Response";
+
+        Logger.LogInformation(
+            "SendCapabilityOffer: sending proposal to RequesterId={RequesterId} Topic={Topic}",
+            request.RequesterId,
+            topic);
 
         // IMPORTANT: The offer sequence is modeled explicitly (OfferedCapabilitySequence).
         // Do not embed nested sequences inside OfferedCapability.

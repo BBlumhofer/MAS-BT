@@ -19,7 +19,7 @@
       <InitializeAgentState name="InitDispatchState" Role="{config.Agent.Role}" />
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
       <SubscribeToTopic name="SubscribeTransportPlan" Topic="/{Namespace}/TransportPlan/Request" />
-      <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
+      <SimpleRegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
       <SyncAgentToNeo4j name="SyncToGraph" />
 
       <Parallel name="DispatchingLoops">
@@ -29,7 +29,7 @@
               <WaitForMessage name="WaitRegistration" ExpectedTypes="registerMessage,moduleRegistration" TimeoutSeconds="10" />
               <HandleRegistration name="HandleRegistration" />
               <SyncAgentToNeo4j name="SyncRegisteredModule" />
-              <RegisterAgent name="RegisterAfterRegistration" ParentAgent="{config.Namespace}" />
+              <SimpleRegisterAgent name="RegisterAfterRegistration" ParentAgent="{config.Namespace}" />
               <SyncAgentToNeo4j name="SyncDispatchingAgent" />
               <Wait name="RegIdle" DelayMs="10000" />
             </Sequence>
@@ -42,7 +42,7 @@
             <Sequence name="HandleInventory">
               <WaitForMessage name="WaitInventory" ExpectedTypes="inventoryUpdate" TimeoutSeconds="5" />
               <HandleInventoryUpdate name="HandleInventoryUpdate" />
-              <RegisterAgent name="RegisterAfterInventory" ParentAgent="{config.Namespace}" />
+              <SimpleRegisterAgent name="RegisterAfterInventory" ParentAgent="{config.Namespace}" />
               <Wait name="InvIdle" DelayMs="200" />
             </Sequence>
             <Wait name="InvBackoff" DelayMs="200" />
@@ -58,7 +58,7 @@
               <Fallback name="CapabilityMatchmaking">
                 <Sequence name="CapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespace" />
-                  <Parallel name="ProcessChainNegotiation" SuccessThreshold="2">
+                  <Parallel name="ProcessChainNegotiation">
                     <DispatchCapabilityRequests name="DispatchCapabilityRequests" />
                     <CollectCapabilityOffer name="CollectCapabilityOffer" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
                   </Parallel>
@@ -84,7 +84,7 @@
               <Fallback name="MfgCapabilityMatchmaking">
                 <Sequence name="MfgCapabilitiesAvailable">
                   <CheckForCapabilitiesInNamespace name="CheckForCapabilitiesInNamespaceMfg" />
-                  <Parallel name="ManufacturingNegotiation" SuccessThreshold="2">
+                  <Parallel name="ManufacturingNegotiation">
                     <DispatchCapabilityRequests name="DispatchCapabilityRequestsMfg" />
                     <CollectCapabilityOffer name="CollectCapabilityOfferMfg" TimeoutSeconds="{config.DispatchingAgent.OfferCollectionTimeoutSeconds}" />
                   </Parallel>
@@ -128,7 +128,7 @@
         
         <Repeat name="RegistrationHeartbeat" num_cycles="-1">
           <Sequence name="RegistrationBeat">
-            <RegisterAgent name="RegisterDispatchingHeartbeat" ParentAgent="{config.Namespace}" />
+            <SimpleRegisterAgent name="RegisterDispatchingHeartbeat" ParentAgent="{config.Namespace}" />
             <PublishAgentState name="PublishDispatchingState" PublishIntervalSeconds="30" Role="{config.Agent.Role}" />
             <Wait name="PublishIdle" DelayMs="{config.Agent.RegistrationIntervalMs}" />
           </Sequence>
@@ -160,9 +160,15 @@
       <input_port name="Role" />
       <input_port name="TopicPrefix" />
     </Action>
-    <Action ID="RegisterAgent">
+    <Action ID="SimpleRegisterAgent">
       <input_port name="ParentAgent" />
       <input_port name="Namespace" />
+      <input_port name="MessageType" default="registerMessage" />
+      <input_port name="RegisterTopicSegment" default="register" />
+      <input_port name="UseLeadingSlash" default="true" />
+      <input_port name="WaitForCapabilitiesBeforeRegister" default="false" />
+      <input_port name="CapabilityExtractionWaitTimeoutMs" default="5000" />
+      <input_port name="CapabilityExtractionCheckIntervalMs" default="200" />
     </Action>
     <Action ID="WaitForMessage">
       <input_port name="ExpectedType" />
@@ -191,5 +197,6 @@
       <input_port name="PublishIntervalSeconds" default="30" />
       <input_port name="Role" />
     </Action>
+    
   </TreeNodesModel>
 </root>

@@ -1,0 +1,48 @@
+{
+  "Agent": {
+    "AgentId": "P102",
+    "ModuleId": "P102",
+    "ModuleName":"AssemblyStation",
+    "Role": "PlanningHolon",
+    "LogLevel": "Information",
+    "InitializationTree": "Trees/PlanningAgent.bt.xml",
+    "RegistrationIntervalMs": 10000
+  },
+    "AAS": {
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
+    "Timeout": 10000
+  },
+  "MQTT": {
+    "Broker": "localhost",
+    "BrokerAddress": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "UseTLS": false,
+    "UseAuth": false,
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000,
+    "PublishLogs": false
+  },
+  "Namespace": "_PHUKET",
+  "TimeSynchronization": {
+    "NTPServer": "time.google.com",
+    "MaxDriftMs": 1000,
+    "SyncIntervalMs": 300000
+  },
+  "Scheduling": {
+    "MaxScheduleAgeMs": 300000,
+    "TentativeReservationTimeout": 60000,
+    "BookingConfirmationTimeout": 30000,
+    "SchedulingHorizonSteps": 3
+  },
+  "Neo4j": {
+    "Uri": "neo4j://192.168.178.30:7687",
+    "Username": "neo4j",
+    "Password": "testtest",
+    "Database": "neo4j"
+  }
+}

@@ -23,8 +23,10 @@ public class CollectCapabilityOfferNode : BTNode
 {
     private readonly ConcurrentQueue<I40Message> _incoming = new();
     private readonly HashSet<string> _respondedModules = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _refusedModules = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _reissuedCfPs = new(StringComparer.OrdinalIgnoreCase);
     private readonly HashSet<string> _processedOfferInstanceIds = new(StringComparer.OrdinalIgnoreCase);
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, string> _replyStatus = new(System.StringComparer.OrdinalIgnoreCase);
     private readonly System.Collections.Concurrent.ConcurrentDictionary<string, DateTime> _reissueTimestamps = new();
     private bool _subscribed;
     private DateTime _startTime;
@@ -50,7 +52,15 @@ public class CollectCapabilityOfferNode : BTNode
 
         if (!_subscribed)
         {
-            client.OnConversation(ctx.ConversationId, msg => _incoming.Enqueue(msg));
+            client.OnConversation(ctx.ConversationId, msg =>
+            {
+                Logger.LogInformation(
+                    "CollectCapabilityOffer: received message from {Sender} type={Type} receiver={Receiver}",
+                    msg.Frame?.Sender?.Identification?.Id ?? "unknown",
+                    msg.Frame?.Type ?? "unknown",
+                    msg.Frame?.Receiver?.Identification?.Id ?? "unknown");
+                _incoming.Enqueue(msg);
+            });
             _startTime = DateTime.UtcNow;
             _subscribed = true;
             _drainedInbox = false;
@@ -84,16 +94,53 @@ public class CollectCapabilityOfferNode : BTNode
             ProcessMessage(ctx, message);
         }
 
-        var complete = ctx.Requirements.Count > 0 && ctx.Requirements.All(r => r.CapabilityOffers.Count > 0);
+        var complete = ctx.Requirements.Count > 0 && ctx.Requirements.All(r => r.CapabilityOffers.Count > 0 || r.OfferedCapabilitySequences.Count > 0);
         var allModulesResponded = _expectedModules == 0
             || (_expectedModuleIds != null && _expectedModuleIds.Count > 0
                 ? _expectedModuleIds.All(id => _respondedModules.Contains(id))
                 : _respondedModules.Count >= _expectedModules);
+        // Require at least one recorded offer before treating "all modules responded" as completion
+        var anyOffersRecorded = ctx.Requirements.Any(r => r.CapabilityOffers.Count > 0 || r.OfferedCapabilitySequences.Count > 0);
+        // Build and log expected repliers vs their current reply status for debugging
+        try
+        {
+            List<string> expectedList;
+            if (_expectedModuleIds != null && _expectedModuleIds.Count > 0)
+            {
+                expectedList = _expectedModuleIds.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList();
+            }
+            else
+            {
+                var state = Context.Get<DispatchingState>("DispatchingState");
+                expectedList = state?.Modules.Select(m => m.ModuleId).Where(id => !string.IsNullOrWhiteSpace(id)).Select(NormalizeModuleId).Distinct(StringComparer.OrdinalIgnoreCase).OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToList()
+                               ?? new List<string>();
+            }
+
+            var replies = expectedList.Select(id => _replyStatus.TryGetValue(id, out var v) ? v : "None").ToList();
+            Logger.LogInformation("CollectCapabilityOffer: expectedRepliers=[{Expected}] replies=[{Replies}]", string.Join(',', expectedList), string.Join(',', replies));
+        }
+        catch { }
         var timedOut = (DateTime.UtcNow - _startTime).TotalSeconds >= TimeoutSeconds;
 
-        if (complete || allModulesResponded || timedOut)
+        // Determine if all responders were refusals (quick early-fail)
+        var allRespondersRefused = _respondedModules.Count > 0 && _respondedModules.All(id => _refusedModules.Contains(id));
+
+        if (complete || (allModulesResponded && (anyOffersRecorded || allRespondersRefused)) || timedOut)
         {
-            if (timedOut)
+            // Log why we are completing collection to help diagnose races
+            if (complete)
+            {
+                Logger.LogInformation("CollectCapabilityOffer: completing because all requirements have at least one offer");
+            }
+            else if (allModulesResponded && anyOffersRecorded)
+            {
+                Logger.LogInformation("CollectCapabilityOffer: completing because all expected modules responded and at least one offer recorded");
+            }
+            else if (allRespondersRefused)
+            {
+                Logger.LogInformation("CollectCapabilityOffer: early-fail completing because all responders refused");
+            }
+            else if (timedOut)
             {
                 Logger.LogInformation("CollectCapabilityOffer: timeout after {Timeout}s", TimeoutSeconds);
 
@@ -198,69 +245,9 @@ public class CollectCapabilityOfferNode : BTNode
             return;
         }
 
-        foreach (var expected in _expectedModuleIds)
-        {
-            if (string.IsNullOrWhiteSpace(expected)) continue;
-            if (_respondedModules.Contains(expected)) continue;
-            if (_reissuedCfPs.Contains(expected)) continue;
-            // Respect recent reissue cooldown to avoid repeated CfP floods when modules re-register frequently.
-            const int ReissueCooldownSeconds = 15;
-            if (_reissueTimestamps.TryGetValue(expected, out var lastReissue))
-            {
-                if ((DateTime.UtcNow - lastReissue).TotalSeconds < ReissueCooldownSeconds)
-                {
-                    continue;
-                }
-            }
-
-            var module = state.Modules.FirstOrDefault(m => string.Equals(NormalizeModuleId(m.ModuleId), expected, StringComparison.OrdinalIgnoreCase));
-            if (module == null)
-            {
-                continue;
-            }
-
-            // If the module has registered/been seen AFTER dispatch, it likely missed the original publish.
-            var likelyMissedInitialPublish = module.LastRegistrationUtc > dispatchUtc || module.LastSeenUtc > dispatchUtc;
-            if (!likelyMissedInitialPublish)
-            {
-                continue;
-            }
-
-            // Find cached CfPs for this module (key may be non-normalized).
-            List<I40Message>? cfps = null;
-            if (!cfpsByTarget.TryGetValue(expected, out cfps))
-            {
-                foreach (var kvp in cfpsByTarget)
-                {
-                    if (string.Equals(NormalizeModuleId(kvp.Key), expected, StringComparison.OrdinalIgnoreCase))
-                    {
-                        cfps = kvp.Value;
-                        break;
-                    }
-                }
-            }
-
-            if (cfps == null || cfps.Count == 0)
-            {
-                _reissuedCfPs.Add(expected);
-                continue;
-            }
-
-            foreach (var cfp in cfps)
-            {
-                try
-                {
-                    await client.PublishAsync(cfp, topic).ConfigureAwait(false);
-                }
-                catch
-                {
-                    // best-effort
-                }
-            }
-            _reissuedCfPs.Add(expected);
-            _reissueTimestamps[expected] = DateTime.UtcNow;
-            Logger.LogInformation("CollectCapabilityOffer: re-issued {Count} CfP(s) to late-registered module {Module} on {Topic}", cfps.Count, expected, topic);
-        }
+        // Re-issuing removed: No longer re-publish CfPs to late-registered modules.
+        // If a module misses the initial CfP, it will not receive offers.
+        // This prevents ConversationId mismatches and reduces log noise.
     }
 
     private void ProcessMessage(ProcessChainNegotiationContext ctx, I40Message message)
@@ -294,14 +281,35 @@ public class CollectCapabilityOfferNode : BTNode
         var now = DateTime.UtcNow;
         var sinceStartMs = (_startTime == default) ? 0.0 : (now - _startTime).TotalMilliseconds;
         Logger.LogInformation("CollectCapabilityOffer: processing incoming {Type} from {SenderModule} at {Now:o} (+{SinceStart:F1}ms since start)", messageType, senderModuleId ?? "<unknown>", now, sinceStartMs);
+        // Extra debug: print conversation/requirement/offer identifiers and interaction element idshorts
+        try
+        {
+            var convId = message?.Frame?.ConversationId ?? "<none>";
+            var reqId = requirement?.RequirementId ?? "<none>";
+            var topOfferId = ExtractProperty(message, "OfferId") ?? "<none>";
+            var nestedId = ExtractInstanceIdentifierFromMessage(message) ?? "<none>";
+            var elems = message?.InteractionElements != null
+                ? string.Join(",", message.InteractionElements.Select(e => (e as ISubmodelElement)?.IdShort ?? e.GetType().Name))
+                : "<no-elements>";
+            Logger.LogDebug("CollectCapabilityOffer: debug Conv={Conv} Req={Req} TopOfferId={TopOffer} NestedId={Nested} Elems={Elems}", convId, reqId, topOfferId, nestedId, elems);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "CollectCapabilityOffer: failed to log debug details for incoming message");
+        }
         if (string.Equals(messageBaseType, I40MessageTypes.PROPOSAL, StringComparison.OrdinalIgnoreCase))
         {
+            // Determine if this is a Manufacturing response by checking message structure
             var requestType = Context.Get<string>("ProcessChain.RequestType") ?? string.Empty;
-            var isManufacturing = string.Equals(requestType, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase);
+            var hasSequenceInMessage = message.InteractionElements?.Any(e => e is SubmodelElementList list && 
+                string.Equals(list.IdShort, "OfferedCapabilitySequence", StringComparison.OrdinalIgnoreCase)) ?? false;
+            var isManufacturing = string.Equals(requestType, "ManufacturingSequence", StringComparison.OrdinalIgnoreCase) 
+                                  || hasSequenceInMessage;
 
             if (!string.IsNullOrWhiteSpace(senderModuleId))
             {
                 _respondedModules.Add(senderModuleId);
+                _replyStatus[senderModuleId] = "Proposal";
             }
 
             // De-dup: callbacks/conversation routing can deliver the same proposal more than once.
@@ -392,6 +400,8 @@ public class CollectCapabilityOfferNode : BTNode
             if (!string.IsNullOrWhiteSpace(senderModuleId))
             {
                 _respondedModules.Add(senderModuleId);
+                _refusedModules.Add(senderModuleId);
+                _replyStatus[senderModuleId] = "Refusal";
             }
             Logger.LogInformation("CollectCapabilityOffer: module {Sender} refused requirement {Requirement}", sender, requirement.RequirementId);
         }
@@ -1169,7 +1179,7 @@ public class CollectCapabilityOfferNode : BTNode
         var propertiesPresent = $"Capability={capabilityPresent}, RequirementId={requirementPresent}, OfferId={offerIdPresent}, Station={stationPresent}";
 
         var missing = missingFields == null ? "" : $" Missing=[{string.Join(", ", missingFields)}]";
-        return $"CollectCapabilityOffer: Failed to extract valid OfferedCapability (expected element type OfferedCapability OR SubmodelElementCollection with IdShort='OfferedCapability'). Sender='{sender}' ConversationId='{conv}' Capability='{cap}' RequirementId='{reqId}'.{missing} PropertiesPresent=[{propertiesPresent}] InteractionElements=[{elementSummary}]";
+        return $"CollectCapabilityOffer: Failed to extract valid OfferedCapability (expected element type OfferedCapability OR SubmodelElementCollection with IdShort='OfferedCapability' OR SubmodelElementList). Sender='{sender}' ConversationId='{conv}' Capability='{cap}' RequirementId='{reqId}'.{missing} PropertiesPresent=[{propertiesPresent}] InteractionElements=[{elementSummary}]";
     }
 
     private static TimeSpan? ParseTimeSpanValue(string? value)

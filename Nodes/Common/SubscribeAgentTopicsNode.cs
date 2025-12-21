@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using AAS_Sharp_Client.Models.Messages;
 using AasSharpClient.Models.Helpers;
 using AasSharpClient.Models.Messages;
 using BaSyx.Models.AdminShell;
@@ -39,6 +40,8 @@ namespace MAS_BT.Nodes.Common
                 return NodeStatus.Failure;
             }
 
+            EnsureCapabilityAggregationHandler(client);
+
             var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
             var role = !string.IsNullOrWhiteSpace(Role) ? ResolveTemplates(Role) : (Context.AgentRole ?? string.Empty);
             var agentId = Context.Get<string>("config.Agent.AgentId") ?? Context.AgentId ?? string.Empty;
@@ -48,7 +51,7 @@ namespace MAS_BT.Nodes.Common
             // Role-specific topic selection
             if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase))
             {
-                topics = BuildDispatchingTopics(ns);
+                topics = BuildDispatchingTopics(ns, agentId);
                 return await SubscribeDispatchingTopics(client, topics, ns);
             }
             else if (role.Contains("ModuleHolon", StringComparison.OrdinalIgnoreCase) 
@@ -93,7 +96,7 @@ namespace MAS_BT.Nodes.Common
             return await SubscribeGenericTopics(client, topics);
         }
 
-        private HashSet<string> BuildDispatchingTopics(string ns)
+        private HashSet<string> BuildDispatchingTopics(string ns, string agentId)
         {
             return new HashSet<string>(StringComparer.OrdinalIgnoreCase)
             {
@@ -101,13 +104,15 @@ namespace MAS_BT.Nodes.Common
                 $"/{ns}/ManufacturingSequence/Request",
                 $"/{ns}/BookStep/Request",
 
-                // Responses from modules/planning agents
-                $"/{ns}/ManufacturingSequence/Response",
-                $"/{ns}/Planning/OfferedCapability/Response",
+                // Direct responses to this dispatcher (NEW PATTERN)
+                $"/{ns}/{agentId}/OfferedCapability/Response",
+                $"/{ns}/{agentId}/ManufacturingSequence/Response",
 
                 // Registration topics (all agents register with dispatcher)
                 $"/{ns}/register",
                 $"/{ns}/Register",
+                $"/{ns}/NamespaceHolon/register",
+                $"/{ns}/NamespaceHolon/Register",
                 $"/{ns}/ModuleRegistration",
                 $"/{ns}/+/register",            // Wildcard: all module/sub-agent registrations
 
@@ -261,7 +266,12 @@ namespace MAS_BT.Nodes.Common
                 {
                     if (m == null) return;
 
-                    if (IsInventoryUpdate(m))
+                    var type = m.Frame?.Type ?? string.Empty;
+                    if (string.Equals(type, "registerMessage", StringComparison.OrdinalIgnoreCase))
+                    {
+                        TrackModuleCapabilities(m);
+                    }
+                    else if (IsInventoryUpdate(m))
                     {
                         var cache = BuildInventoryCache(m);
                         if (cache != null)
@@ -284,6 +294,111 @@ namespace MAS_BT.Nodes.Common
             }
 
             return success > 0 ? NodeStatus.Success : NodeStatus.Failure;
+        }
+
+        private void EnsureCapabilityAggregationHandler(MessagingClient client)
+        {
+            if (Context.Get<bool>("CapabilityAggregationHandlerRegistered"))
+            {
+                return;
+            }
+
+            var expectedReceiverId = ResolveRegistrationReceiverId();
+
+            client.OnMessage(m =>
+            {
+                if (m == null)
+                {
+                    return;
+                }
+
+                var type = m.Frame?.Type ?? string.Empty;
+                if (string.Equals(type, "registerMessage", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(type, "moduleRegistration", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (string.IsNullOrWhiteSpace(expectedReceiverId))
+                    {
+                        TrackModuleCapabilities(m);
+                        return;
+                    }
+
+                    var receiverId = m.Frame?.Receiver?.Identification?.Id ?? string.Empty;
+                    if (string.Equals(receiverId, expectedReceiverId, StringComparison.OrdinalIgnoreCase))
+                    {
+                        TrackModuleCapabilities(m);
+                    }
+                }
+            });
+
+            Context.Set("CapabilityAggregationHandlerRegistered", true);
+        }
+
+        private string ResolveRegistrationReceiverId()
+        {
+            var candidate = Context.AgentId
+                            ?? Context.Get<string>("AgentId")
+                            ?? Context.Get<string>("config.Agent.AgentId")
+                            ?? Context.Get<string>("config.Agent.Id")
+                            ?? string.Empty;
+            return ResolveTemplates(candidate).Trim();
+        }
+        private void TrackModuleCapabilities(I40Message message)
+        {
+            var capList = ExtractCapabilitiesFromRegisterMessage(message);
+            if (capList.Count == 0)
+            {
+                return;
+            }
+
+            var existingValues = Context.Get<List<string>>("Capabilities") ?? new List<string>();
+            var existing = new HashSet<string>(existingValues, StringComparer.OrdinalIgnoreCase);
+
+            foreach (var cap in capList)
+            {
+                existing.Add(cap);
+            }
+
+            var aggregated = existing.OrderBy(s => s, StringComparer.OrdinalIgnoreCase).ToList();
+            Context.Set("Capabilities", aggregated);
+            Context.Set("CapabilityNames", aggregated);
+            Context.Set(RegistrationContextKeys.CapabilitiesExtractionComplete, true);
+        }
+
+        private static List<string> ExtractCapabilitiesFromRegisterMessage(I40Message message)
+        {
+            var result = new List<string>();
+            if (message?.InteractionElements == null)
+            {
+                return result;
+            }
+
+            var registerCollections = message.InteractionElements
+                .OfType<SubmodelElementCollection>()
+                .Where(c => string.Equals(c.IdShort, "RegisterMessage", StringComparison.OrdinalIgnoreCase));
+
+            foreach (var collection in registerCollections)
+            {
+                try
+                {
+                    var reg = RegisterMessage.FromSubmodelElementCollection(collection);
+                    if (reg.Capabilities != null)
+                    {
+                        foreach (var cap in reg.Capabilities)
+                        {
+                            if (!string.IsNullOrWhiteSpace(cap))
+                            {
+                                result.Add(cap.Trim());
+                            }
+                        }
+                    }
+                }
+                catch
+                {
+                    // best effort
+                }
+            }
+
+            return result;
         }
 
         private async Task<NodeStatus> SubscribeGenericTopics(MessagingClient client, HashSet<string> topics)

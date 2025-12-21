@@ -21,7 +21,7 @@
       <SpawnSubHolons name="SpawnSubHolons" SubHolonIds="{config.SubHolons}" />
         <!-- ExpectedAgents is intentionally omitted: config.SubHolons contains config filenames, not runtime AgentIds -->
         <WaitForRegistration name="WaitSubHolons" TimeoutSeconds="15" />
-      <RegisterAgent name="InitialRegistration" ParentAgent="DispatchingAgent_{config.Namespace}" />
+      <SimpleRegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" WaitForCapabilitiesBeforeRegister="true" />
       <SyncAgentToNeo4j name="SyncModuleHolonToGraph" />
 
       <Parallel name="HolonLoops">
@@ -77,7 +77,7 @@
         <Repeat name="HeartbeatLoop" num_cycles="-1">
           <Sequence name="Heartbeat">
             <ReadCachedSnapshots name="LoadLastSnapshots" />
-            <RegisterAgent name="RefreshRegistration" ParentAgent="DispatchingAgent_{config.Namespace}" />
+            <SimpleRegisterAgent name="RefreshRegistration" ParentAgent="{config.Namespace}" WaitForCapabilitiesBeforeRegister="true" />
             <SyncAgentToNeo4j name="SyncHeartbeat" />
             <Wait name="HeartbeatWait" DelayMs="{config.Agent.RegistrationIntervalMs}" />
           </Sequence>
@@ -116,9 +116,15 @@
       <input_port name="TimeoutSeconds" default="20" />
       <input_port name="TopicOverride" />
     </Action>
-    <Action ID="RegisterAgent">
+    <Action ID="SimpleRegisterAgent">
       <input_port name="ParentAgent" />
       <input_port name="Namespace" />
+      <input_port name="MessageType" default="registerMessage" />
+      <input_port name="RegisterTopicSegment" default="register" />
+      <input_port name="UseLeadingSlash" default="true" />
+      <input_port name="WaitForCapabilitiesBeforeRegister" default="false" />
+      <input_port name="CapabilityExtractionWaitTimeoutMs" default="5000" />
+      <input_port name="CapabilityExtractionCheckIntervalMs" default="200" />
     </Action>
     <Action ID="WaitForMessage">
       <input_port name="ExpectedType" />

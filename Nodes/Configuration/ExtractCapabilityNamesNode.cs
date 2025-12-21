@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using AasSharpClient.Models;
 using MAS_BT.Core;
+using MAS_BT.Nodes.Common;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Configuration;
@@ -79,6 +80,7 @@ public class ExtractCapabilityNamesNode : BTNode
             Logger.LogInformation("ExtractCapabilityNames: extracted {Count} capability names from '{SourceKey}': [{Caps}]",
                                 names.Count, sourceKey, string.Join(", ", names));
         }
+        Context.Set(RegistrationContextKeys.CapabilitiesExtractionComplete, true);
         
         return Task.FromResult(NodeStatus.Success);
     }

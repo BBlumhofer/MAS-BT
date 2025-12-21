@@ -1,0 +1,60 @@
+{
+  "Agent": {
+    "AgentId": "P100",
+    "ModuleId": "P100",
+    "ModuleName":"ScrewingStation",
+    "Role": "ExecutionHolon",
+    "LogLevel": "Information",
+    "InitializationTree": "Trees/ExecutionAgent.bt.xml"
+  },
+  "OPCUA": {
+    "Endpoint": "opc.tcp://192.168.178.30:4900",
+    "UseAuth": true,
+    "Username": "orchestrator",
+    "Password": "orchestrator",
+    "SecurityMode": "None",
+    "SecurityPolicy": "None",
+    "Timeout": 30000,
+    "ReconnectInterval": 3000
+  },
+    "AAS": {
+    "SubmodelRepositoryEndpoint": "http://192.168.178.30:8080/submodels",
+    "ShellRepositoryEndpoint": "http://192.168.178.30:8080/shells",
+    "Timeout": 10000
+  },
+  "MQTT": {
+    "Broker": "localhost",
+    "BrokerAddress": "localhost",
+    "Port": 1883,
+    "Username": "mqttuser",
+    "Password": "mqttpass",
+    "UseTLS": false,
+    "UseAuth": false,
+    "QoS": 1,
+    "RetainMessages": false,
+    "KeepAliveInterval": 60,
+    "ReconnectDelay": 5000,
+    "PublishLogs": false
+  },
+  "Namespace": "_PHUKET",
+  "TimeSynchronization": {
+    "NTPServer": "time.google.com",
+    "MaxDriftMs": 1000,
+    "SyncIntervalMs": 300000
+  },
+  "Monitoring": {
+    "StateRefreshIntervalMs": 1000,
+    "HealthCheckIntervalMs": 5000,
+    "AlarmHistoryDuration": 3600000
+  },
+  "Execution": {
+    "MaxPreconditionRetries":20,
+    "PreconditionBackoffStartMs": 10000
+  },
+  "Timeouts": {
+    "SkillExecutionDefault": 120000,
+    "TransportRequestTimeout": 180000,
+    "LockAcquisitionTimeout": 10000,
+    "OfferCollectionTimeout": 15000
+  }
+}

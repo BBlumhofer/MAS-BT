@@ -10,8 +10,6 @@ namespace MAS_BT.Nodes.ModuleHolon;
 
 public class ReplyToDispatcherNode : BTNode
 {
-    public string ResponseTopicTemplate { get; set; } = string.Empty;
-
     public ReplyToDispatcherNode() : base("ReplyToDispatcher") {}
 
     public override async Task<NodeStatus> Execute()
@@ -24,39 +22,29 @@ public class ReplyToDispatcherNode : BTNode
             return NodeStatus.Failure;
         }
 
-        // Resolve topic: prefer template but fall back to selecting ProcessChain vs ManufacturingSequence
-        var templateResolved = Resolve(ResponseTopicTemplate);
-        string topic;
-        if (!string.IsNullOrWhiteSpace(templateResolved))
+        var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
+        var conv = msg.Frame?.ConversationId;
+
+        // Get original requester (Dispatcher) from stored context
+        var receiverId = Context.Get<string>($"OriginalRequester_{conv}");
+        
+        if (string.IsNullOrWhiteSpace(receiverId))
         {
-            // If template references ProcessChain but message is ManufacturingSequence, normalize accordingly
-            var incomingType = msg.Frame?.Type ?? string.Empty;
-            if (incomingType.IndexOf("ManufacturingSequence", StringComparison.OrdinalIgnoreCase) >= 0 && templateResolved.IndexOf("ProcessChain", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                topic = templateResolved.Replace("ProcessChain", "ManufacturingSequence");
-            }
-            else
-            {
-                topic = templateResolved;
-            }
+            Logger.LogError(
+                "ReplyToDispatcher: no original requester found for conv {Conv}, cannot determine response topic",
+                conv);
+            return NodeStatus.Failure;
         }
-        else
-        {
-            var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-            topic = $"/{ns}/ManufacturingSequence/Response";
-        }
+
+        // Send response directly to the original requester using generic topic pattern
+        var topic = $"/{ns}/{receiverId}/OfferedCapability/Response";
 
         await client.PublishAsync(msg, topic);
-        Logger.LogInformation("ReplyToDispatcher: sent response conv {Conv} to {Topic}", msg.Frame?.ConversationId, topic);
+        Logger.LogInformation(
+            "ReplyToDispatcher: sent response conv {Conv} to requester {ReceiverId} on {Topic}",
+            msg.Frame?.ConversationId,
+            receiverId,
+            topic);
         return NodeStatus.Success;
-    }
-
-    private string Resolve(string template)
-    {
-        var ns = Context.Get<string>("config.Namespace") ?? Context.Get<string>("Namespace") ?? "phuket";
-        var moduleId = ModuleContextHelper.ResolveModuleId(Context);
-        return template
-            .Replace("{Namespace}", ns)
-            .Replace("{ModuleId}", moduleId);
     }
 }

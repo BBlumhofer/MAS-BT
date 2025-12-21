@@ -1,6 +1,9 @@
 using System;
+using System.Linq;
 using I40Sharp.Messaging.Models;
 using MAS_BT.Core;
+using MAS_BT.Tools;
+using BaSyx.Models.AdminShell;
 using Microsoft.Extensions.Logging;
 
 namespace MAS_BT.Nodes.Common
@@ -44,6 +47,28 @@ namespace MAS_BT.Nodes.Common
             }
             info.LastRegistrationUtc = DateTime.UtcNow;
             info.LastSeenUtc = info.LastRegistrationUtc;
+
+            // Debug: log raw RegisterMessage contents and extracted capabilities for diagnosis
+            try
+            {
+                var regCollection = message.InteractionElements?
+                    .OfType<BaSyx.Models.AdminShell.SubmodelElementCollection>()
+                    .FirstOrDefault(c => string.Equals(c.IdShort, "RegisterMessage", StringComparison.OrdinalIgnoreCase));
+                if (regCollection != null)
+                {
+                    var elems = regCollection.Value?.Value?.Select(e =>
+                        e is BaSyx.Models.AdminShell.Property p
+                            ? $"{p.IdShort}={JsonFacade.ToStringValue(p.Value?.Value ?? (object?)p.Value)}"
+                            : e.GetType().Name).ToList() ?? new System.Collections.Generic.List<string>();
+                    Logger.LogDebug("HandleRegistration: raw RegisterMessage for {Module}: {Elems}", info.ModuleId, string.Join(",", elems));
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogDebug(ex, "HandleRegistration: failed to dump RegisterMessage contents");
+            }
+
+            Logger.LogDebug("HandleRegistration: extracted capabilities for {Module}: [{Caps}]", info.ModuleId, string.Join(", ", info.Capabilities ?? new System.Collections.Generic.List<string>()));
 
             state.Upsert(info);
             Context.Set("LastRegisteredModuleId", moduleId);

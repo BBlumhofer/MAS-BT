@@ -18,13 +18,13 @@
       <PublishCapabilities name="PublishCapabilities" />
       <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
       <SubscribeToTopic name="SubscribeTransportResponses" Topic="/{Namespace}/TransportPlan/Response" />
-      <RegisterAgent name="RegisterPlanning" ParentAgent="{config.Agent.ModuleId}" />
+      <SimpleRegisterAgent name="RegisterPlanning" ParentAgent="{config.Agent.ModuleId}" WaitForCapabilitiesBeforeRegister="true" />
       <SyncAgentToNeo4j name="SyncPlanningToGraph" />
       
       <Parallel name="PlanningParallel">
         <Repeat name="RegistrationHeartbeat" num_cycles="-1">
           <Sequence name="RegistrationBeat">
-            <RegisterAgent name="RegisterPlanningHeartbeat" ParentAgent="{config.Agent.ModuleId}" />
+            <SimpleRegisterAgent name="RegisterPlanningHeartbeat" ParentAgent="{config.Agent.ModuleId}" WaitForCapabilitiesBeforeRegister="true" />
             <SyncAgentToNeo4j name="SyncPlanningHeartbeat" />
             <Wait name="RegistrationWait" DelayMs="5000" />
           </Sequence>
@@ -32,7 +32,7 @@
         <Repeat name="CapabilityOfferLoop" num_cycles="-1">
           <Fallback name="OfferOrIdle">
             <Sequence name="AwaitThenRespondOrRefuse">
-              <WaitForMessage name="AwaitCapabilityRequest" ExpectedTypes="callForProposal,callForProposal/OfferedCapability,callForProposal/ProcessChain,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/{ModuleId}/Planning/OfferedCapability/Request" TimeoutSeconds="10" />
+              <WaitForMessage name="AwaitCapabilityRequest" ExpectedTypes="callForProposal,callForProposal/OfferedCapability,callForProposal/ProcessChain,callForProposal/ManufacturingSequence" ExpectedTopic="/{Namespace}/{ModuleId}/Planning/OfferedCapability/Request" TimeoutSeconds="86400" />
               <Fallback name="RespondOrRefuseAfterMessage">
                 <Sequence name="RespondToCapabilityRequest">
                   <ParseCapabilityRequest name="ParseCapabilityRequest" />
@@ -123,9 +123,15 @@
       <input_port name="Value" />
       <input_port name="ValueType" default="string" />
     </Action>
-    <Action ID="RegisterAgent">
+    <Action ID="SimpleRegisterAgent">
       <input_port name="ParentAgent" />
       <input_port name="Namespace" />
+      <input_port name="MessageType" default="registerMessage" />
+      <input_port name="RegisterTopicSegment" default="register" />
+      <input_port name="UseLeadingSlash" default="true" />
+      <input_port name="WaitForCapabilitiesBeforeRegister" default="false" />
+      <input_port name="CapabilityExtractionWaitTimeoutMs" default="5000" />
+      <input_port name="CapabilityExtractionCheckIntervalMs" default="200" />
     </Action>
     <!-- LoadProductionPlan removed for PlanningAgent: plan should be provided by external planner -->
     <Action ID="SelectNextAction"/>

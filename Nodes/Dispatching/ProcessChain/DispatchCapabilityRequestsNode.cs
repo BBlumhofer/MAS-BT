@@ -184,15 +184,33 @@ public class DispatchCapabilityRequestsNode : BTNode
 
         // For each requirement, compute candidate modules by similarity and send CfP only to those modules
         var expectedOfferResponders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        
         for (var requirementIndex = 0; requirementIndex < ctx.Requirements.Count; requirementIndex++)
         {
             var requirement = ctx.Requirements[requirementIndex];
             var selfId = Context.AgentId;
+            
             var allModules = state.Modules
                 .Where(m => m != null && !string.IsNullOrWhiteSpace(m.ModuleId))
                 .Where(m => !string.Equals(m.ModuleId, similarityAgentId, StringComparison.OrdinalIgnoreCase))
                 .Where(m => !string.Equals(m.ModuleId, selfId, StringComparison.OrdinalIgnoreCase))
+                // Exclude namespace as module ID (e.g., "_PHUKET", "phuket")
+                .Where(m => !string.Equals(m.ModuleId, ns, StringComparison.OrdinalIgnoreCase))
+                .Where(m => !m.ModuleId.StartsWith("_", StringComparison.OrdinalIgnoreCase) || m.ModuleId.Length < 2)
+                // Exclude sub-holon IDs (Planning/Execution agents) - only send CfPs to ModuleHolons
+                .Where(m => !m.ModuleId.Contains("_Planning", StringComparison.OrdinalIgnoreCase)
+                         && !m.ModuleId.Contains("_Execution", StringComparison.OrdinalIgnoreCase)
+                         && !m.ModuleId.Contains("PlanningHolon", StringComparison.OrdinalIgnoreCase)
+                         && !m.ModuleId.Contains("ExecutionHolon", StringComparison.OrdinalIgnoreCase))
                 .ToList();
+
+            // Debug: log snapshot of modules and their capabilities to diagnose candidate selection
+            try
+            {
+                var snapshot = string.Join(", ", state.Modules.Select(m => $"{m.ModuleId}:[{string.Join(";", m.Capabilities ?? new List<string>())}]").ToList());
+                Logger.LogDebug("DispatchCapabilityRequests: modules snapshot before matching: {Snapshot}", snapshot);
+            }
+            catch { }
 
             var descReq = state.TryGetCapabilityDescription(requirement.Capability, out var descA) ? descA : null;
 
@@ -347,20 +365,72 @@ public class DispatchCapabilityRequestsNode : BTNode
                     .Distinct(StringComparer.OrdinalIgnoreCase)
                     .ToList();
 
-                if (candidateModules.Count == 0)
-                {
-                    // As a last resort, broadcast to all modules with any capabilities so they can self-filter.
-                    candidateModules = allModules
-                        .Where(m => m.Capabilities.Count > 0)
-                        .Select(m => m.ModuleId)
-                        .Distinct(StringComparer.OrdinalIgnoreCase)
-                        .ToList();
+                    if (candidateModules.Count == 0)
+                    {
+                        // As a last resort, broadcast to all modules with any capabilities so they can self-filter.
+                        // However, registrations can arrive slightly late. Retry a few times with a short delay
+                        // to give modules a chance to register their capabilities before we give up.
+                        var waitMs = ClampInt(GetConfigInt("config.DispatchingAgent.WaitForRegistrationsMs", defaultValue: 500), 50, 5000);
+                        var retries = ClampInt(GetConfigInt("config.DispatchingAgent.WaitForRegistrationsRetries", defaultValue: 3), 1, 10);
 
-                    Logger.LogWarning(
-                        "DispatchCapabilityRequests: no exact-match modules for capability {Capability}; broadcasting CfP to {Count} modules",
-                        requirement.Capability,
-                        candidateModules.Count);
-                }
+                        for (var attempt = 1; attempt <= retries && candidateModules.Count == 0; attempt++)
+                        {
+                            Logger.LogInformation(
+                                "DispatchCapabilityRequests: no modules with capabilities for {Capability}, waiting {WaitMs}ms (attempt {Attempt}/{Retries})",
+                                requirement.Capability,
+                                waitMs,
+                                attempt,
+                                retries);
+                            await Task.Delay(waitMs).ConfigureAwait(false);
+
+                            // Recompute module snapshot from updated state
+                            allModules = state.Modules
+                                .Where(m => m != null && !string.IsNullOrWhiteSpace(m.ModuleId))
+                                .Where(m => !string.Equals(m.ModuleId, similarityAgentId, StringComparison.OrdinalIgnoreCase))
+                                .Where(m => !string.Equals(m.ModuleId, selfId, StringComparison.OrdinalIgnoreCase))
+                                .Where(m => !string.Equals(m.ModuleId, ns, StringComparison.OrdinalIgnoreCase))
+                                .Where(m => !m.ModuleId.StartsWith("_", StringComparison.OrdinalIgnoreCase) || m.ModuleId.Length < 2)
+                                .Where(m => !m.ModuleId.Contains("_Planning", StringComparison.OrdinalIgnoreCase)
+                                         && !m.ModuleId.Contains("_Execution", StringComparison.OrdinalIgnoreCase)
+                                         && !m.ModuleId.Contains("PlanningHolon", StringComparison.OrdinalIgnoreCase)
+                                         && !m.ModuleId.Contains("ExecutionHolon", StringComparison.OrdinalIgnoreCase))
+                                .ToList();
+
+                            var modulesWithCaps = allModules
+                                .Select(m => new { Id = m.ModuleId, Caps = m.Capabilities ?? new List<string>() })
+                                .ToList();
+
+                            var modulesWithAnyCaps = modulesWithCaps.Where(m => m.Caps.Count > 0).ToList();
+                            candidateModules = modulesWithAnyCaps
+                                .Select(m => m.Id)
+                                .Distinct(StringComparer.OrdinalIgnoreCase)
+                                .ToList();
+                        }
+
+                        var modulesWithCapsFinal = allModules
+                            .Select(m => new { Id = m.ModuleId, Caps = m.Capabilities ?? new List<string>() })
+                            .ToList();
+
+                        var modulesWithAnyCapsFinal = modulesWithCapsFinal.Where(m => m.Caps.Count > 0).ToList();
+
+                        if (candidateModules.Count == 0)
+                        {
+                            var moduleList = string.Join(",", modulesWithCapsFinal.Select(m => m.Id));
+                            Logger.LogWarning(
+                                "DispatchCapabilityRequests: no exact-match modules for capability {Capability}; no modules have capabilities. AllModules=[{AllModules}]",
+                                requirement.Capability,
+                                moduleList);
+                        }
+                        else
+                        {
+                            var debugList = string.Join(";", modulesWithAnyCapsFinal.Select(m => $"{m.Id}:[{string.Join(',', m.Caps)}]"));
+                            Logger.LogWarning(
+                                "DispatchCapabilityRequests: no exact-match modules for capability {Capability}; broadcasting CfP to {Count} modules. Candidates=[{Candidates}]",
+                                requirement.Capability,
+                                candidateModules.Count,
+                                debugList);
+                        }
+                    }
             }
 
             foreach (var m in candidateModules)
@@ -398,8 +468,9 @@ public class DispatchCapabilityRequestsNode : BTNode
                 var publishedAt = DateTimeOffset.UtcNow;
                 await cfpMessage.PublishAsync(client, topic).ConfigureAwait(false);
                 Logger.LogInformation(
-                    "DispatchCapabilityRequests: CfP published at {Timestamp:o} to {Module} Capability={Capability} Requirement={RequirementId} Topic={Topic}",
+                    "DispatchCapabilityRequests: CfP published at {Timestamp:o} Conv={Conv} to {Module} Capability={Capability} Requirement={RequirementId} Topic={Topic}",
                     publishedAt,
+                    ctx.ConversationId ?? "<none>",
                     tgtModule,
                     requirement.Capability,
                     requirement.RequirementId,

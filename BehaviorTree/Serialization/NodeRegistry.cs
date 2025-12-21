@@ -186,7 +186,8 @@ public class NodeRegistry
         // Generic agent lifecycle + registration (real generic nodes)
         Register<InitializeAgentStateNode>("InitializeAgentState");
         Register<SubscribeAgentTopicsNode>("SubscribeAgentTopics");
-        Register<RegisterAgentNode>("RegisterAgent");
+        //Register<RegisterAgentNode>("RegisterAgent"); Deprecated
+        Register<SimpleRegisterAgentNode>("SimpleRegisterAgent");
         Register<HandleRegistrationNode>("HandleRegistration");
         Register<WaitForRegistrationNode>("WaitForRegistration");
 

@@ -55,7 +55,27 @@ namespace MAS_BT
                     var reg = RegisterMessage.FromSubmodelElementCollection(regCollection);
                     if (!string.IsNullOrWhiteSpace(reg.AgentId))
                     {
-                        info.ModuleId = reg.AgentId;
+                        // If a sub-agent (Planning/Execution) registered, map capabilities to the parent module id
+                        var agentId = reg.AgentId;
+                        var normalized = agentId;
+                        try
+                        {
+                            if (agentId.EndsWith("_Execution", StringComparison.OrdinalIgnoreCase))
+                            {
+                                normalized = agentId.Substring(0, agentId.Length - "_Execution".Length);
+                            }
+                            else if (agentId.EndsWith("_Planning", StringComparison.OrdinalIgnoreCase))
+                            {
+                                normalized = agentId.Substring(0, agentId.Length - "_Planning".Length);
+                            }
+                            else if (agentId.EndsWith("_PlanningHolon", StringComparison.OrdinalIgnoreCase))
+                            {
+                                normalized = agentId.Substring(0, agentId.Length - "_PlanningHolon".Length);
+                            }
+                        }
+                        catch { }
+
+                        info.ModuleId = string.IsNullOrWhiteSpace(normalized) ? reg.AgentId : normalized;
                     }
 
                     if (reg.Capabilities != null && reg.Capabilities.Count > 0)

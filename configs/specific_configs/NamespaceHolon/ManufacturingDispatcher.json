@@ -35,11 +35,11 @@
   },
   "DispatchingAgent": {
     "AgentTimeoutSeconds": 120,
-    "UseSimilarityFiltering": true,
-    "CapabilitySimilarityThreshold": 0.75,
+    "UseSimilarityFiltering": false,
+    "CapabilitySimilarityThreshold": 0.50,
     "DescriptionTimeoutMs": 30000,
     "SimilarityTimeoutMs": 30000,
-    "SimilarityAgentId": "S1",
+    "SimilarityAgentId": "SimilarityAnalysisAgent",
     "SimilarityAgentRole": "AIAgent",
     "CalcSimilarityConcurrency": 20,
     "CreateDescriptionConcurrency": 20,
@@ -50,5 +50,6 @@
     "ManufacturingIdleDelayMs": 300,
     "ManufacturingBackoffDelayMs": 300,
     "RegistrationIdleDelayMs": 10000
+    ,"SequentialCapabilityDispatch": false
   }
 }

@@ -82,6 +82,13 @@ public class ForwardCapabilityRequestsNode : BTNode
         Context.Set("LastReceivedMessage", message);
         Context.Set("ForwardedConversationId", conv);
 
+        // Store original requester (Dispatcher) for later reply
+        var originalRequesterId = message.Frame?.Sender?.Identification?.Id;
+        if (!string.IsNullOrWhiteSpace(originalRequesterId))
+        {
+            Context.Set($"OriginalRequester_{conv}", originalRequesterId);
+        }
+
         // Check if already forwarded
         var convModuleKey = conv + ":" + moduleId;
         if (_forwardedConvModule.Contains(convModuleKey))
@@ -118,12 +125,8 @@ public class ForwardCapabilityRequestsNode : BTNode
             var planningAgentId = $"{moduleId}_Planning";
             var forwardedMessage = MessageTargetingHelper.CloneWithNewReceiver(message, planningAgentId, "PlanningHolon");
 
-            // Update sender to this ModuleHolon (we are forwarding)
-            forwardedMessage.Frame.Sender = new Participant
-            {
-                Identification = new Identification { Id = moduleId },
-                Role = new Role { Name = agentRole }
-            };
+            // IMPORTANT: Keep original sender (Dispatcher) - ModuleHolon is just a forwarder
+            // Planning needs to know the original requester to send the response back
 
             await client.PublishAsync(forwardedMessage, targetTopic).ConfigureAwait(false);
             _forwardedConvModule.Add(convModuleKey);

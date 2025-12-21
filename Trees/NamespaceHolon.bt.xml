@@ -19,6 +19,8 @@
 
       <ConfigureNamespaceTopicBridge name="ConfigureBridge" />
 
+      <SubscribeAgentTopics name="SubscribeNamespaceTopics" Role="NamespaceHolon" />
+
       <SpawnNamespaceSubHolons name="SpawnNamespaceSubHolons" />
       <WaitForRegistration name="AwaitSubHolons"
                TimeoutSeconds="45"
@@ -28,12 +30,12 @@
                Namespace="{Namespace}"
                TopicOverride="/{Namespace}/register" />
 
-      <RegisterAgent name="RegisterNamespaceHolon" ParentAgent="{config.Namespace}" />
+      <SimpleRegisterAgent name="RegisterNamespaceHolon" ParentAgent="{config.Namespace}" WaitForCapabilitiesBeforeRegister="true" />
 
       <Parallel name="NamespaceLoops">
         <Repeat name="HeartbeatLoop" num_cycles="-1">
           <Sequence name="HeartbeatSequence">
-            <RegisterAgent name="NamespaceHeartbeat" ParentAgent="{config.Namespace}" />
+            <SimpleRegisterAgent name="NamespaceHeartbeat" ParentAgent="{config.Namespace}" />
             <Wait name="HeartbeatWait" DelayMs="{config.Agent.RegistrationIntervalMs}" />
           </Sequence>
         </Repeat>
@@ -61,6 +63,9 @@
       <input_port name="ManufacturingSuffix" />
       <input_port name="TransportSuffix" />
     </Action>
+    <Action ID="SubscribeAgentTopics">
+      <input_port name="Role" />
+    </Action>
     <Action ID="SpawnSubHolons">
       <input_port name="SubHolonIds" />
     </Action>
@@ -73,9 +78,15 @@
       <input_port name="TimeoutSeconds" default="20" />
       <input_port name="TopicOverride" />
     </Action>
-    <Action ID="RegisterAgent">
+    <Action ID="SimpleRegisterAgent">
       <input_port name="ParentAgent" />
       <input_port name="Namespace" />
+      <input_port name="MessageType" default="registerMessage" />
+      <input_port name="RegisterTopicSegment" default="register" />
+      <input_port name="UseLeadingSlash" default="true" />
+      <input_port name="WaitForCapabilitiesBeforeRegister" default="false" />
+      <input_port name="CapabilityExtractionWaitTimeoutMs" default="5000" />
+      <input_port name="CapabilityExtractionCheckIntervalMs" default="200" />
     </Action>
     <Action ID="Wait">
       <input_port name="DelayMs" default="1000" />

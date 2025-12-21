@@ -23,7 +23,7 @@
       </RetryUntilSuccess>
       <SetBlackboardValue name="SetExecutionRole" Key="AgentRole" Value="{config.Agent.Role}" />
       <SetBlackboardValue name="SetExecutionId" Key="AgentId" Value="{config.Agent.AgentId}" />
-      <RegisterAgent name="RegisterExecution" ParentAgent="{config.Agent.ModuleId}" />
+      <SimpleRegisterAgent name="RegisterExecution" ParentAgent="{config.Agent.ModuleId}" />
     </Sequence>
   </BehaviorTree>
 
@@ -103,7 +103,7 @@
     <Parallel name="SkillExecutionParallel">
       <Repeat name="RegistrationHeartbeat" num_cycles="-1">
         <Sequence name="RegistrationBeat">
-          <RegisterAgent name="RegisterExecutionHeartbeat" ParentAgent="{config.Agent.ModuleId}" />
+            <SimpleRegisterAgent name="RegisterExecutionHeartbeat" ParentAgent="{config.Agent.ModuleId}" />
           <UpdateInventory name="HeartbeatInventory"
                            ModuleId="{config.Agent.ModuleName}"
                            ModuleName="{config.Agent.ModuleName}"
@@ -247,9 +247,15 @@
       <input_port name="Value" />
       <input_port name="ValueType" default="string" />
     </Action>
-    <Action ID="RegisterAgent">
+    <Action ID="SimpleRegisterAgent">
       <input_port name="ParentAgent" />
       <input_port name="Namespace" />
+      <input_port name="MessageType" default="registerMessage" />
+      <input_port name="RegisterTopicSegment" default="register" />
+      <input_port name="UseLeadingSlash" default="true" />
+      <input_port name="WaitForCapabilitiesBeforeRegister" default="false" />
+      <input_port name="CapabilityExtractionWaitTimeoutMs" default="5000" />
+      <input_port name="CapabilityExtractionCheckIntervalMs" default="200" />
     </Action>
     <Action ID="ConnectToModule">
       <input_port name="Endpoint" />

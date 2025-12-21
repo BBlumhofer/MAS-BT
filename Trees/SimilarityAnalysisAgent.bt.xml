@@ -15,12 +15,12 @@
         TimeoutMs="10000"
         ClientId="{config.Agent.AgentId}" />
 
-      <SubscribeAgentTopics name="SubscribeTopics" Role="{config.Agent.Role}" />
       <SubscribeToTopic name="SubscribeCalcSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcSimilarity" />
       <SubscribeToTopic name="SubscribeCalcPairwiseSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcPairwiseSimilarity" />
       <SubscribeToTopic name="SubscribeCalcDescribedSimilarity" Topic="/{config.Namespace}/{config.Agent.AgentId}/CalcDescribedSimilarity" />
       <SubscribeToTopic name="SubscribeCreateDescription" Topic="/{config.Namespace}/{config.Agent.AgentId}/CreateDescription" />
-      <RegisterAgent name="InitialRegistration" ParentAgent="DispatchingAgent_{config.Namespace}" />
+      <SubscribeToTopic name="SubscribeRegister" Topic="/{config.Namespace}/register" />
+      <SimpleRegisterAgent name="InitialRegistration" ParentAgent="{config.Agent.ParentAgent}" />
 
       <Parallel name="SimilarityLoops">
             <Repeat name="CalcSimilarityLoop" num_cycles="-1">
@@ -54,7 +54,7 @@
 
         <Repeat name="RegistrationHeartbeat" num_cycles="-1">
           <Sequence name="RegistrationBeat">
-            <RegisterAgent name="RegisterHeartbeat" ParentAgent="DispatchingAgent_{config.Namespace}" />
+            <SimpleRegisterAgent name="RegisterHeartbeat" ParentAgent="{config.Agent.ParentAgent}" />
             <PublishAgentState name="PublishState" PublishIntervalSeconds="30" Role="{config.Agent.Role}" />
             <Wait name="PublishIdle" DelayMs="30000" />
           </Sequence>
@@ -99,9 +99,15 @@
     <Action ID="SubscribeToTopic">
       <input_port name="Topic" />
     </Action>
-    <Action ID="RegisterAgent">
+    <Action ID="SimpleRegisterAgent">
       <input_port name="ParentAgent" />
       <input_port name="Namespace" />
+      <input_port name="MessageType" default="registerMessage" />
+      <input_port name="RegisterTopicSegment" default="register" />
+      <input_port name="UseLeadingSlash" default="true" />
+      <input_port name="WaitForCapabilitiesBeforeRegister" default="false" />
+      <input_port name="CapabilityExtractionWaitTimeoutMs" default="5000" />
+      <input_port name="CapabilityExtractionCheckIntervalMs" default="200" />
     </Action>
     <Action ID="WaitForMessage">
       <input_port name="ExpectedType" />

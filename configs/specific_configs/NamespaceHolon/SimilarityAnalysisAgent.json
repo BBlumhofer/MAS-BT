@@ -1,6 +1,6 @@
 {
   "Agent": {
-    "AgentId": "S1",
+    "AgentId": "SimilarityAnalysisAgent",
     "Role": "AIAgent",
     "AgentType": "SimilarityAnalysisAgent",
     "ParentAgent": "_PHUKET",

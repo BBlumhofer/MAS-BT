@@ -36,6 +36,21 @@ namespace MAS_BT.Nodes.Common
 
         public RegisterAgentNode() : base("RegisterAgent") { }
 
+        /// <summary>
+        /// When true, the registration is delayed until the system reports that capability extraction has completed.
+        /// </summary>
+        public bool WaitForCapabilitiesBeforeRegister { get; set; }
+
+        /// <summary>
+        /// Maximum time (ms) to wait for capability extraction before forcing the registration.
+        /// </summary>
+        public int CapabilityExtractionWaitTimeoutMs { get; set; } = 5000;
+
+        /// <summary>
+        /// Interval (ms) between checks while waiting for capability extraction.
+        /// </summary>
+        public int CapabilityExtractionCheckIntervalMs { get; set; } = 200;
+
         public override async Task<NodeStatus> Execute()
         {
             var client = Context.Get<MessagingClient>("MessagingClient");
@@ -59,6 +74,11 @@ namespace MAS_BT.Nodes.Common
             // If the configured AgentId was accidentally overwritten (e.g., by loading a different AAS shell),
             // derive a stable id from ModuleId + Role.
             var registrationAgentId = ResolveRegistrationAgentId(agentId, role);
+
+            if (WaitForCapabilitiesBeforeRegister)
+            {
+                await WaitForCapabilitiesExtractionAsync(registrationAgentId).ConfigureAwait(false);
+            }
 
             // Determine parent agent:
             // 1) explicit node attribute ParentAgent
@@ -108,7 +128,7 @@ namespace MAS_BT.Nodes.Common
 
             // DispatchingAgent: stale modules should be deregistered based on a timeout.
             // This keeps the namespace snapshot (Subagents/Capabilities/InventorySummary) consistent.
-            if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase))
+            if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase) && ShouldAggregateSubAgentsInRegister())
             {
                 try
                 {
@@ -157,7 +177,7 @@ namespace MAS_BT.Nodes.Common
             // Log registration details for debugging
             if (capabilities.Count == 0)
             {
-                Logger.LogWarning("RegisterAgent: Sending registration for '{AgentId}' with ZERO capabilities to '{Topic}'. " +
+                Logger.LogDebug("RegisterAgent: Sending registration for '{AgentId}' with ZERO capabilities to '{Topic}'. " +
                                 "This may indicate missing AAS data or failed capability extraction.",
                                 registrationAgentId, topic);
             }
@@ -218,6 +238,57 @@ namespace MAS_BT.Nodes.Common
                 Logger.LogError(ex, "RegisterAgent: failed to send registration");
                 return NodeStatus.Failure;
             }
+        }
+
+        private async Task WaitForCapabilitiesExtractionAsync(string agentId)
+        {
+            if (IsCapabilitiesExtractionComplete())
+            {
+                return;
+            }
+
+            var timeoutMs = Math.Max(0, CapabilityExtractionWaitTimeoutMs);
+            var intervalMs = Math.Max(20, CapabilityExtractionCheckIntervalMs);
+            var timeoutDescription = timeoutMs <= 0 ? "indefinitely" : $"{timeoutMs}ms";
+
+            Logger.LogInformation("RegisterAgent: waiting {Timeout} for capability extraction before registering {AgentId}",
+                timeoutDescription, agentId);
+
+            var elapsedMs = 0;
+            while (!IsCapabilitiesExtractionComplete() && (timeoutMs <= 0 || elapsedMs < timeoutMs))
+            {
+                await Task.Delay(intervalMs).ConfigureAwait(false);
+                elapsedMs += intervalMs;
+            }
+
+            if (!IsCapabilitiesExtractionComplete())
+            {
+                var reportedWait = timeoutMs <= 0 ? elapsedMs : Math.Min(elapsedMs, timeoutMs);
+                Logger.LogWarning("RegisterAgent: capability extraction still pending after {Waited}ms for {AgentId}; continuing anyway.",
+                    reportedWait, agentId);
+            }
+        }
+
+        private bool IsCapabilitiesExtractionComplete()
+        {
+            if (Context.Has(RegistrationContextKeys.CapabilitiesExtractionComplete))
+            {
+                try
+                {
+                    return Context.Get<bool>(RegistrationContextKeys.CapabilitiesExtractionComplete);
+                }
+                catch
+                {
+                    // best effort
+                }
+            }
+
+            if (Context.Has("Capabilities") || Context.Has("CapabilityNames"))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private bool RoleLooksLikeSubHolon(string role)
@@ -386,7 +457,7 @@ namespace MAS_BT.Nodes.Common
 
             // DispatchingAgent: infer direct subagents (modules) from registration state
             var role = Context.AgentRole ?? Context.Get<string>("AgentRole") ?? string.Empty;
-            if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase))
+            if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase) && ShouldAggregateSubAgentsInRegister())
             {
                 try
                 {
@@ -420,6 +491,7 @@ namespace MAS_BT.Nodes.Common
                         {
                             return result;
                         }
+
                     }
                 }
                 catch
@@ -451,7 +523,7 @@ namespace MAS_BT.Nodes.Common
             // DispatchingAgent: aggregate all capabilities from registered modules.
             // Duplicates are intentionally allowed.
             var role = Context.AgentRole ?? Context.Get<string>("AgentRole") ?? string.Empty;
-            if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase))
+            if (role.Contains("Dispatching", StringComparison.OrdinalIgnoreCase) && ShouldAggregateCapabilitiesInRegister())
             {
                 try
                 {
@@ -593,6 +665,59 @@ namespace MAS_BT.Nodes.Common
                     result.Add(v);
                 }
             }
+        }
+
+        private bool GetConfigBool(string key, bool defaultValue)
+        {
+            if (string.IsNullOrWhiteSpace(key))
+            {
+                return defaultValue;
+            }
+
+            if (Context.Has(key))
+            {
+                try
+                {
+                    var v = Context.Get<object>(key);
+                    if (JsonFacade.TryToBool(v, out var parsed))
+                    {
+                        return parsed;
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            var segments = key.Split('.', StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length >= 2 && string.Equals(segments[0], "config", StringComparison.OrdinalIgnoreCase))
+            {
+                try
+                {
+                    var raw = TryGetConfigValue(key, segments.Skip(1));
+                    if (JsonFacade.TryToBool(raw, out var parsed))
+                    {
+                        return parsed;
+                    }
+                }
+                catch
+                {
+                    // ignore
+                }
+            }
+
+            return defaultValue;
+        }
+
+        private bool ShouldAggregateSubAgentsInRegister()
+        {
+            return GetConfigBool("config.DispatchingAgent.IncludeAggregatedSubAgents", defaultValue: false);
+        }
+
+        private bool ShouldAggregateCapabilitiesInRegister()
+        {
+            return GetConfigBool("config.DispatchingAgent.IncludeAggregatedCapabilities", defaultValue: false);
         }
 
     }

@@ -54,12 +54,8 @@ namespace MAS_BT.Nodes.Common
                 ? ResolveTemplates(TopicOverride)
                 : $"/{ns}/{moduleId}/register";
 
-            // Subscribe to namespace wildcard as well to catch registrations published
-            // on per-module topics (e.g. /{ns}/{moduleId}/register) and namespace-level
-            // topics (e.g. /{ns}/register). Use ns-based wildcard for broader matching.
-            var subscribeTopic = topic.EndsWith("/register", StringComparison.OrdinalIgnoreCase)
-                ? $"/{ns}/#"
-                : topic;
+            // Subscribe only to the exact register topic to stay scoped to this agent
+            var subscribeTopic = topic;
 
             var expectedTypeSet = ParseCsvOrDefault(ResolveTemplates(ExpectedTypes), new[] { "registerMessage" });
             var expectedAgents = ParseExpectedAgents(ResolveTemplates(ExpectedAgents));
@@ -220,6 +216,9 @@ namespace MAS_BT.Nodes.Common
                         {
                             // best-effort
                         }
+
+                        // Mark that capability extraction/aggregation finished (even if zero capabilities).
+                        Context.Set(RegistrationContextKeys.CapabilitiesExtractionComplete, true);
 
                         var seenDetails = seenAgents.Select(kvp =>
                         {

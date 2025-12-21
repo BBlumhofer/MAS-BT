@@ -89,8 +89,9 @@ public class SendPlanningRefusalNode : BTNode
         var senderId = string.IsNullOrWhiteSpace(Context.AgentId) ? "PlanningAgent" : Context.AgentId;
         var senderRole = string.IsNullOrWhiteSpace(Context.AgentRole) ? "PlanningAgent" : Context.AgentRole;
         
-        // Select response topic based on request type: ManufacturingSequence or ProcessChain
-        var topic = $"/{ns}/ManufacturingSequence/Response";
+        // Build agent-specific response topic so the dispatcher (or product agent) receives it
+        // Use the same response topic as proposals so refusals and proposals arrive on a common channel
+        var topic = $"/{ns}/{resolvedReceiver}/OfferedCapability/Response";
 
         var refusal = new PlanningRefusalMessage(
             senderId ?? "PlanningAgent",

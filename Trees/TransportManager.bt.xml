@@ -18,7 +18,7 @@
       <SubscribeToTopic name="SubscribeTransportPlan" Topic="/{Namespace}/TransportPlan/Request" />
       <SubscribeToTopic name="SubscribeManufacturingSequence" Topic="/{Namespace}/ManufacturingSequence/Request" />
 
-      <RegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
+      <SimpleRegisterAgent name="InitialRegistration" ParentAgent="{config.Namespace}" />
 
       <Parallel name="TransportLoops">
         <Repeat name="ManufacturingSequenceLoop" num_cycles="-1">
@@ -48,7 +48,7 @@
 
         <Repeat name="HeartbeatLoop" num_cycles="-1">
           <Sequence name="Heartbeat">
-            <RegisterAgent name="RegisterHeartbeat" ParentAgent="{config.Namespace}" />
+            <SimpleRegisterAgent name="RegisterHeartbeat" ParentAgent="{config.Namespace}" />
             <Wait name="HeartbeatWait" DelayMs="{config.Agent.RegistrationIntervalMs}" />
           </Sequence>
         </Repeat>
@@ -75,9 +75,15 @@
     <Action ID="SubscribeToTopic">
       <input_port name="Topic" />
     </Action>
-    <Action ID="RegisterAgent">
+    <Action ID="SimpleRegisterAgent">
       <input_port name="ParentAgent" />
       <input_port name="Namespace" />
+      <input_port name="MessageType" default="registerMessage" />
+      <input_port name="RegisterTopicSegment" default="register" />
+      <input_port name="UseLeadingSlash" default="true" />
+      <input_port name="WaitForCapabilitiesBeforeRegister" default="false" />
+      <input_port name="CapabilityExtractionWaitTimeoutMs" default="5000" />
+      <input_port name="CapabilityExtractionCheckIntervalMs" default="200" />
     </Action>
     <Action ID="WaitForMessage">
       <input_port name="ExpectedType" />
